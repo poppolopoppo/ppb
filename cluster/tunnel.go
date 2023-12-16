@@ -14,8 +14,10 @@ import (
 
 	"github.com/quic-go/quic-go"
 
-	//lint:ignore ST1001 ignore dot imports warning
+	"github.com/poppolopoppo/ppb/internal/base"
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
 
+	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
 
@@ -24,19 +26,19 @@ import (
  ***************************************/
 
 type TunnelEvents struct {
-	OnError          PublicEvent[error]
-	OnTaskStart      PublicEvent[*MessageTaskStart]
-	OnTaskStop       PublicEvent[*MessageTaskStop]
-	OnTaskFileAccess PublicEvent[*MessageTaskFileAccess]
-	OnTaskOutput     PublicEvent[*MessageTaskOutput]
+	OnError          base.PublicEvent[error]
+	OnTaskStart      base.PublicEvent[*MessageTaskStart]
+	OnTaskStop       base.PublicEvent[*MessageTaskStop]
+	OnTaskFileAccess base.PublicEvent[*MessageTaskFileAccess]
+	OnTaskOutput     base.PublicEvent[*MessageTaskOutput]
 
 	OnReadyForWork func() bool
-	OnTaskDispatch RunProcessFunc
+	OnTaskDispatch internal_io.RunProcessFunc
 }
 
 type Tunnel struct {
 	Cluster     *Cluster
-	Compression CompressionOptions
+	Compression base.CompressionOptions
 
 	conn   quic.Connection
 	stream quic.Stream
@@ -50,8 +52,8 @@ type Tunnel struct {
 	TunnelEvents
 }
 
-func NewDialTunnel(cluster *Cluster, ctx context.Context, addr string, timeout time.Duration, compression ...CompressionOptionFunc) (tunnel *Tunnel, err error) {
-	LogVeryVerbose(LogCluster, "dialing remote peer %q", addr)
+func NewDialTunnel(cluster *Cluster, ctx context.Context, addr string, timeout time.Duration, compression ...base.CompressionOptionFunc) (tunnel *Tunnel, err error) {
+	base.LogVeryVerbose(LogCluster, "dialing remote peer %q", addr)
 
 	dialer, err := quic.DialAddr(ctx, addr, generateClientTLSConfig(), nil)
 	if err != nil {
@@ -65,8 +67,8 @@ func NewDialTunnel(cluster *Cluster, ctx context.Context, addr string, timeout t
 
 	return newTunnel(cluster, dialer, stream, timeout, compression...), nil
 }
-func NewListenTunnel(cluster *Cluster, ctx context.Context, conn quic.Connection, timeout time.Duration, compression ...CompressionOptionFunc) (*Tunnel, error) {
-	LogVeryVerbose(LogCluster, "accept remote peer %q", conn.RemoteAddr())
+func NewListenTunnel(cluster *Cluster, ctx context.Context, conn quic.Connection, timeout time.Duration, compression ...base.CompressionOptionFunc) (*Tunnel, error) {
+	base.LogVeryVerbose(LogCluster, "accept remote peer %q", conn.RemoteAddr())
 
 	stream, err := conn.AcceptStream(ctx)
 	if err != nil {
@@ -76,11 +78,11 @@ func NewListenTunnel(cluster *Cluster, ctx context.Context, conn quic.Connection
 	return newTunnel(cluster, conn, stream, timeout, compression...), nil
 }
 
-func newTunnel(cluster *Cluster, conn quic.Connection, stream quic.Stream, timeout time.Duration, compression ...CompressionOptionFunc) *Tunnel {
+func newTunnel(cluster *Cluster, conn quic.Connection, stream quic.Stream, timeout time.Duration, compression ...base.CompressionOptionFunc) *Tunnel {
 	utc := time.Now().UTC()
 	return &Tunnel{
 		Cluster:     cluster,
-		Compression: NewCompressionOptions(compression...),
+		Compression: base.NewCompressionOptions(compression...),
 		conn:        conn,
 		stream:      stream,
 		lastRead:    utc,
@@ -151,22 +153,23 @@ func (x *Tunnel) Close() error {
  * TLS Config
  ***************************************/
 
+const TUNNEL_RSA_KEYSIZE = 2048 // The size of this RSA key should be at least 2048 bits.
 const TUNNEL_QUIC_PROTOCOL = "quic-ppb-task-distribution"
 
-var getTunnelQuicProtocol = Memoize[string](func() string {
-	return fmt.Sprint(TUNNEL_QUIC_PROTOCOL, `-`, CurrentHost().String())
+var getTunnelQuicProtocol = base.Memoize[string](func() string {
+	return fmt.Sprint(TUNNEL_QUIC_PROTOCOL, `-`, base.CurrentHost().String())
 })
 
 func generateClientTLSConfig() *tls.Config {
 	return &tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{getTunnelQuicProtocol()},
+		// InsecureSkipVerify: true, // avoid man-in-the-middle attacks.
+		NextProtos: []string{getTunnelQuicProtocol()},
 	}
 }
 
 // Setup a bare-bones TLS config for the server
 func generateServerTLSConfig() *tls.Config {
-	key, err := rsa.GenerateKey(rand.Reader, 1024)
+	key, err := rsa.GenerateKey(rand.Reader, TUNNEL_RSA_KEYSIZE)
 	if err != nil {
 		CommandPanic(err)
 	}

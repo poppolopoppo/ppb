@@ -4,11 +4,27 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/poppolopoppo/ppb/action"
+	"github.com/poppolopoppo/ppb/internal/base"
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
+
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
 
-var AllCompilers = StringSet{}
+/***************************************
+ * Compiler Name
+ ***************************************/
+
+type CompilerName struct {
+	PersistentVar
+}
+
+func (x CompilerName) Compare(o CompilerName) int {
+	return strings.Compare(x.PersistentVar.String(), o.PersistentVar.String())
+}
+
+var AllCompilerNames = base.SetT[CompilerName]{}
 
 /***************************************
  * Compiler Alias
@@ -30,10 +46,13 @@ func NewCompilerAlias(family, name, variant string) CompilerAlias {
 func (x CompilerAlias) Valid() bool {
 	return len(x.CompilerName) > 0
 }
-func (x *CompilerAlias) Alias() BuildAlias {
+func (x CompilerAlias) Alias() BuildAlias {
 	return MakeBuildAlias("Rules", "Compiler", x.String())
 }
-func (x *CompilerAlias) Serialize(ar Archive) {
+func (x CompilerAlias) String() string {
+	return fmt.Sprintf("%s-%s-%s", x.CompilerFamily, x.CompilerName, x.CompilerVariant)
+}
+func (x *CompilerAlias) Serialize(ar base.Archive) {
 	ar.String(&x.CompilerFamily)
 	ar.String(&x.CompilerName)
 	ar.String(&x.CompilerVariant)
@@ -56,14 +75,11 @@ func (x *CompilerAlias) Set(in string) error {
 		return err
 	}
 }
-func (x CompilerAlias) String() string {
-	return fmt.Sprintf("%s-%s-%s", x.CompilerFamily, x.CompilerName, x.CompilerVariant)
-}
 func (x CompilerAlias) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *CompilerAlias) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
 
 /***************************************
@@ -89,16 +105,16 @@ type Compiler interface {
 	Library(*Facet, ...Filename)
 	LibraryPath(*Facet, ...Directory)
 
-	SourceDependencies(*ActionRules) Action
+	CreateAction(*Unit, PayloadType, *action.ActionRules) action.Action
 
-	AllowCaching(*Unit, PayloadType) CacheModeType
-	AllowDistribution(*Unit, PayloadType) DistModeType
+	AllowCaching(*Unit, PayloadType) action.CacheModeType
+	AllowDistribution(*Unit, PayloadType) action.DistModeType
 	AllowResponseFile(*Unit, PayloadType) CompilerSupportType
 	AllowEditAndContinue(*Unit, PayloadType) CompilerSupportType
 
 	FacetDecorator
 	Buildable
-	Serializable
+	base.Serializable
 }
 
 /***************************************
@@ -116,7 +132,7 @@ type CompilerRules struct {
 	Librarian    Filename
 	Preprocessor Filename
 
-	Environment ProcessEnvironment
+	Environment internal_io.ProcessEnvironment
 	ExtraFiles  FileSet
 
 	Facet
@@ -138,7 +154,7 @@ func (rules *CompilerRules) String() string {
 func (rules *CompilerRules) GetFacet() *Facet {
 	return rules.Facet.GetFacet()
 }
-func (rules *CompilerRules) Serialize(ar Archive) {
+func (rules *CompilerRules) Serialize(ar base.Archive) {
 	ar.Serializable(&rules.CompilerAlias)
 
 	ar.Serializable(&rules.CppStd)

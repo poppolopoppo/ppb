@@ -10,8 +10,10 @@ import (
 	"os"
 	"time"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/internal/io"
+	"github.com/poppolopoppo/ppb/internal/base"
+
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
+
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
@@ -26,7 +28,7 @@ func MessageLoop(tunnel *Tunnel, ctx context.Context, timeout time.Duration, inb
 	pingTicker := time.NewTicker(timeout)
 	defer pingTicker.Stop()
 
-	err = Recover(func() (err error) {
+	err = base.Recover(func() (err error) {
 		for _, body := range inbox {
 			if err := rw.Write(body); err != nil {
 				return err
@@ -35,7 +37,7 @@ func MessageLoop(tunnel *Tunnel, ctx context.Context, timeout time.Duration, inb
 
 		defer func() {
 			if err != nil {
-				LogError(&rw.category, "close with failure: %v", err)
+				base.LogError(&rw.category, "close with failure: %v", err)
 			}
 		}()
 
@@ -44,11 +46,11 @@ func MessageLoop(tunnel *Tunnel, ctx context.Context, timeout time.Duration, inb
 
 			select {
 			case <-ctx.Done():
-				LogWarning(&rw.category, "closed by context: %v", ctx.Err())
+				base.LogWarning(&rw.category, "closed by context: %v", ctx.Err())
 				return ctx.Err()
 
 			case <-pingTicker.C:
-				LogTrace(&rw.category, "ping (latency=%v)", rw.tunnel.ping)
+				base.LogTrace(&rw.category, "ping (latency=%v)", rw.tunnel.ping)
 
 				if tunnel.TimeSinceLastWrite() > timeout/2 {
 					if err = WriteMessage(&rw, NewMessagePing()); err != nil {
@@ -120,10 +122,10 @@ type messageReadWriter struct {
 	tunnel                *Tunnel
 	localAddr, remoteAddr net.Addr
 
-	rd ArchiveBinaryReader
-	wr ArchiveBinaryWriter
+	rd base.ArchiveBinaryReader
+	wr base.ArchiveBinaryWriter
 
-	category LogCategory
+	category base.LogCategory
 	batching map[uintptr]MessageBatch
 
 	retryCount, retryMaxCount int
@@ -132,13 +134,13 @@ type messageReadWriter struct {
 func newMessageReadWriter(tunnel *Tunnel) (result messageReadWriter) {
 	result.tunnel = tunnel
 	result.localAddr, result.remoteAddr = tunnel.conn.LocalAddr(), tunnel.conn.RemoteAddr()
-	result.category = MakeLogCategory(result.remoteAddr.String())
+	result.category = base.MakeLogCategory(result.remoteAddr.String())
 
-	result.rd = NewArchiveBinaryReader(NewObservableReader(NewCompressedReader(tunnel, tunnel.Compression.Options), tunnel.Cluster.UncompressRead), AR_TOLERANT)
+	result.rd = base.NewArchiveBinaryReader(internal_io.NewObservableReader(base.NewCompressedReader(tunnel, tunnel.Compression.Options), tunnel.Cluster.UncompressRead), base.AR_TOLERANT)
 
-	result.wr = NewArchiveBinaryWriter(NewObservableWriter(NewCompressedWriter(tunnel, tunnel.Compression.Options), tunnel.Cluster.CompressWrite))
+	result.wr = base.NewArchiveBinaryWriter(internal_io.NewObservableWriter(base.NewCompressedWriter(tunnel, tunnel.Compression.Options), tunnel.Cluster.CompressWrite))
 	result.wr.HandleErrors(func(err error) {
-		LogPanic(&result.category, "caught archive write error: %v", err)
+		base.LogPanic(&result.category, "caught archive write error: %v", err)
 	})
 
 	result.batching = make(map[uintptr]MessageBatch, 2)
@@ -156,7 +158,7 @@ func (x *messageReadWriter) ReadyForWork() bool {
 func (x *messageReadWriter) Retry(err error) bool {
 	if os.IsTimeout(err) {
 		x.retryCount++
-		LogWarning(&x.category, "should retry (%d/%d): %v", x.retryCount, x.retryMaxCount, err)
+		base.LogWarning(&x.category, "should retry (%d/%d): %v", x.retryCount, x.retryMaxCount, err)
 		return x.retryCount < x.retryMaxCount
 	}
 	return false
@@ -165,7 +167,7 @@ func (x *messageReadWriter) Close(err error) error {
 	if x.tunnel != nil {
 		err = x.Flush()
 
-		LogTrace(&x.category, "closed with: %v", err)
+		base.LogTrace(&x.category, "closed with: %v", err)
 
 		errWr, errRd := x.wr.Close(), x.rd.Close()
 		if errWr != nil {
@@ -187,7 +189,7 @@ func (x *messageReadWriter) Events() *TunnelEvents { return &x.tunnel.TunnelEven
 func (x *messageReadWriter) Peek() (msg MessageType, err error) {
 	x.rd.Reset(x.tunnel)
 	x.rd.HandleErrors(func(err error) {
-		LogWarning(&x.category, "caught error while reading message header: %v (retry=%d/%d)", err, x.retryCount, x.retryMaxCount)
+		base.LogWarning(&x.category, "caught error while reading message header: %v (retry=%d/%d)", err, x.retryCount, x.retryMaxCount)
 	})
 
 	x.rd.Serializable(&msg)
@@ -197,16 +199,16 @@ func (x *messageReadWriter) Read(header MessageType) error {
 	x.retryCount = 0 // reset retry count (assuming a message header was already serialized)
 
 	x.rd.HandleErrors(func(err error) {
-		LogPanic(&x.category, "caught archive serialization error: %v", err)
+		base.LogPanic(&x.category, "caught archive serialization error: %v", err)
 	})
 
 	return header.Body(func(body MessageBody) (err error) {
 		x.rd.Serializable(body)
 		if err = x.rd.Error(); err == nil {
-			LogTrace(&x.category, "read [%v:%#v] %v", header, header, PrettyPrint(body))
+			base.LogTrace(&x.category, "read [%v:%#v] %v", header, header, base.PrettyPrint(body))
 			err = body.Accept(x)
 		} else {
-			LogError(&x.category, "failed to parse remote message: %v", err)
+			base.LogError(&x.category, "failed to parse remote message: %v", err)
 		}
 		return
 	})
@@ -227,7 +229,7 @@ func (x *messageReadWriter) Flush() error {
 func (x *messageReadWriter) Write(body MessageBody) error {
 	// handle batchable messages, which are accumulated before actually sending
 	if batched, ok := body.(MessageBatch); ok {
-		typ := UnsafeTypeptr(batched)
+		typ := base.UnsafeTypeptr(batched)
 		if bt, ok := x.batching[typ]; ok {
 			if bt.Append(batched) {
 				delete(x.batching, typ)
@@ -243,7 +245,7 @@ func (x *messageReadWriter) Write(body MessageBody) error {
 }
 func (x *messageReadWriter) writeMessageImmediate(body MessageBody) error {
 	header := body.Header()
-	LogTrace(&x.category, "write [%v:%#v] %v", header, header, PrettyPrint(body))
+	base.LogTrace(&x.category, "write [%v:%#v] %v", header, header, base.PrettyPrint(body))
 
 	if enableMessageCorpusForZStd {
 		GetMessageCorpus().Add(body)
@@ -268,7 +270,7 @@ func (x *messageReadWriter) writeMessageImmediate(body MessageBody) error {
 type MessageBody interface {
 	Header() MessageType
 	Accept(MessageWriter) error
-	Serializable
+	base.Serializable
 }
 
 type MessageBatch interface {
@@ -289,7 +291,7 @@ func (x *timedMessageBody) Accept(wr MessageWriter) error {
 	wr.UpdateLatency(x.Timestamp)
 	return nil
 }
-func (x *timedMessageBody) Serialize(ar Archive) {
+func (x *timedMessageBody) Serialize(ar base.Archive) {
 	ar.Time(&x.Timestamp)
 }
 
@@ -330,7 +332,7 @@ func (x *errorMessageBody) Accept(wr MessageWriter) error {
 	}
 	return nil
 }
-func (x *errorMessageBody) Serialize(ar Archive) {
+func (x *errorMessageBody) Serialize(ar base.Archive) {
 	x.timedMessageBody.Serialize(ar)
 	ar.Int32((*int32)(&x.ErrCode))
 	ar.String(&x.Message)
@@ -363,7 +365,7 @@ func (x RemoteErrorCode) String() string {
 	case REMOTE_ERR_TIMEOUT:
 		return "remote timeout"
 	default:
-		UnexpectedValuePanic(x, x)
+		base.UnexpectedValuePanic(x, x)
 		return ""
 	}
 }
@@ -446,16 +448,16 @@ func (x *MessageGoodbye) Accept(wr MessageWriter) error {
 
 type MessageTaskDispatch struct {
 	Executable      Filename
-	Arguments       StringSet
-	Environment     ProcessEnvironment
-	MountedPaths    []MountedPath
+	Arguments       base.StringSet
+	Environment     internal_io.ProcessEnvironment
+	MountedPaths    []internal_io.MountedPath
 	UseResponseFile bool
 	WorkingDir      Directory
 
 	timedMessageBody
 }
 
-func NewMessageTaskDispatch(executable Filename, arguments StringSet, workingDir Directory, env ProcessEnvironment, mountedPaths []MountedPath, useResponseFile bool) MessageTaskDispatch {
+func NewMessageTaskDispatch(executable Filename, arguments base.StringSet, workingDir Directory, env internal_io.ProcessEnvironment, mountedPaths []internal_io.MountedPath, useResponseFile bool) MessageTaskDispatch {
 	return MessageTaskDispatch{
 		Executable:      executable,
 		Arguments:       arguments,
@@ -490,22 +492,22 @@ func (x *MessageTaskDispatch) Accept(wr MessageWriter) (err error) {
 	}
 
 	var exitCode int32
-	var processOpts ProcessOptions
+	var processOpts internal_io.ProcessOptions
 	processOpts.Init(
-		OptionProcessCaptureOutput,
-		OptionProcessExitCode(&exitCode),
-		OptionProcessEnvironment(x.Environment),
-		OptionProcessWorkingDir(x.WorkingDir),
-		OptionProcessMountedPath(x.MountedPaths...),
-		OptionProcessUseResponseFileIf(x.UseResponseFile),
-		OptionProcessFileAccess(func(far FileAccessRecord) error {
+		internal_io.OptionProcessCaptureOutput,
+		internal_io.OptionProcessExitCode(&exitCode),
+		internal_io.OptionProcessEnvironment(x.Environment),
+		internal_io.OptionProcessWorkingDir(x.WorkingDir),
+		internal_io.OptionProcessMountedPath(x.MountedPaths...),
+		internal_io.OptionProcessUseResponseFileIf(x.UseResponseFile),
+		internal_io.OptionProcessFileAccess(func(far internal_io.FileAccessRecord) error {
 			return WriteMessage(wr, NewMessageTaskFileAccess(far))
 		}),
-		OptionProcessOutput(func(s string) error {
+		internal_io.OptionProcessOutput(func(s string) error {
 			return WriteMessage(wr, NewMessageTaskOutput(s))
 		}))
 
-	err = wr.Events().OnTaskDispatch(x.Executable, x.Arguments, processOpts)
+	err = wr.Events().OnTaskDispatch(x.Executable, x.Arguments, &processOpts)
 
 	if er := wr.Flush(); er != nil {
 		return er
@@ -513,12 +515,12 @@ func (x *MessageTaskDispatch) Accept(wr MessageWriter) (err error) {
 
 	return WriteMessage(wr, NewMessageTaskStop(exitCode, err))
 }
-func (x *MessageTaskDispatch) Serialize(ar Archive) {
+func (x *MessageTaskDispatch) Serialize(ar base.Archive) {
 	x.timedMessageBody.Serialize(ar)
 	ar.Serializable(&x.Executable)
 	ar.Serializable(&x.Arguments)
 	ar.Serializable(&x.Environment)
-	SerializeSlice(ar, &x.MountedPaths)
+	base.SerializeSlice(ar, &x.MountedPaths)
 	ar.Bool(&x.UseResponseFile)
 	ar.Serializable(&x.WorkingDir)
 }
@@ -537,7 +539,7 @@ func (x *MessageTaskStart) WasStarted() bool {
 	case REMOTE_ERR_TIMEOUT, REMOTE_ERR_REFUSED:
 		return false
 	default:
-		UnexpectedValuePanic(x.ErrCode, x.ErrCode)
+		base.UnexpectedValuePanic(x.ErrCode, x.ErrCode)
 		return true
 	}
 }
@@ -574,7 +576,7 @@ func (x *MessageTaskStop) Accept(wr MessageWriter) (err error) {
 
 	return WriteMessage(wr, NewMessageGoodbye())
 }
-func (x *MessageTaskStop) Serialize(ar Archive) {
+func (x *MessageTaskStop) Serialize(ar base.Archive) {
 	x.errorMessageBody.Serialize(ar)
 	ar.Int32(&x.ExitCode)
 }
@@ -585,12 +587,12 @@ func (x *MessageTaskStop) Serialize(ar Archive) {
 
 type MessageTaskFileAccess struct {
 	timedMessageBody
-	Records []FileAccessRecord
+	Records []internal_io.FileAccessRecord
 }
 
-func NewMessageTaskFileAccess(far FileAccessRecord) MessageTaskFileAccess {
+func NewMessageTaskFileAccess(far internal_io.FileAccessRecord) MessageTaskFileAccess {
 	return MessageTaskFileAccess{
-		Records:          []FileAccessRecord{far},
+		Records:          []internal_io.FileAccessRecord{far},
 		timedMessageBody: newTimedMessageBody(),
 	}
 }
@@ -611,9 +613,9 @@ func (x *MessageTaskFileAccess) Accept(wr MessageWriter) (err error) {
 	}
 	return
 }
-func (x *MessageTaskFileAccess) Serialize(ar Archive) {
+func (x *MessageTaskFileAccess) Serialize(ar base.Archive) {
 	x.timedMessageBody.Serialize(ar)
-	SerializeSlice(ar, &x.Records)
+	base.SerializeSlice(ar, &x.Records)
 }
 
 type MessageTaskOutput struct {
@@ -644,9 +646,9 @@ func (x *MessageTaskOutput) Accept(wr MessageWriter) (err error) {
 	}
 	return
 }
-func (x *MessageTaskOutput) Serialize(ar Archive) {
+func (x *MessageTaskOutput) Serialize(ar base.Archive) {
 	x.timedMessageBody.Serialize(ar)
-	SerializeMany(ar, ar.String, &x.Outputs)
+	base.SerializeMany(ar, ar.String, &x.Outputs)
 }
 
 /***************************************
@@ -655,7 +657,7 @@ func (x *MessageTaskOutput) Serialize(ar Archive) {
 
 const enableMessageCorpusForZStd = false
 
-var GetMessageCorpus = Memoize(func() *MessageCorpus {
+var GetMessageCorpus = base.Memoize(func() *MessageCorpus {
 	return &MessageCorpus{
 		OutputDir: UFS.Output.Folder("MessageCorpus"),
 	}
@@ -677,7 +679,7 @@ func (x *MessageCorpus) Add(body MessageBody) {
 	f := x.OutputDir.Folder(h[0:2]).Folder(h[2:4]).File(h).ReplaceExt(".msg")
 
 	UFS.CreateBuffered(f, func(w io.Writer) error {
-		ar := NewArchiveBinaryWriter(w)
+		ar := base.NewArchiveBinaryWriter(w)
 
 		header := body.Header()
 		ar.Serializable(&header)
@@ -734,7 +736,7 @@ func (x MessageType) Body(body func(MessageBody) error) error {
 	case MSG_GOODBYE:
 		return body(&MessageGoodbye{})
 	default:
-		return MakeUnexpectedValueError(x, x)
+		return base.MakeUnexpectedValueError(x, x)
 	}
 }
 func (x MessageType) String() string {
@@ -756,10 +758,10 @@ func (x MessageType) String() string {
 	case MSG_GOODBYE:
 		return "GOODBYE"
 	default:
-		UnexpectedValuePanic(x, x)
+		base.UnexpectedValuePanic(x, x)
 		return ""
 	}
 }
-func (x *MessageType) Serialize(ar Archive) {
+func (x *MessageType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }

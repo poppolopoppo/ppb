@@ -3,91 +3,107 @@ package io
 import (
 	"fmt"
 	"io"
-	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
-func InitIO() {
-	RegisterSerializable(&CompressedUnarchiver{})
-	RegisterSerializable(&Downloader{})
+var LogIO = base.NewLogCategory("IO")
 
-	RegisterSerializable(&DirectoryCreator{})
-	RegisterSerializable(&DirectoryGlob{})
-	RegisterSerializable(&DirectoryList{})
-	RegisterSerializable(&FileDigest{})
+func InitIO() {
+	base.LogTrace(LogIO, "internal/io.Init()")
+
+	base.RegisterSerializable(&CompressedUnarchiver{})
+	base.RegisterSerializable(&Downloader{})
+
+	base.RegisterSerializable(&DirectoryCreator{})
+	base.RegisterSerializable(&DirectoryGlob{})
+	base.RegisterSerializable(&DirectoryList{})
+	base.RegisterSerializable(&FileDigest{})
 }
 
 /***************************************
- * Cluster Observable Writer
+ * Observable Writer
  ***************************************/
 
 type ObservableWriterFunc = func(w io.Writer, buf []byte) (int, error)
 
 type ObservableWriter struct {
-	io.WriteCloser
+	io.Writer
 	OnWrite ObservableWriterFunc
 }
 
-func NewObservableWriter(w io.WriteCloser, onWrite ObservableWriterFunc) ObservableWriter {
-	Assert(func() bool { return w != nil })
-	Assert(func() bool { return onWrite != nil })
+func NewObservableWriter(w io.Writer, onWrite ObservableWriterFunc) ObservableWriter {
+	base.Assert(func() bool { return w != nil })
+	base.Assert(func() bool { return onWrite != nil })
 	return ObservableWriter{
-		WriteCloser: w,
-		OnWrite:     onWrite,
+		Writer:  w,
+		OnWrite: onWrite,
 	}
 }
+
 func (x ObservableWriter) Flush() error {
-	return FlushWriterIFP(x.WriteCloser)
+	return base.FlushWriterIFP(x.Writer)
+}
+func (x ObservableWriter) Close() error {
+	if cls, ok := x.Writer.(io.WriteCloser); ok {
+		return cls.Close()
+	}
+	return nil
 }
 func (x ObservableWriter) Reset(w io.Writer) error {
-	if err := FlushWriterIFP(x.WriteCloser); err != nil {
+	if err := base.FlushWriterIFP(x.Writer); err != nil {
 		return err
 	}
-	if rst, ok := x.WriteCloser.(WriteReseter); ok {
+	if rst, ok := x.Writer.(base.WriteReseter); ok {
 		return rst.Reset(w)
 	}
 	return nil
 }
 func (x ObservableWriter) Write(buf []byte) (int, error) {
 	if x.OnWrite != nil {
-		return x.OnWrite(x.WriteCloser, buf)
+		return x.OnWrite(x.Writer, buf)
 	} else {
-		return x.WriteCloser.Write(buf)
+		return x.Writer.Write(buf)
 	}
 }
 
 /***************************************
- * Cluster Observable Reader
+ * Observable Reader
  ***************************************/
 
 type ObservableReaderFunc = func(r io.Reader, buf []byte) (int, error)
 
 type ObservableReader struct {
-	io.ReadCloser
+	io.Reader
 	OnRead ObservableReaderFunc
 }
 
-func NewObservableReader(r io.ReadCloser, onRead ObservableReaderFunc) ObservableReader {
-	Assert(func() bool { return r != nil })
-	Assert(func() bool { return onRead != nil })
+func NewObservableReader(r io.Reader, onRead ObservableReaderFunc) ObservableReader {
+	base.Assert(func() bool { return r != nil })
+	base.Assert(func() bool { return onRead != nil })
 	return ObservableReader{
-		ReadCloser: r,
-		OnRead:     onRead,
+		Reader: r,
+		OnRead: onRead,
 	}
 }
+func (x ObservableReader) Close() error {
+	if cls, ok := x.Reader.(io.ReadCloser); ok {
+		return cls.Close()
+	}
+	return nil
+}
 func (x ObservableReader) Reset(r io.Reader) error {
-	if rst, ok := x.ReadCloser.(ReadReseter); ok {
+	if rst, ok := x.Reader.(base.ReadReseter); ok {
 		return rst.Reset(r)
 	}
 	return nil
 }
 func (x ObservableReader) Read(buf []byte) (int, error) {
 	if x.OnRead != nil {
-		return x.OnRead(x.ReadCloser, buf)
+		return x.OnRead(x.Reader, buf)
 	} else {
-		return x.ReadCloser.Read(buf)
+		return x.Reader.Read(buf)
 	}
 }
 
@@ -95,53 +111,47 @@ func (x ObservableReader) Read(buf []byte) (int, error) {
  * File Digest
  ***************************************/
 
-func DigestFile(bc BuildContext, source Filename) (Fingerprint, error) {
+func DigestFile(bc utils.BuildContext, source utils.Filename) (base.Fingerprint, error) {
 	file, err := BuildFileDigest(source).Need(bc)
 	return file.Digest, err
 }
 
 type FileDigest struct {
-	Source Filename
-	Digest Fingerprint
+	Source utils.Filename
+	Digest base.Fingerprint
 }
 
-func BuildFileDigest(source Filename) BuildFactoryTyped[*FileDigest] {
-	Assert(func() bool { return source.Valid() })
-	return MakeBuildFactory(func(bi BuildInitializer) (FileDigest, error) {
-		source = source.Normalize()
+func BuildFileDigest(source utils.Filename) utils.BuildFactoryTyped[*FileDigest] {
+	base.Assert(func() bool { return source.Valid() })
+	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (FileDigest, error) {
 		return FileDigest{
-			Source: source,
-		}, bi.NeedFile(source)
+			Source: utils.SafeNormalize(source),
+		}, bi.NeedFiles(source)
 	})
 }
 
-func BuildFileDigests(bg BuildGraph, filenames []Filename, options ...BuildOptionFunc) Future[[]*FileDigest] {
-	aliases := Map(func(f Filename) BuildAlias {
-		fd, err := BuildFileDigest(f).Init(bg, options...)
-		LogPanicIfFailed(LogUFS, err)
-		return fd.Alias()
-	}, filenames...)
+func PrepareFileDigests(bg utils.BuildGraph, n int, filenames func(int) utils.Filename, options ...utils.BuildOptionFunc) []base.Future[*FileDigest] {
+	results := make([]base.Future[*FileDigest], n)
+	for i := range results {
+		results[i] = base.MapFuture(
+			utils.PrepareBuildFactory(bg, BuildFileDigest(filenames(i)), options...),
+			func(in utils.BuildResult) (*FileDigest, error) {
+				return in.Buildable.(*FileDigest), nil
+			})
+	}
 
-	future := bg.BuildMany(aliases, options...)
-
-	return MapFuture(future, func(results []BuildResult) ([]*FileDigest, error) {
-		digests := make([]*FileDigest, len(results))
-		for i, ret := range results {
-			digests[i] = ret.Buildable.(*FileDigest)
-		}
-		return digests, nil
-	})
+	return results
 }
 
-func (x *FileDigest) Alias() BuildAlias {
-	return MakeBuildAlias("UFS", "Digest", x.Source.String())
+func (x *FileDigest) Alias() utils.BuildAlias {
+	return utils.MakeBuildAlias("UFS", "Digest", x.Source.Dirname.Path, x.Source.Basename)
 }
-func (x *FileDigest) Build(bc BuildContext) (err error) {
-	x.Digest, err = FileFingerprint(x.Source, Fingerprint{} /* no seed here */)
-	LogTrace(LogUFS, "file digest %s for %q", x.Digest, x.Source)
+func (x *FileDigest) Build(bc utils.BuildContext) (err error) {
+	x.Digest, err = utils.FileFingerprint(x.Source, base.Fingerprint{} /* no seed here */)
+	base.LogTrace(utils.LogUFS, "file digest %s for %q", x.Digest, x.Source)
 	return
 }
-func (x *FileDigest) Serialize(ar Archive) {
+func (x *FileDigest) Serialize(ar base.Archive) {
 	ar.Serializable(&x.Source)
 	ar.Serializable(&x.Digest)
 }
@@ -150,35 +160,35 @@ func (x *FileDigest) Serialize(ar Archive) {
  * Directory Creator
  ***************************************/
 
-func CreateDirectory(bc BuildInitializer, source Directory) error {
+func CreateDirectory(bc utils.BuildInitializer, source utils.Directory) error {
 	_, err := BuildDirectoryCreator(source).Need(bc)
 	return err
 }
 
 type DirectoryCreator struct {
-	Source Directory
+	Source utils.Directory
 }
 
-func BuildDirectoryCreator(source Directory) BuildFactoryTyped[*DirectoryCreator] {
-	Assert(func() bool { return source.Valid() })
-	return MakeBuildFactory(func(init BuildInitializer) (DirectoryCreator, error) {
+func BuildDirectoryCreator(source utils.Directory) utils.BuildFactoryTyped[*DirectoryCreator] {
+	base.Assert(func() bool { return source.Valid() })
+	return utils.MakeBuildFactory(func(init utils.BuildInitializer) (DirectoryCreator, error) {
 		return DirectoryCreator{
-			Source: source.Normalize(),
+			Source: utils.SafeNormalize(source),
 		}, nil
 	})
 }
 
-func (x *DirectoryCreator) Alias() BuildAlias {
-	return MakeBuildAlias("UFS", "Create", x.Source.String())
+func (x *DirectoryCreator) Alias() utils.BuildAlias {
+	return utils.MakeBuildAlias("UFS", "Create", x.Source.Path)
 }
-func (x *DirectoryCreator) Build(bc BuildContext) error {
-	if err := bc.OutputNode(BuildDirectory(x.Source)); err != nil {
+func (x *DirectoryCreator) Build(bc utils.BuildContext) error {
+	if err := bc.OutputNode(utils.BuildDirectory(x.Source)); err != nil {
 		return err
 	}
 
-	return UFS.MkdirEx(x.Source)
+	return utils.UFS.MkdirEx(x.Source)
 }
-func (x *DirectoryCreator) Serialize(ar Archive) {
+func (x *DirectoryCreator) Serialize(ar base.Archive) {
 	ar.Serializable(&x.Source)
 }
 
@@ -186,35 +196,35 @@ func (x *DirectoryCreator) Serialize(ar Archive) {
  * Directory List
  ***************************************/
 
-func ListDirectory(bc BuildContext, source Directory) (FileSet, error) {
+func ListDirectory(bc utils.BuildContext, source utils.Directory) (utils.FileSet, error) {
 	factory := BuildDirectoryList(source)
 	if list, err := factory.Need(bc); err == nil {
 		return list.Results, nil
 	} else {
-		return FileSet{}, err
+		return utils.FileSet{}, err
 	}
 }
 
 type DirectoryList struct {
-	Source  Directory
-	Results FileSet
+	Source  utils.Directory
+	Results utils.FileSet
 }
 
-func BuildDirectoryList(source Directory) BuildFactoryTyped[*DirectoryList] {
-	Assert(func() bool { return source.Valid() })
-	return MakeBuildFactory(func(init BuildInitializer) (DirectoryList, error) {
+func BuildDirectoryList(source utils.Directory) utils.BuildFactoryTyped[*DirectoryList] {
+	base.Assert(func() bool { return source.Valid() })
+	return utils.MakeBuildFactory(func(init utils.BuildInitializer) (DirectoryList, error) {
 		return DirectoryList{
-			Source:  source.Normalize(),
-			Results: FileSet{},
-		}, init.NeedDirectory(source)
+			Source:  utils.SafeNormalize(source),
+			Results: utils.FileSet{},
+		}, init.NeedDirectories(source)
 	})
 }
 
-func (x *DirectoryList) Alias() BuildAlias {
-	return MakeBuildAlias("UFS", "List", x.Source.String())
+func (x *DirectoryList) Alias() utils.BuildAlias {
+	return utils.MakeBuildAlias("UFS", "List", x.Source.Path)
 }
-func (x *DirectoryList) Build(bc BuildContext) error {
-	x.Results = FileSet{}
+func (x *DirectoryList) Build(bc utils.BuildContext) error {
+	x.Results = utils.FileSet{}
 
 	if info, err := x.Source.Info(); err == nil {
 		bc.Timestamp(info.ModTime())
@@ -222,12 +232,17 @@ func (x *DirectoryList) Build(bc BuildContext) error {
 		return err
 	}
 
-	x.Results = x.Source.Files()
+	var err error
+	x.Results, err = x.Source.Files()
+	if err != nil {
+		return err
+	}
+
 	for i, filename := range x.Results {
-		filename = filename.Normalize()
+		filename = utils.SafeNormalize(filename)
 		x.Results[i] = filename
 
-		if err := bc.NeedFile(filename); err != nil {
+		if err := bc.NeedFiles(filename); err != nil {
 			return err
 		}
 	}
@@ -235,7 +250,7 @@ func (x *DirectoryList) Build(bc BuildContext) error {
 	bc.Annotate(fmt.Sprintf("%d files", len(x.Results)))
 	return nil
 }
-func (x *DirectoryList) Serialize(ar Archive) {
+func (x *DirectoryList) Serialize(ar base.Archive) {
 	ar.Serializable(&x.Source)
 	ar.Serializable(&x.Results)
 }
@@ -245,55 +260,82 @@ func (x *DirectoryList) Serialize(ar Archive) {
  ***************************************/
 
 func GlobDirectory(
-	bc BuildContext,
-	source Directory,
-	includedGlobs StringSet,
-	excludedGlobs StringSet,
-	excludedFiles FileSet) (FileSet, error) {
+	bc utils.BuildContext,
+	source utils.Directory,
+	includedGlobs base.StringSet,
+	excludedGlobs base.StringSet,
+	excludedFiles utils.FileSet) (utils.FileSet, error) {
 	factory := BuildDirectoryGlob(source, includedGlobs, excludedGlobs, excludedFiles)
 	if glob, err := factory.Need(bc); err == nil {
 		return glob.Results, nil
 	} else {
-		return FileSet{}, err
+		return utils.FileSet{}, err
 	}
 }
 
 type DirectoryGlob struct {
-	Source        Directory
-	IncludedGlobs StringSet
-	ExcludedGlobs StringSet
-	ExcludedFiles FileSet
-	Results       FileSet
+	Source        utils.Directory
+	IncludedGlobs base.StringSet
+	ExcludedGlobs base.StringSet
+	ExcludedFiles utils.FileSet
+	Results       utils.FileSet
 }
 
 func BuildDirectoryGlob(
-	source Directory,
-	includedGlobs StringSet,
-	excludedGlobs StringSet,
-	excludedFiles FileSet) BuildFactoryTyped[*DirectoryGlob] {
-	Assert(func() bool { return source.Valid() })
-	Assert(func() bool { return len(includedGlobs) > 0 })
-	return MakeBuildFactory(func(init BuildInitializer) (DirectoryGlob, error) {
+	source utils.Directory,
+	includedGlobs base.StringSet,
+	excludedGlobs base.StringSet,
+	excludedFiles utils.FileSet) utils.BuildFactoryTyped[*DirectoryGlob] {
+	base.Assert(func() bool { return source.Valid() })
+	base.Assert(func() bool { return len(includedGlobs) > 0 })
+	return utils.MakeBuildFactory(func(init utils.BuildInitializer) (DirectoryGlob, error) {
 		return DirectoryGlob{
-			Source:        source.Normalize(),
+			Source:        utils.SafeNormalize(source),
 			IncludedGlobs: includedGlobs,
 			ExcludedGlobs: excludedGlobs,
 			ExcludedFiles: excludedFiles,
-			Results:       FileSet{},
-		}, nil //init.NeedDirectory(source) // no dependency so to be built every-time
+			Results:       utils.FileSet{},
+		}, nil //init.NeedDirectories(source) // no dependency so to be built every-time
 	})
 }
 
-func (x *DirectoryGlob) Alias() BuildAlias {
-	return MakeBuildAlias("UFS", "Glob", strings.Join([]string{
-		x.Source.String(),
-		x.IncludedGlobs.Join(";"),
-		x.ExcludedGlobs.Join(";"),
-		x.ExcludedFiles.Join(";")},
-		"|"))
+func (x *DirectoryGlob) Alias() utils.BuildAlias {
+	var bb utils.BuildAliasBuilder
+	utils.MakeBuildAliasBuilder(&bb, "UFS", len(x.Source.Path)+1+len(x.Source.Basename())+4)
+
+	bb.WriteString('/', "Glob")
+	bb.WriteString('/', x.Source.Path)
+	bb.WriteString('/', x.Source.Basename())
+
+	for i, it := range x.IncludedGlobs {
+		if i == 0 {
+			bb.WriteString('|', it)
+		} else {
+			bb.WriteString(';', it)
+		}
+	}
+
+	for i, it := range x.ExcludedGlobs {
+		if i == 0 {
+			bb.WriteString('|', it)
+		} else {
+			bb.WriteString(';', it)
+		}
+	}
+
+	for i, it := range x.ExcludedFiles {
+		if i == 0 {
+			bb.WriteString('|', it.Dirname.Path)
+		} else {
+			bb.WriteString(';', it.Dirname.Path)
+		}
+		bb.WriteString('/', it.Basename)
+	}
+
+	return bb.Alias()
 }
-func (x *DirectoryGlob) Build(bc BuildContext) error {
-	x.Results = FileSet{}
+func (x *DirectoryGlob) Build(bc utils.BuildContext) error {
+	x.Results = utils.FileSet{}
 
 	if dirInfo, err := x.Source.Info(); err == nil {
 		bc.Timestamp(dirInfo.ModTime())
@@ -301,14 +343,14 @@ func (x *DirectoryGlob) Build(bc BuildContext) error {
 		return err
 	}
 
-	includeRE := MakeGlobRegexp(x.IncludedGlobs...)
-	excludeRE := MakeGlobRegexp(x.ExcludedGlobs...)
+	includeRE := utils.MakeGlobRegexp(x.IncludedGlobs...)
+	excludeRE := utils.MakeGlobRegexp(x.ExcludedGlobs...)
 	if includeRE == nil {
-		includeRE = MakeGlobRegexp("*")
+		includeRE = utils.MakeGlobRegexp("*")
 	}
 
-	err := x.Source.MatchFilesRec(func(f Filename) error {
-		// f = f.Normalize()
+	err := x.Source.MatchFilesRec(func(f utils.Filename) error {
+		f = utils.SafeNormalize(f)
 		if !x.ExcludedFiles.Contains(f) {
 			if excludeRE == nil || !excludeRE.MatchString(f.String()) {
 				x.Results.Append(f)
@@ -323,7 +365,7 @@ func (x *DirectoryGlob) Build(bc BuildContext) error {
 
 	return err
 }
-func (x *DirectoryGlob) Serialize(ar Archive) {
+func (x *DirectoryGlob) Serialize(ar base.Archive) {
 	ar.Serializable(&x.Source)
 	ar.Serializable(&x.IncludedGlobs)
 	ar.Serializable(&x.ExcludedGlobs)

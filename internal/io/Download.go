@@ -8,11 +8,13 @@ import (
 	"regexp"
 	"strconv"
 
+	"github.com/poppolopoppo/ppb/internal/base"
+
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
 
-var LogDownload = NewLogCategory("Download")
+var LogDownload = base.NewLogCategory("Download")
 
 type DownloadMode int32
 
@@ -21,7 +23,7 @@ const (
 	DOWNLOAD_REDIRECT
 )
 
-func (x *DownloadMode) Serialize(ar Archive) {
+func (x *DownloadMode) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x DownloadMode) String() string {
@@ -31,7 +33,7 @@ func (x DownloadMode) String() string {
 	case DOWNLOAD_REDIRECT:
 		return "DOWNLOAD_REDIRECT"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -39,7 +41,7 @@ func (x DownloadMode) String() string {
 func BuildDownloader(uri string, dst Filename, mode DownloadMode) BuildFactoryTyped[*Downloader] {
 	parsedUrl, err := url.Parse(uri)
 	if err != nil {
-		LogFatal("download: %v", err)
+		base.LogFatal("download: %v", err)
 	}
 	return MakeBuildFactory(func(bi BuildInitializer) (Downloader, error) {
 		return Downloader{
@@ -61,7 +63,7 @@ func (dl *Downloader) Alias() BuildAlias {
 }
 func (dl *Downloader) Build(bc BuildContext) error {
 	var err error
-	var written SizeInBytes
+	var written int64
 	switch dl.Mode {
 	case DOWNLOAD_DEFAULT:
 		written, err = DownloadFile(dl.Destination, dl.Source)
@@ -73,12 +75,12 @@ func (dl *Downloader) Build(bc BuildContext) error {
 		err = bc.OutputFile(dl.Destination)
 	}
 	if err == nil { // avoid re-downloading after each rebuild
-		bc.Annotate(written.String())
+		bc.Annotate(base.SizeInBytes(written).String())
 		bc.Timestamp(UFS.MTime(dl.Destination))
 	}
 	return err
 }
-func (dl *Downloader) Serialize(ar Archive) {
+func (dl *Downloader) Serialize(ar base.Archive) {
 	if ar.Flags().IsLoading() {
 		var uri string
 		ar.String(&uri)
@@ -123,13 +125,13 @@ func downloadFromCache(resp *http.Response) (Filename, downloadCacheResult) {
 	}
 
 	if contentHash != nil {
-		uid, err := SerializeAnyFingerprint(func(ar Archive) error {
+		uid, err := base.SerializeAnyFingerprint(func(ar base.Archive) error {
 			for _, it := range contentHash {
 				ar.String(&it)
 			}
 			return nil
-		}, Fingerprint{})
-		LogPanicIfFailed(LogDownload, err)
+		}, base.Fingerprint{})
+		base.LogPanicIfFailed(LogDownload, err)
 
 		inCache := UFS.Transient.Folder("DownloadCache").File(fmt.Sprintf("%v.bin", uid))
 		if info, err := inCache.Info(); info != nil && err == nil {
@@ -151,10 +153,10 @@ func downloadFromCache(resp *http.Response) (Filename, downloadCacheResult) {
 	return Filename{}, nonCachableResponse{fmt.Errorf("can't find content hash in http header")}
 }
 
-func DownloadFile(dst Filename, src url.URL) (SizeInBytes, error) {
-	LogVerbose(LogDownload, "downloading url '%v' to '%v'...", src.String(), dst.String())
+func DownloadFile(dst Filename, src url.URL) (int64, error) {
+	base.LogVerbose(LogDownload, "downloading url '%v' to '%v'...", src.String(), dst.String())
 
-	var written SizeInBytes
+	var written int64
 	cacheFile, shouldCache := Filename{}, false
 	err := UFS.CreateFile(dst, func(w *os.File) error {
 		client := http.Client{
@@ -174,33 +176,33 @@ func DownloadFile(dst Filename, src url.URL) (SizeInBytes, error) {
 		var cacheResult downloadCacheResult
 		cacheFile, cacheResult = downloadFromCache(resp)
 		if cacheResult == nil { // cache hit
-			LogDebug(LogDownload, "cache hit on '%v'", cacheFile)
+			base.LogDebug(LogDownload, "cache hit on '%v'", cacheFile)
 
 			return UFS.OpenFile(cacheFile, func(r *os.File) (err error) {
-				if info, err := r.Stat(); err == nil {
-					SetMTime(w, info.ModTime()) // keep mtime consistent
-				} else {
+				info, err := r.Stat()
+				if err == nil {
+					err = base.SetMTime(w, info.ModTime()) // keep mtime consistent
+				}
+				if err != nil {
 					return err
 				}
 
-				written, err = TransientIoCopy(w, r)
+				n, err := base.TransientIoCopyWithProgress(dst.Basename, info.Size(), w, r)
+				written += n
 				return
 			})
 
 		} else { // cache miss
 			shouldCache = cacheResult.ShouldCache() // cachable ?
 
-			if EnableInteractiveShell() {
-				totalSize, err := strconv.ParseUint(resp.Header.Get("Content-Length"), 10, 64)
-				if err != nil {
-					return err
+			if base.EnableInteractiveShell() {
+				written, err = strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+				if err == nil {
+					_, err = base.TransientIoCopyWithProgress(dst.Basename, int64(written), w, resp.Body)
 				}
 
-				written.Assign(totalSize)
-				err = CopyWithProgress(dst.Basename, int64(totalSize), w, resp.Body)
-
 			} else {
-				written, err = TransientIoCopy(w, resp.Body)
+				written, err = base.TransientIoCopy(w, resp.Body)
 			}
 		}
 
@@ -208,9 +210,9 @@ func DownloadFile(dst Filename, src url.URL) (SizeInBytes, error) {
 	})
 
 	if err == nil && shouldCache {
-		LogDebug(LogDownload, "cache store in '%v'", cacheFile)
+		base.LogDebug(LogDownload, "cache store in '%v'", cacheFile)
 		if err := UFS.Copy(dst, cacheFile); err != nil {
-			LogWarning(LogDownload, "failed to cache download with %v", err)
+			base.LogWarning(LogDownload, "failed to cache download with %v", err)
 		}
 	}
 
@@ -219,8 +221,8 @@ func DownloadFile(dst Filename, src url.URL) (SizeInBytes, error) {
 
 var re_metaRefreshRedirect = regexp.MustCompile(`(?i)<meta.*http-equiv="refresh".*content=".*url=(.*)".*?/>`)
 
-func DownloadHttpRedirect(dst Filename, src url.URL) (SizeInBytes, error) {
-	LogVerbose(LogDownload, "download http redirect '%v' to '%v'...", src.String(), dst.String())
+func DownloadHttpRedirect(dst Filename, src url.URL) (int64, error) {
+	base.LogVerbose(LogDownload, "download http redirect '%v' to '%v'...", src.String(), dst.String())
 
 	client := http.Client{
 		CheckRedirect: func(r *http.Request, _ []*http.Request) error {
@@ -236,16 +238,16 @@ func DownloadHttpRedirect(dst Filename, src url.URL) (SizeInBytes, error) {
 	}
 	defer resp.Body.Close()
 
-	parse := TransientBuffer.Allocate()
-	defer TransientBuffer.Release(parse)
+	parse := base.TransientBuffer.Allocate()
+	defer base.TransientBuffer.Release(parse)
 
-	_, err = TransientIoCopy(parse, resp.Body)
+	_, err = base.TransientIoCopy(parse, resp.Body)
 
 	if err == nil {
 		match := re_metaRefreshRedirect.FindSubmatch(parse.Bytes())
 		if len(match) > 1 {
 			var url *url.URL
-			if url, err = url.Parse(UnsafeStringFromBytes(match[1])); err == nil {
+			if url, err = url.Parse(base.UnsafeStringFromBytes(match[1])); err == nil {
 				return DownloadFile(dst, *url)
 			}
 		} else {

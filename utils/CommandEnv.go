@@ -2,10 +2,14 @@ package utils
 
 import (
 	"fmt"
-	"math"
 	"os"
+	"os/signal"
 	"runtime"
+	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/poppolopoppo/ppb/internal/base"
 )
 
 /***************************************
@@ -25,7 +29,8 @@ type CommandFlags struct {
 	Jobs           IntVar
 	Color          BoolVar
 	Ide            BoolVar
-	LogAll         StringSet
+	LogAll         base.StringSet
+	LogImmediate   BoolVar
 	LogFile        Filename
 	OutputDir      Directory
 	RootDir        Directory
@@ -34,20 +39,20 @@ type CommandFlags struct {
 }
 
 var GetCommandFlags = NewGlobalCommandParsableFlags("global command options", &CommandFlags{
-	Force:          INHERITABLE_FALSE,
-	Purge:          INHERITABLE_FALSE,
-	Quiet:          INHERITABLE_FALSE,
-	Verbose:        INHERITABLE_FALSE,
-	Trace:          INHERITABLE_FALSE,
-	VeryVerbose:    INHERITABLE_FALSE,
-	Debug:          MakeBoolVar(DEBUG_ENABLED),
-	Diagnostics:    MakeBoolVar(DEBUG_ENABLED),
-	Jobs:           INHERIT_VALUE,
-	Color:          INHERITABLE_INHERIT,
-	Ide:            INHERITABLE_FALSE,
-	Timestamp:      INHERITABLE_FALSE,
-	Summary:        MakeBoolVar(DEBUG_ENABLED),
-	WarningAsError: INHERITABLE_FALSE,
+	Force:          base.INHERITABLE_FALSE,
+	Purge:          base.INHERITABLE_FALSE,
+	Quiet:          base.INHERITABLE_FALSE,
+	Verbose:        base.INHERITABLE_FALSE,
+	Trace:          base.INHERITABLE_FALSE,
+	VeryVerbose:    base.INHERITABLE_FALSE,
+	Debug:          base.MakeBoolVar(base.DEBUG_ENABLED),
+	Diagnostics:    base.MakeBoolVar(base.DEBUG_ENABLED),
+	Jobs:           base.INHERIT_VALUE,
+	Color:          base.INHERITABLE_INHERIT,
+	Ide:            base.INHERITABLE_FALSE,
+	Timestamp:      base.INHERITABLE_FALSE,
+	Summary:        base.MakeBoolVar(base.DEBUG_ENABLED),
+	WarningAsError: base.INHERITABLE_FALSE,
 })
 
 func (flags *CommandFlags) Flags(cfv CommandFlagsVisitor) {
@@ -64,6 +69,7 @@ func (flags *CommandFlags) Flags(cfv CommandFlagsVisitor) {
 	cfv.Variable("Color", "control ansi color output in log messages", &flags.Color)
 	cfv.Variable("Ide", "set output to IDE mode (disable interactive shell)", &flags.Ide)
 	cfv.Variable("LogAll", "force to output all messages for given log categories", &flags.LogAll)
+	cfv.Variable("LogImmediate", "disable buffering of log messages", &flags.LogImmediate)
 	cfv.Variable("LogFile", "output log to specified file (default: stdout)", &flags.LogFile)
 	cfv.Variable("OutputDir", "override default output directory", &flags.OutputDir)
 	cfv.Variable("RootDir", "override root directory", &flags.RootDir)
@@ -71,72 +77,75 @@ func (flags *CommandFlags) Flags(cfv CommandFlagsVisitor) {
 	cfv.Variable("WX", "consider warnings as errors", &flags.WarningAsError)
 }
 func (flags *CommandFlags) Apply() {
-	SetEnableDiagnostics(flags.Diagnostics.Get())
-	gLogger.SetShowTimestamp(flags.Timestamp.Get())
-
 	for _, category := range flags.LogAll {
-		gLogManager.SetCategoryLevel(category, LOG_ALL)
+		base.GetLogManager().SetCategoryLevel(category, base.LOG_ALL)
+	}
+
+	if flags.LogImmediate.Get() {
+		base.SetLogger(base.NewLogger(true))
 	}
 
 	if flags.LogFile.Valid() {
 		if outp, err := UFS.CreateWriter(flags.LogFile); err == nil {
-			SetEnableInteractiveShell(false)
-			gLogger.SetWriter(outp)
+			base.SetEnableInteractiveShell(false)
+			base.GetLogger().SetWriter(outp)
 		} else {
-			LogPanicErr(LogCommand, err)
+			base.LogPanicErr(LogCommand, err)
 		}
 	}
 
+	base.SetEnableDiagnostics(flags.Diagnostics.Get())
+	base.GetLogger().SetShowTimestamp(flags.Timestamp.Get())
+
+	if flags.Ide.Get() {
+		base.SetEnableAnsiColor(false)
+		base.SetEnableInteractiveShell(false)
+	}
+
+	if flags.Debug.Get() {
+		base.GetLogger().SetLevel(base.LOG_DEBUG)
+		base.SetEnableDiagnostics(true)
+	}
+
 	if flags.Verbose.Get() {
-		gLogger.SetLevel(LOG_VERBOSE)
+		base.GetLogger().SetLevel(base.LOG_VERBOSE)
 	}
 	if flags.Trace.Get() {
-		gLogger.SetLevel(LOG_TRACE)
+		base.GetLogger().SetLevel(base.LOG_TRACE)
 	}
 	if flags.VeryVerbose.Get() {
-		gLogger.SetLevel(LOG_VERYVERBOSE)
+		base.GetLogger().SetLevel(base.LOG_VERYVERBOSE)
 	}
 	if flags.Quiet.Get() {
-		gLogger.SetLevel(LOG_ERROR)
-		SetEnableInteractiveShell(false)
-	}
-	if flags.Debug.Get() {
-		gLogger.SetLevel(LOG_DEBUG)
-		SetEnableDiagnostics(true)
+		base.GetLogger().SetLevel(base.LOG_ERROR)
 	}
 	if flags.WarningAsError.Get() {
-		gLogger.SetWarningAsError(true)
+		base.GetLogger().SetWarningAsError(true)
 	}
 
 	if flags.Purge.Get() {
-		LogTrace(LogCommand, "build will be forced due to '-F' command-line option")
+		base.LogTrace(LogCommand, "build will be forced due to '-F' command-line option")
 		flags.Force.Enable()
 	}
 	if flags.Force.Get() {
-		LogTrace(LogCommand, "fbuild will be forced due to '-f' command-line option")
+		base.LogTrace(LogCommand, "fbuild will be forced due to '-f' command-line option")
 	}
 
 	// queue print summary if specified on command-line
 	if flags.Summary.Get() {
 		CommandEnv.onExit.Add(func(cet *CommandEnvT) error {
-			PurgePinnedLogs()
-			printBuildGraphSummary(cet.startedAt, cet.buildGraph)
+			base.PurgePinnedLogs()
+			cet.lazyBuildGraph.PrintSummary(cet.startedAt)
 			return nil
 		})
 	}
 
 	if !flags.Color.IsInheritable() {
-		SetEnableAnsiColor(flags.Color.Get())
-	}
-
-	if flags.Ide.Get() {
-		gLogger.SetLevelMinimum(LOG_INFO)
-		SetEnableAnsiColor(false)
-		SetEnableInteractiveShell(false)
+		base.SetEnableAnsiColor(flags.Color.Get())
 	}
 
 	if flags.RootDir.Valid() {
-		LogPanicIfFailed(LogCommand, UFS.MountRootDirectory(flags.RootDir))
+		base.LogPanicIfFailed(LogCommand, UFS.MountRootDirectory(flags.RootDir))
 	}
 
 	if flags.OutputDir.Valid() {
@@ -144,44 +153,7 @@ func (flags *CommandFlags) Apply() {
 	}
 
 	if !flags.Jobs.IsInheritable() && flags.Jobs.Get() > 0 {
-		GetGlobalThreadPool().Resize(flags.Jobs.Get())
-	}
-}
-
-func printBuildGraphSummary(startedAt time.Time, g BuildGraph) {
-	totalDuration := time.Since(startedAt)
-	LogForwardf("\nProgram took %.3f seconds to run", totalDuration.Seconds())
-
-	stats := g.GetBuildStats()
-	if stats.Count == 0 {
-		return
-	}
-
-	LogForwardf("Took %.3f seconds to build %d nodes using %d threads (x%.2f)",
-		stats.Duration.Exclusive.Seconds(), stats.Count, runtime.GOMAXPROCS(0),
-		float32(stats.Duration.Exclusive)/float32(totalDuration))
-
-	LogForwardf("\nMost expansive nodes built:")
-
-	colorHot := Color3b{255, 128, 128}.Unquantize()
-	colorCold := Color3b{128, 128, 128}.Unquantize()
-	for i, node := range g.GetMostExpansiveNodes(10, false) {
-		ns := node.GetBuildStats()
-		fract := ns.Duration.Exclusive.Seconds() / stats.Duration.Exclusive.Seconds()
-
-		sstep := Smootherstep(math.Sqrt(ns.Duration.Exclusive.Seconds() / totalDuration.Seconds())) // use percent of blocking duration
-
-		rowColor := colorCold.Lerp(colorHot, sstep)
-		rowColor = rowColor.Brightness(0.45 + 0.15*sstep)
-
-		LogForwardf("%v[%02d] - %6.2f%% -  %6.3f  %6.3f  --  %s%v",
-			rowColor.Quantize().Ansi(true),
-			(i + 1),
-			100.0*fract,
-			ns.Duration.Exclusive.Seconds(),
-			ns.Duration.Inclusive.Seconds(),
-			node.Alias(),
-			ANSI_RESET)
+		base.GetGlobalThreadPool().Resize(flags.Jobs.Get())
 	}
 }
 
@@ -190,21 +162,21 @@ func printBuildGraphSummary(startedAt time.Time, g BuildGraph) {
  ***************************************/
 
 type CommandEnvT struct {
-	prefix     string
-	buildGraph BuildGraph
-	persistent *persistentData
-	rootFile   Filename
-	startedAt  time.Time
+	prefix         string
+	lazyBuildGraph lazyBuildGraph
+	persistent     *persistentData
+	rootFile       Filename
+	startedAt      time.Time
 
 	configPath   Filename
 	databasePath Filename
 
-	onExit ConcurrentEvent[*CommandEnvT]
+	onExit base.ConcurrentEvent[*CommandEnvT]
 
 	commandEvents CommandEvents
 	commandLines  []CommandLine
 
-	lastPanic error
+	lastPanic atomic.Value
 }
 
 var CommandEnv *CommandEnvT
@@ -214,15 +186,14 @@ func InitCommandEnv(prefix string, args []string, startedAt time.Time) *CommandE
 		prefix:     prefix,
 		persistent: NewPersistentMap(prefix),
 		startedAt:  startedAt,
-		lastPanic:  nil,
 	}
+
+	base.OnPanic = CommandEnv.OnPanic
 
 	CommandEnv.commandLines = NewCommandLine(CommandEnv.persistent, args)
 
 	// parse global flags early-on
-	for _, cl := range CommandEnv.commandLines {
-		LogPanicIfFailed(LogCommand, GlobalParsableFlags.Parse(cl))
-	}
+	base.LogPanicIfFailed(LogCommand, PrepareCommands(CommandEnv.commandLines, &CommandEnv.commandEvents))
 
 	// apply global command flags early-on
 	GetCommandFlags().Apply()
@@ -232,21 +203,41 @@ func InitCommandEnv(prefix string, args []string, startedAt time.Time) *CommandE
 	CommandEnv.databasePath = UFS.Output.File(fmt.Sprint(".", prefix, "-cache.db"))
 	CommandEnv.rootFile = UFS.Source.File(prefix + "-namespace.json")
 
-	LogVerbose(LogCommand, "load config from %q", CommandEnv.configPath)
-	LogVerbose(LogCommand, "load database from %q", CommandEnv.databasePath)
-	LogVerbose(LogCommand, "load modules from %q", CommandEnv.rootFile)
+	base.LogVerbose(LogCommand, "will load config from %q", CommandEnv.configPath)
+	base.LogVerbose(LogCommand, "will load database from %q", CommandEnv.databasePath)
+	base.LogVerbose(LogCommand, "will load modules from %q", CommandEnv.rootFile)
 
-	// finally create the build graph (empty)
-	CommandEnv.buildGraph = NewBuildGraph(GetCommandFlags())
+	// CommandEnv.onExit.Add(func(*CommandEnvT) error {
+	// 	return FileInfos.PrintStats(base.GetLogger())
+	// })
 
 	runtime.SetFinalizer(CommandEnv, func(env *CommandEnvT) {
 		env.onExit.FireAndForget(env)
 	})
 
+	// creates a 'listener' on a new goroutine which will notify the
+	// program if it receives an interrupt from the OS. We then handle this by calling
+	// our clean up procedure and exiting the program.
+	go func() {
+		const maxBeforePanic = 5
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt)
+		for i := 0; i < maxBeforePanic; i++ {
+			<-c
+
+			// intercepting the event allows to die gracefully by waiting running jobs
+			base.LogWarning(LogUtils, "\r- Ctrl+C pressed in Terminal, aborting (%d/%d)", i+1, maxBeforePanic)
+			// child processes also received the signal, and we rely on them dying to quit the program instead of calling os.Exit(0) here
+			CommandEnv.Abort()
+		}
+
+		CommandPanicF("Ctrl+C pressed %d times in Terminal, panic", maxBeforePanic)
+	}()
+
 	return CommandEnv
 }
 func (env *CommandEnvT) Prefix() string             { return env.prefix }
-func (env *CommandEnvT) BuildGraph() BuildGraph     { return env.buildGraph }
+func (env *CommandEnvT) BuildGraph() BuildGraph     { return env.lazyBuildGraph.Get() }
 func (env *CommandEnvT) Persistent() PersistentData { return env.persistent }
 func (env *CommandEnvT) ConfigPath() Filename       { return env.configPath }
 func (env *CommandEnvT) DatabasePath() Filename     { return env.databasePath }
@@ -255,14 +246,21 @@ func (env *CommandEnvT) StartedAt() time.Time       { return env.startedAt }
 func (env *CommandEnvT) BuildTime() time.Time       { return PROCESS_INFO.Timestamp }
 
 func (env *CommandEnvT) SetRootFile(rootFile Filename) {
-	LogVerbose(LogCommand, "set root file to %q", rootFile)
+	base.LogVerbose(LogCommand, "set root file to %q", rootFile)
 	env.rootFile = rootFile
 }
 
-func (env *CommandEnvT) OnExit(e EventDelegate[*CommandEnvT]) DelegateHandle {
+func (env *CommandEnvT) OnBuildGraphLoaded(e base.EventDelegate[BuildGraph]) error {
+	return env.lazyBuildGraph.OnBuildGraphLoaded(e)
+}
+func (env *CommandEnvT) OnBuildGraphSaved(e base.EventDelegate[BuildGraph]) error {
+	return env.lazyBuildGraph.OnBuildGraphSaved(e)
+}
+func (env *CommandEnvT) OnExit(e base.EventDelegate[*CommandEnvT]) base.DelegateHandle {
 	return env.onExit.Add(e)
 }
-func (env *CommandEnvT) RemoveOnExit(h DelegateHandle) bool {
+
+func (env *CommandEnvT) RemoveOnExit(h base.DelegateHandle) bool {
 	return env.onExit.Remove(h)
 }
 
@@ -270,88 +268,159 @@ func CommandPanicF(msg string, args ...interface{}) {
 	CommandPanic(fmt.Errorf(msg, args...))
 }
 func CommandPanic(err error) {
-	if CommandEnv == nil || CommandEnv.OnPanic(err) {
-		panic(fmt.Errorf("%v%v%v[PANIC] %v%v",
-			ANSI_FG1_RED, ANSI_BG1_WHITE, ANSI_BLINK0, err, ANSI_RESET))
-	} else {
-		panic(fmt.Errorf("panic reentrancy: %v", err))
-	}
+	base.Panic(err)
 }
 
 // don't save the db when panic occured
-func (env *CommandEnvT) OnPanic(err error) bool {
-	if env.lastPanic == nil {
-
-		env.lastPanic = err
+func (env *CommandEnvT) OnPanic(err error) base.PanicResult {
+	if env.lastPanic.CompareAndSwap(nil, err) {
 		env.commandEvents.OnPanic.Invoke(err)
-		return true
+		return base.PANIC_ABORT
 	}
-	return false // a fatal error was already reported
+	return base.PANIC_REENTRANCY // a fatal error was already reported
 }
 
 func (env *CommandEnvT) Run() error {
-	env.buildGraph.PostLoad()
-
 	// prepare specified commands
 	for _, cl := range env.commandLines {
 		if err := env.commandEvents.Parse(cl); err != nil {
-			LogError(LogCommand, "%s", err)
-			PrintCommandHelp(os.Stderr, false)
 			return err
 		}
 	}
 
 	defer func() {
-		JoinAllThreadPools()
+		base.JoinAllThreadPools()
 		env.onExit.FireAndForget(env)
-		PurgePinnedLogs()
+		base.PurgePinnedLogs()
 	}()
 
 	// check if any command was successfully parsed
 	if !env.commandEvents.Bound() {
-		LogWarning(LogCommand, "missing argument, use `help` to learn about command usage")
+		base.LogWarning(LogCommand, "missing argument, use `help` to learn about command usage")
 		return nil
 	}
 
 	err := env.commandEvents.Run()
 
-	if er := env.buildGraph.Join(); err != nil && err == nil {
+	if er := env.lazyBuildGraph.Join(); err != nil && err == nil {
 		err = er
 	}
 	return err
 }
 func (env *CommandEnvT) LoadConfig() error {
-	benchmark := LogBenchmark(LogCommand, "loading config from '%v'...", env.configPath)
+	benchmark := base.LogBenchmark(LogCommand, "loading config from '%v'...", env.configPath)
 	defer benchmark.Close()
 
 	return UFS.OpenBuffered(env.configPath, env.persistent.Deserialize)
 }
-func (env *CommandEnvT) LoadBuildGraph() error {
-	benchmark := LogBenchmark(LogCommand, "loading build graph from '%v'...", env.databasePath)
-	defer benchmark.Close()
-
-	err := UFS.OpenBuffered(env.databasePath, env.buildGraph.Load)
-	if err != nil {
-		env.buildGraph.(*buildGraph).makeDirty()
-	}
-	return err
-}
 func (env *CommandEnvT) SaveConfig() error {
-	benchmark := LogBenchmark(LogCommand, "saving config to '%v'...", env.configPath)
+	benchmark := base.LogBenchmark(LogCommand, "saving config to '%v'...", env.configPath)
 	defer benchmark.Close()
 
 	return UFS.SafeCreate(env.configPath, env.persistent.Serialize)
 }
 func (env *CommandEnvT) SaveBuildGraph() error {
-	if env.lastPanic != nil {
-		LogTrace(LogCommand, "won't save build graph since a panic occured")
-	} else if env.buildGraph.Dirty() {
-		benchmark := LogBenchmark(LogCommand, "saving build graph to '%v'...", env.databasePath)
-		defer benchmark.Close()
+	return env.lazyBuildGraph.Save(env)
+}
 
-		return UFS.SafeCreate(env.databasePath, env.buildGraph.Save)
+func (env *CommandEnvT) Abort() {
+	if env.lazyBuildGraph.Available() {
+		env.lazyBuildGraph.buildGraph.Abort()
+	}
+}
+
+/***************************************
+ * Lazy build graph: don't load build database unless needed
+ ***************************************/
+
+type lazyBuildGraph struct {
+	barrier    sync.Mutex
+	buildGraph BuildGraph
+
+	onBuildGraphLoadedEvent base.PublicEvent[BuildGraph]
+	onBuildGraphSavedEvent  base.PublicEvent[BuildGraph]
+}
+
+func (x *lazyBuildGraph) Available() bool {
+	x.barrier.Lock()
+	defer x.barrier.Unlock()
+	return !base.IsNil(x.buildGraph)
+}
+func (x *lazyBuildGraph) Get() BuildGraph {
+	x.barrier.Lock()
+	defer x.barrier.Unlock()
+	if base.IsNil(x.buildGraph) {
+		x.buildGraph = NewBuildGraph(GetCommandFlags())
+		if err := x.loadBuildGraph(CommandEnv); err != nil {
+			base.LogError(LogBuildGraph, "failed to load build graph database: %v", err)
+		}
+		x.buildGraph.PostLoad()
+	}
+	return x.buildGraph
+}
+func (x *lazyBuildGraph) Join() error {
+	x.barrier.Lock()
+	defer x.barrier.Unlock()
+	if base.IsNil(x.buildGraph) {
+		return nil
+	}
+	return x.buildGraph.Join()
+}
+func (x *lazyBuildGraph) Save(env *CommandEnvT) error {
+	x.barrier.Lock()
+	defer x.barrier.Unlock()
+	if base.IsNil(x.buildGraph) {
+		return nil
+	}
+	return x.saveBuildGraph(env)
+}
+
+func (x *lazyBuildGraph) OnBuildGraphLoaded(e base.EventDelegate[BuildGraph]) error {
+	x.barrier.Lock()
+	defer x.barrier.Unlock()
+	if base.IsNil(x.buildGraph) {
+		x.onBuildGraphLoadedEvent.Add(e)
 	} else {
-		LogTrace(LogCommand, "skipped saving unmodified build graph")
+		return e(x.buildGraph)
 	}
 	return nil
+}
+func (x *lazyBuildGraph) OnBuildGraphSaved(e base.EventDelegate[BuildGraph]) error {
+	x.barrier.Lock()
+	defer x.barrier.Unlock()
+	x.onBuildGraphSavedEvent.Add(e)
+	return nil
+}
+
+func (x *lazyBuildGraph) saveBuildGraph(env *CommandEnvT) error {
+	if !base.IsNil(env.lastPanic.Load()) {
+		base.LogTrace(LogCommand, "won't save build graph since a panic occured")
+	} else if x.buildGraph.Dirty() {
+		benchmark := base.LogBenchmark(LogCommand, "saving build graph to '%v'...", env.databasePath)
+		defer benchmark.Close()
+
+		return UFS.SafeCreate(env.databasePath, x.buildGraph.Save)
+	} else {
+		base.LogTrace(LogCommand, "skipped saving unmodified build graph")
+	}
+	return x.onBuildGraphSavedEvent.FireAndForget(x.buildGraph)
+}
+func (x *lazyBuildGraph) loadBuildGraph(env *CommandEnvT) error {
+	benchmark := base.LogBenchmark(LogCommand, "loading build graph from '%v'...", env.databasePath)
+	defer benchmark.Close()
+
+	err := UFS.OpenBuffered(env.databasePath, x.buildGraph.Load)
+
+	if err == nil {
+		err = x.onBuildGraphLoadedEvent.FireAndForget(x.buildGraph)
+	} else {
+		x.buildGraph.(*buildGraph).makeDirty()
+	}
+	return err
+}
+
+func (x *lazyBuildGraph) PrintSummary(startedAt time.Time) {
+	if !base.IsNil(x.buildGraph) {
+		x.buildGraph.PrintSummary(startedAt)
+	}
 }

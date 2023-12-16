@@ -10,21 +10,22 @@ import (
 	"sync"
 	"syscall"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
-var LogDetours = NewLogCategory("Detours")
+var LogDetours = base.NewLogCategory("Detours")
 
 const USE_IO_DETOURING = true // %_NOCOMMIT%
 
 func SetupWindowsIODetouring() {
 	if USE_IO_DETOURING {
 		if exe := getDetoursIOWrapperExecutable(); exe.Exists() {
-			OnRunCommandWithDetours = RunProcessWithDetoursWin32 // Comment to disable detouring %_NOCOMMIT%
+			internal_io.OnRunCommandWithDetours = RunProcessWithDetoursWin32 // Comment to disable detouring %_NOCOMMIT%
 		} else {
-			LogWarning(LogDetours, "disable Win32 IO detouring: could not find %q", exe)
-			OnRunCommandWithDetours = nil
+			base.LogWarning(LogDetours, "disable Win32 IO detouring: could not find %q", exe)
+			internal_io.OnRunCommandWithDetours = nil
 		}
 	}
 }
@@ -43,12 +44,12 @@ var DETOURS_IGNORED_APPLICATIONS = []string{
 
 const DETOURS_IOWRAPPER_EXE = `Tools-IOWrapper-Win64-Devel.exe`
 
-var getDetoursIOWrapperExecutable = Memoize(func() Filename {
-	return UFS.Internal.AbsoluteFile(`hal`, `windows`, `bin`, DETOURS_IOWRAPPER_EXE)
+var getDetoursIOWrapperExecutable = base.Memoize(func() utils.Filename {
+	return utils.UFS.Internal.AbsoluteFile(`hal`, `windows`, `bin`, DETOURS_IOWRAPPER_EXE)
 })
 
-func RunProcessWithDetoursWin32(executable Filename, arguments StringSet, options ProcessOptions) error {
-	tempFile, err := UFS.CreateTemp("Detours", func(w io.Writer) error {
+func RunProcessWithDetoursWin32(executable utils.Filename, arguments base.StringSet, options *internal_io.ProcessOptions) error {
+	tempFile, err := utils.UFS.CreateTemp("Detours", func(w io.Writer) error {
 		return nil
 	})
 
@@ -62,7 +63,7 @@ func RunProcessWithDetoursWin32(executable Filename, arguments StringSet, option
 	options.Environment.Append("IOWRAPPER_IGNORED_APPLICATIONS", DETOURS_IGNORED_APPLICATIONS...)
 
 	for i, mount := range options.MountedPaths {
-		LogVeryVerbose(LogDetours, "mount %q as %q", mount.From, mount.To)
+		base.LogVeryVerbose(LogDetours, "mount %q as %q", mount.From, mount.To)
 
 		if local, err := mountWebdavFolder(mount); err == nil {
 			mount.To = local
@@ -80,27 +81,27 @@ func RunProcessWithDetoursWin32(executable Filename, arguments StringSet, option
 	// 	options.WorkingDir.Path = expandWebdavPath(options.WorkingDir.Path, options.MountedPaths)
 	// }
 
-	if err := RunProcess_Vanilla(
+	if err := internal_io.RunProcess_Vanilla(
 		getDetoursIOWrapperExecutable(),
 		append([]string{tempFile.String(), executable.String()}, arguments...),
 		options); err != nil {
 		return err
 	}
 
-	return UFS.ReadLines(tempFile.Path, func(line string) error {
-		var far FileAccessRecord
-		far.Path = MakeFilename(unexpandWebdavPath(line[1:], options.MountedPaths))
-		far.Access = FILEACCESS_NONE
+	return utils.UFS.ReadLines(tempFile.Path, func(line string) error {
+		var far internal_io.FileAccessRecord
+		far.Path = utils.MakeFilename(unexpandWebdavPath(line[1:], options.MountedPaths))
+		far.Access = internal_io.FILEACCESS_NONE
 
 		mode := line[0] - '0'
 		if (mode & 1) == 1 {
-			far.Access.Append(FILEACCESS_READ)
+			far.Access.Append(internal_io.FILEACCESS_READ)
 		}
 		if (mode & 2) == 2 {
-			far.Access.Append(FILEACCESS_WRITE)
+			far.Access.Append(internal_io.FILEACCESS_WRITE)
 		}
 		if (mode & 4) == 4 {
-			far.Access.Append(FILEACCESS_EXECUTE)
+			far.Access.Append(internal_io.FILEACCESS_EXECUTE)
 		}
 
 		return options.OnFileAccess.Invoke(far)
@@ -117,7 +118,7 @@ func RunProcessWithDetoursWin32(executable Filename, arguments StringSet, option
 const detours_mount_webdav_with_symlink = false
 
 // goal is detoured processes consuming webdav share transparently
-func mountWebdavFolder(in MountedPath) (string, error) {
+func mountWebdavFolder(in internal_io.MountedPath) (string, error) {
 	// parse HTTP webdav URL and translate it to a UNC path
 	// this happens here because it's windows specific, while the webdav server is not (it could run on linux for instance)
 	uri, err := url.Parse(in.To)
@@ -134,9 +135,9 @@ func mountWebdavFolder(in MountedPath) (string, error) {
 	unc = strings.ReplaceAll(unc, `/`, `\`)
 
 	if detours_mount_webdav_with_symlink {
-		local := UFS.Transient.Folder("DavWWWRoot", uri.Hostname())
-		UFS.Mkdir(local) // make sure parent directory exists, since Symlink won't create it
-		local = local.Folder(SanitizeIdentifier(in.From.String()))
+		local := utils.UFS.Transient.Folder("DavWWWRoot", uri.Hostname())
+		utils.UFS.Mkdir(local) // make sure parent directory exists, since Symlink won't create it
+		local = local.Folder(base.SanitizeIdentifier(in.From.String()))
 
 		// check if local path exists
 		if st, err := os.Stat(local.String()); err == nil {
@@ -155,7 +156,7 @@ func mountWebdavFolder(in MountedPath) (string, error) {
 			}
 		}
 
-		LogVeryVerbose(LogDetours, "mount webdav share %q as %q (UNC: %q)", in.To, local, unc)
+		base.LogVeryVerbose(LogDetours, "mount webdav share %q as %q (UNC: %q)", in.To, local, unc)
 
 		// need to create a new symbolic link pointing to UNC path we previously computed
 		return local.String(), createWebdavSymbolicLink(unc, local.String())
@@ -164,21 +165,21 @@ func mountWebdavFolder(in MountedPath) (string, error) {
 	}
 }
 
-func expandWebdavPath(path string, mounts []MountedPath) string {
+func expandWebdavPath(path string, mounts []internal_io.MountedPath) string {
 	for _, mount := range mounts {
 		if prefix := mount.From.String(); strings.HasPrefix(path, prefix) {
 			expanded := mount.To + path[len(prefix):]
-			LogVeryVerbose(LogDetours, "expand webdav path %q to %q", path, expanded)
+			base.LogVeryVerbose(LogDetours, "expand webdav path %q to %q", path, expanded)
 			return expanded
 		}
 	}
 	return path
 }
-func unexpandWebdavPath(path string, mounts []MountedPath) string {
+func unexpandWebdavPath(path string, mounts []internal_io.MountedPath) string {
 	for _, mount := range mounts {
 		if strings.HasPrefix(path, mount.To) {
 			unexpanded := mount.From.String() + path[len(mount.To):]
-			LogVeryVerbose(LogDetours, "unexpand webdav path %q to %q", path, unexpanded)
+			base.LogVeryVerbose(LogDetours, "unexpand webdav path %q to %q", path, unexpanded)
 			return unexpanded
 		}
 	}

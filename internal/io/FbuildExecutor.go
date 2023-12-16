@@ -3,11 +3,12 @@ package io
 import (
 	"strings"
 
+	"github.com/poppolopoppo/ppb/internal/base"
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
 
-var LogFBuild = NewLogCategory("FBuild")
+var LogFBuild = base.NewLogCategory("FBuild")
 
 /***************************************
  * FBuild arguments
@@ -37,7 +38,7 @@ func (x FBuildCacheType) String() string {
 	case FBUILD_CACHE_WRITE:
 		return "WRITE"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -50,18 +51,18 @@ func (x *FBuildCacheType) Set(in string) (err error) {
 	case FBUILD_CACHE_WRITE.String():
 		*x = FBUILD_CACHE_WRITE
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *FBuildCacheType) Serialize(ar Archive) {
+func (x *FBuildCacheType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x FBuildCacheType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *FBuildCacheType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
 
 /***************************************
@@ -85,17 +86,17 @@ var BFF_DEFAULT_BASENAME = `fbuild.bff`
 
 var GetFBuildArgs = NewCommandParsableFlags(&FBuildArgs{
 	Cache:         FBUILD_CACHE_DISABLED,
-	Clean:         INHERITABLE_FALSE,
-	Dist:          INHERITABLE_FALSE,
-	NoUnity:       INHERITABLE_FALSE,
-	NoStopOnError: INHERITABLE_TRUE,
-	Report:        INHERITABLE_FALSE,
-	ShowCmds:      INHERITABLE_FALSE,
+	Clean:         base.INHERITABLE_FALSE,
+	Dist:          base.INHERITABLE_FALSE,
+	NoUnity:       base.INHERITABLE_FALSE,
+	NoStopOnError: base.INHERITABLE_TRUE,
+	Report:        base.INHERITABLE_FALSE,
+	ShowCmds:      base.INHERITABLE_FALSE,
 	Threads:       0,
 })
 
 func (flags *FBuildArgs) Flags(cfv CommandFlagsVisitor) {
-	cfv.Persistent("Cache", "set FASTBuild cache mode ["+JoinString(",", FBuildCacheTypes()...)+"]", &flags.Cache)
+	cfv.Persistent("Cache", "set FASTBuild cache mode", &flags.Cache)
 	cfv.Variable("Clean", "FASTBuild will rebuild all cached artifacts if enabled", &flags.Clean)
 	cfv.Persistent("Dist", "enable/disable FASTBuild to use distributed compilation", &flags.Dist)
 	cfv.Persistent("BffInput", "source for input FASTBuild config file (*.bff)", &flags.BffInput)
@@ -114,7 +115,7 @@ func (flags *FBuildArgs) Flags(cfv CommandFlagsVisitor) {
 var FBUILD_BIN Filename
 
 type FBuildExecutor struct {
-	Args    SetT[string]
+	Args    base.SetT[string]
 	Capture bool
 }
 
@@ -166,10 +167,10 @@ func MakeFBuildExecutor(flags *FBuildArgs, args ...string) (result FBuildExecuto
 		}
 	}
 
-	if IsLogLevelActive(LOG_DEBUG) {
+	if base.IsLogLevelActive(base.LOG_DEBUG) {
 		result.Args.Append("-j1", "-why")
 	}
-	if IsLogLevelActive(LOG_VERYVERBOSE) {
+	if base.IsLogLevelActive(base.LOG_VERYVERBOSE) {
 		if enableCache {
 			result.Args.Append("-cacheverbose")
 		}
@@ -177,13 +178,13 @@ func MakeFBuildExecutor(flags *FBuildArgs, args ...string) (result FBuildExecuto
 			result.Args.Append("-distverbose")
 		}
 	}
-	if IsLogLevelActive(LOG_TRACE) {
+	if base.IsLogLevelActive(base.LOG_TRACE) {
 		result.Args.Append("-verbose")
 	}
-	if IsLogLevelActive(LOG_VERBOSE) {
+	if base.IsLogLevelActive(base.LOG_VERBOSE) {
 		result.Args.Append("-summary")
 	}
-	if !IsLogLevelActive(LOG_INFO) {
+	if !base.IsLogLevelActive(base.LOG_INFO) {
 		result.Args.Append("-quiet")
 	}
 
@@ -192,7 +193,7 @@ func MakeFBuildExecutor(flags *FBuildArgs, args ...string) (result FBuildExecuto
 	return result
 }
 func (x *FBuildExecutor) Run() (err error) {
-	LogVerbose(LogFBuild, "running with '%v' (capture=%v)", x, x.Capture)
+	base.LogVerbose(LogFBuild, "running with '%v' (capture=%v)", x, x.Capture)
 
 	return RunProcess(FBUILD_BIN, x.Args.Slice(),
 		OptionProcessExport("FASTBUILD_CACHE_PATH", UFS.Cache.String()),

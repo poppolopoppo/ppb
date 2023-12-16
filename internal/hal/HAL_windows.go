@@ -7,13 +7,14 @@ import (
 	"os"
 	"syscall"
 
+	"github.com/poppolopoppo/ppb/internal/base"
 	"github.com/poppolopoppo/ppb/internal/hal/generic"
 	"github.com/poppolopoppo/ppb/internal/hal/windows"
 	"github.com/poppolopoppo/ppb/internal/io"
 	"github.com/poppolopoppo/ppb/utils"
 )
 
-var LogHAL = utils.NewLogCategory("HAL")
+var LogHAL = base.NewLogCategory("HAL")
 
 func osVersion() string {
 	v, err := syscall.GetVersion()
@@ -40,17 +41,17 @@ func setConsoleMode() bool {
 		return true
 	}
 
-	utils.LogVerbose(LogHAL, "failed to set console mode with %v", err)
+	base.LogVerbose(LogHAL, "failed to set console mode with %v", err)
 	return false
 }
 
 func InitHAL() {
-	utils.SetCurrentHost(&utils.HostPlatform{
-		Id:   utils.HOST_WINDOWS,
+	base.SetCurrentHost(&base.HostPlatform{
+		Id:   base.HOST_WINDOWS,
 		Name: "Windows " + osVersion(),
 	})
 
-	utils.SetEnableInteractiveShell(setConsoleMode())
+	base.SetEnableInteractiveShell(setConsoleMode())
 
 	generic.InitGenericHAL()
 	windows.InitWindowsHAL()

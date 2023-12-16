@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
 type Namespace interface {
 	GetNamespace() *NamespaceRules
-	Buildable
-	Serializable
+	utils.Buildable
+	base.Serializable
 	fmt.Stringer
 }
 
@@ -23,15 +23,15 @@ type NamespaceAlias struct {
 	NamespaceName string
 }
 
-type NamespaceAliases = SetT[NamespaceAlias]
+type NamespaceAliases = base.SetT[NamespaceAlias]
 
 func (x NamespaceAlias) Valid() bool {
 	return len(x.NamespaceName) > 0
 }
-func (x NamespaceAlias) Alias() BuildAlias {
-	return MakeBuildAlias("Rules", "Namespace", x.String())
+func (x NamespaceAlias) Alias() utils.BuildAlias {
+	return utils.MakeBuildAlias("Rules", "Namespace", x.String())
 }
-func (x *NamespaceAlias) Serialize(ar Archive) {
+func (x *NamespaceAlias) Serialize(ar base.Archive) {
 	ar.String(&x.NamespaceName)
 }
 func (x NamespaceAlias) String() string {
@@ -45,10 +45,20 @@ func (x *NamespaceAlias) Set(in string) (err error) {
 	return nil
 }
 func (x NamespaceAlias) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *NamespaceAlias) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
+}
+func (x *NamespaceAlias) AutoComplete(in base.AutoComplete) {
+	namespaces, err := NeedAllBuildNamespaceAliases(utils.CommandEnv.BuildGraph().GlobalContext())
+	if err == nil {
+		for _, it := range namespaces {
+			in.Add(it.String(), it.Alias().String())
+		}
+	} else {
+		utils.CommandPanic(err)
+	}
 }
 
 /***************************************
@@ -60,7 +70,7 @@ type NamespaceRules struct {
 
 	NamespaceParent   NamespaceAlias
 	NamespaceChildren NamespaceAliases
-	NamespaceDir      Directory
+	NamespaceDir      utils.Directory
 	NamespaceModules  ModuleAliases
 
 	Facet
@@ -80,7 +90,7 @@ func (rules *NamespaceRules) GetParentNamespace() Namespace {
 	if namespace, err := FindBuildNamespace(rules.NamespaceParent); err == nil {
 		return namespace
 	} else {
-		LogPanicErr(LogCompile, err)
+		base.LogPanicErr(LogCompile, err)
 		return nil
 	}
 }
@@ -96,14 +106,14 @@ func (rules *NamespaceRules) Decorate(env *CompileEnv, unit *Unit) error {
 	return nil
 }
 
-func (rules *NamespaceRules) Serialize(ar Archive) {
+func (rules *NamespaceRules) Serialize(ar base.Archive) {
 	ar.Serializable(&rules.NamespaceAlias)
 
 	ar.Serializable(&rules.NamespaceParent)
-	SerializeSlice(ar, rules.NamespaceChildren.Ref())
+	base.SerializeSlice(ar, rules.NamespaceChildren.Ref())
 
 	ar.Serializable(&rules.NamespaceDir)
-	SerializeSlice(ar, rules.NamespaceModules.Ref())
+	base.SerializeSlice(ar, rules.NamespaceModules.Ref())
 
 	ar.Serializable(&rules.Facet)
 }
@@ -112,13 +122,49 @@ func (rules *NamespaceRules) Serialize(ar Archive) {
  * Build Namespace
  ***************************************/
 
-func (x *NamespaceRules) Alias() BuildAlias {
+func (x *NamespaceRules) Alias() utils.BuildAlias {
 	return x.GetNamespace().NamespaceAlias.Alias()
 }
-func (x *NamespaceRules) Build(bc BuildContext) error {
+func (x *NamespaceRules) Build(bc utils.BuildContext) error {
 	return nil
 }
 
 func FindBuildNamespace(namespace NamespaceAlias) (Namespace, error) {
-	return FindGlobalBuildable[Namespace](namespace.Alias())
+	return utils.FindGlobalBuildable[Namespace](namespace.Alias())
+}
+
+func NeedAllBuildNamespaceAliases(bc utils.BuildContext) (namespaceAliases []NamespaceAlias, err error) {
+	rootModel, err := BuildRootNamespaceModel().Need(bc)
+	if err != nil {
+		return []NamespaceAlias{}, err
+	}
+
+	err = ForeachNamespaceChildrenAlias(bc, rootModel.GetNamespaceAlias(), func(na NamespaceAlias) error {
+		namespaceAliases = append(namespaceAliases, na)
+		return nil
+	})
+	return
+}
+
+func ForeachNamespaceChildrenAlias(bc utils.BuildContext, namespaceAlias NamespaceAlias, each func(NamespaceAlias) error) error {
+	namespace, err := utils.FindGlobalBuildable[Namespace](namespaceAlias.Alias())
+	if err != nil {
+		return err
+	}
+
+	if err := bc.NeedBuildables(namespace); err != nil {
+		return err
+	}
+
+	if err := each(namespaceAlias); err != nil {
+		return err
+	}
+
+	for _, namespaceAlias := range namespace.GetNamespace().NamespaceChildren {
+		if err := ForeachNamespaceChildrenAlias(bc, namespaceAlias, each); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

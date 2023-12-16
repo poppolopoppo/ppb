@@ -9,6 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/poppolopoppo/ppb/internal/base"
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
+
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 
@@ -25,15 +28,15 @@ type WorkerFlags struct {
 	IdleThreshold IntVar
 	Mode          PeerMode
 	MaxThreads    IntVar
-	MinFreeMemory SizeInBytes
+	MinFreeMemory base.SizeInBytes
 }
 
 var GetWorkerFlags = NewCommandParsableFlags(&WorkerFlags{
-	Broadcast:     2,       // 2 seconds
-	IdleCooldown:  5 * 60,  // 5 minutes
-	IdleThreshold: 10,      // bellow 10% cpu usage
-	MinFreeMemory: 4 * GiB, // min 4GiB available
-	MaxThreads:    0,       // uncapped thread count
+	Broadcast:     2,            // 2 seconds
+	IdleCooldown:  5 * 60,       // 5 minutes
+	IdleThreshold: 10,           // bellow 10% cpu usage
+	MinFreeMemory: 4 * base.GiB, // min 4GiB available
+	MaxThreads:    0,            // uncapped thread count
 	Mode:          PEERMODE_PROPORTIONAL,
 })
 
@@ -43,7 +46,7 @@ func (x *WorkerFlags) GetBroadcastDuraction() time.Duration {
 
 func (x *WorkerFlags) Flags(cfv CommandFlagsVisitor) {
 	cfv.Persistent("Broadcast", "set worker broadcast delay in seconds", &x.Broadcast)
-	cfv.Persistent("PeerMode", "set peer mode ["+JoinString(",", PeerModes()...)+"]", &x.Mode)
+	cfv.Persistent("PeerMode", "set peer mode", &x.Mode)
 	cfv.Persistent("IdleCooldown", "set peer cooldown in seconds to be considered idle (used by IDLE peer mode)", &x.IdleCooldown)
 	cfv.Persistent("IdleThreshold", "set peer maximum CPU usage percentage to be considered idle (used by IDLE peer mode)", &x.IdleThreshold)
 	cfv.Persistent("MaxThreads", "set peer maximum concurrent threads for distributed tasks", &x.MaxThreads)
@@ -55,7 +58,7 @@ func (x *WorkerFlags) Flags(cfv CommandFlagsVisitor) {
  ***************************************/
 
 type Worker struct {
-	await           Future[int]
+	await           base.Future[int]
 	numJobsInFlight atomic.Int32
 
 	Cluster *Cluster
@@ -96,7 +99,7 @@ func (x *Worker) Start() (context.CancelFunc, error) {
 		return nil, err
 	}
 
-	LogClaim(LogCluster, "start worker, listening on %q", listener.Addr())
+	base.LogClaim(LogCluster, "start worker, listening on %q", listener.Addr())
 
 	_, x.PeerPort, err = net.SplitHostPort(listener.Addr().String())
 	if err != nil {
@@ -109,9 +112,9 @@ func (x *Worker) Start() (context.CancelFunc, error) {
 
 	ctx, cancel := context.WithCancel(x.Cluster.Context)
 
-	x.await = MakeAsyncFuture[int](func() (int, error) {
+	x.await = base.MakeAsyncFuture[int](func() (int, error) {
 		// broadcast discovery in a separate dependent go channel
-		defer MakeAsyncFuture(func() (int, error) {
+		defer base.MakeAsyncFuture(func() (int, error) {
 			broadcastTick := time.NewTicker(x.GetBroadcastDuraction())
 			defer broadcastTick.Stop()
 
@@ -122,7 +125,7 @@ func (x *Worker) Start() (context.CancelFunc, error) {
 				case <-broadcastTick.C:
 					if err := x.updateDiscovery(); err != nil {
 						if !os.IsTimeout(err) {
-							LogWarning(LogCluster, "caught error during discovery: %v", err)
+							base.LogWarning(LogCluster, "caught error during discovery: %v", err)
 							return -2, err
 						}
 					}
@@ -137,7 +140,7 @@ func (x *Worker) Start() (context.CancelFunc, error) {
 		wg := sync.WaitGroup{}
 		defer wg.Wait()
 
-		FlushLog()
+		base.FlushLog()
 
 		for {
 			select {
@@ -146,7 +149,7 @@ func (x *Worker) Start() (context.CancelFunc, error) {
 			default:
 				if err := x.acceptClientConn(ctx, listener, &wg); err != nil {
 					if !os.IsTimeout(err) {
-						LogWarning(LogCluster, "caught error while accepting client: %v", err)
+						base.LogWarning(LogCluster, "caught error while accepting client: %v", err)
 						return -3, err
 					}
 				}
@@ -162,15 +165,15 @@ func (x *Worker) updateDiscovery() error {
 		return err
 	}
 
-	LogVeryVerbose(LogCluster, "available resources: mode=%v, %d jobs, threads=%d/%d, cpu=%5.2f%%, mem=%5.2f%% (%v / %v), idle since=%v",
+	base.LogVeryVerbose(LogCluster, "available resources: mode=%v, %d jobs, threads=%d/%d, cpu=%5.2f%%, mem=%5.2f%% (%v / %v), idle since=%v",
 		x.Mode,
 		x.numJobsInFlight.Load(),
 		x.AvailableThreads.Load(),
 		x.Hardware.Threads,
 		x.GetAverageCpuUsage()*100,
 		x.GetAverageMemUsage()*100,
-		SizeInBytes(x.AvailableVirtualMemory.Load()),
-		SizeInBytes(x.Hardware.VirtualMemory),
+		base.SizeInBytes(x.AvailableVirtualMemory.Load()),
+		base.SizeInBytes(x.Hardware.VirtualMemory),
 		time.Since(x.idleSince))
 
 	if x.ReadyForWork() {
@@ -216,14 +219,14 @@ func (x *Worker) acceptClientConn(ctx context.Context, listener *quic.Listener, 
 
 		tunnel, err := x.createAcceptTunnel(ctx, conn)
 		if err != nil {
-			LogError(LogCluster, "worker handshake with %v failed: %v", conn.RemoteAddr(), err)
+			base.LogError(LogCluster, "worker handshake with %v failed: %v", conn.RemoteAddr(), err)
 			return
 		}
 		defer tunnel.Close()
 
 		tunnel.OnReadyForWork = x.ReadyForWork
 
-		LogInfo(LogCluster, "worker accepted connection from %v", conn.RemoteAddr())
+		base.LogInfo(LogCluster, "worker accepted connection from %v", conn.RemoteAddr())
 
 		MessageLoop(tunnel, ctx, x.Cluster.GetTimeoutDuration())
 	}()
@@ -239,10 +242,10 @@ func (x *Worker) createAcceptTunnel(ctx context.Context, conn quic.Connection) (
 		return nil, err
 	}
 
-	tunnel.OnTaskDispatch = func(executable Filename, arguments StringSet, options ProcessOptions) error {
+	tunnel.OnTaskDispatch = func(executable Filename, arguments base.StringSet, options *internal_io.ProcessOptions) error {
 		x.numJobsInFlight.Add(1)
 		defer x.numJobsInFlight.Add(-1)
-		return RunProcess(executable, arguments, OptionProcessStruct(&options))
+		return internal_io.RunProcess(executable, arguments, internal_io.OptionProcessStruct(options))
 	}
 
 	return tunnel, nil

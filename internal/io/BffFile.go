@@ -5,8 +5,8 @@ import (
 	"io"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
 type BffOp string
@@ -32,7 +32,7 @@ type BffArray []interface{}
 type BffMap map[string]interface{}
 
 func MakeBffVar(key string) BffVar {
-	return BffVar(SanitizeIdentifier(key))
+	return BffVar(base.SanitizeIdentifier(key))
 }
 
 func (x BffVar) Valid() bool    { return x != "" }
@@ -51,7 +51,7 @@ func bffIsDefaultValue(x interface{}) bool {
 		return true
 	}
 	switch value := x.(type) {
-	case BoolVar, IntVar, BffVar:
+	case utils.BoolVar, utils.IntVar, BffVar:
 		return false
 	case string:
 		return value == ""
@@ -65,7 +65,7 @@ func bffIsDefaultValue(x interface{}) bool {
 		return false
 	case []string:
 		return len(value) == 0
-	case StringSetable:
+	case base.StringSetable:
 		return len(value.StringSet()) == 0
 	case BffArray:
 		return len(value) == 0
@@ -74,19 +74,19 @@ func bffIsDefaultValue(x interface{}) bool {
 	case fmt.Stringer:
 		return bffIsDefaultValue(value.String())
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 	}
 	return false
 }
 
 type BffFile struct {
-	aliases StringSet
-	*StructuredFile
+	aliases base.StringSet
+	*base.StructuredFile
 }
 
 func NewBffFile(dst io.Writer, minify bool) *BffFile {
 	return &BffFile{
-		StructuredFile: NewStructuredFile(dst, STRUCTUREDFILE_DEFAULT_TAB, minify),
+		StructuredFile: base.NewStructuredFile(dst, base.STRUCTUREDFILE_DEFAULT_TAB, minify),
 	}
 }
 
@@ -97,7 +97,7 @@ func (bff *BffFile) Once(key BffVar, closure func()) *BffFile {
 	}
 	return bff
 }
-func (bff *BffFile) Include(path Filename) *BffFile {
+func (bff *BffFile) Include(path utils.Filename) *BffFile {
 	bff.Println(`#include "%s"`, path)
 	return bff
 }
@@ -133,9 +133,9 @@ func (bff *BffFile) Append(name string, value interface{}) *BffFile {
 }
 func (bff *BffFile) Value(x interface{}) *BffFile {
 	switch value := x.(type) {
-	case BoolVar:
+	case utils.BoolVar:
 		bff.Value(value.Get())
-	case IntVar:
+	case utils.IntVar:
 		bff.Value(value.Get())
 	case BffVar:
 		bff.Print("." + value.String())
@@ -155,7 +155,7 @@ func (bff *BffFile) Value(x interface{}) *BffFile {
 		bff.Print("%f", value)
 	case []string:
 		bff.Value(MakeBffArray(value...))
-	case StringSetable:
+	case base.StringSetable:
 		bff.Value(MakeBffArray(value.StringSet()...))
 	case BffArray:
 		bff.Print("{")
@@ -183,7 +183,7 @@ func (bff *BffFile) Value(x interface{}) *BffFile {
 	case fmt.Stringer:
 		bff.Value(x.(fmt.Stringer).String())
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 	}
 	return bff
 }

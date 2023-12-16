@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
 type PeerDiscovered struct {
@@ -23,7 +23,7 @@ type PeerDiscovered struct {
  ***************************************/
 
 type PeerDiscovery struct {
-	BrokeragePath Directory
+	BrokeragePath utils.Directory
 	Availables    []*PeerDiscovered
 	Peers         map[string]*PeerDiscovered
 	Version       PeerVersion
@@ -32,8 +32,8 @@ type PeerDiscovery struct {
 	revision int64
 }
 
-func NewPeerDiscovery(brokeragePath Directory, version PeerVersion, maxPeers int) PeerDiscovery {
-	LogVerbose(LogCluster, "new peer discovery with %q brokerage path", brokeragePath)
+func NewPeerDiscovery(brokeragePath utils.Directory, version PeerVersion, maxPeers int) PeerDiscovery {
+	base.LogVerbose(LogCluster, "new peer discovery with %q brokerage path", brokeragePath)
 	return PeerDiscovery{
 		BrokeragePath: brokeragePath.Folder(version),
 		Availables:    make([]*PeerDiscovered, 0, maxPeers),
@@ -55,25 +55,25 @@ func (x *PeerDiscovery) RandomPeer(timeout time.Duration) (*PeerDiscovered, bool
 	for retry := 0; retry < 10; retry++ {
 		peer := x.Availables[rand.Intn(len(x.Availables))]
 		if peer.Revision != x.revision {
-			LogDebug(LogCluster, "ignore worker %v from different revision: current=%v, worker=%v", peer.FQDN, x.revision, peer.Revision)
+			base.LogDebug(LogCluster, "ignore worker %v from different revision: current=%v, worker=%v", peer.FQDN, x.revision, peer.Revision)
 			continue
 		}
 
 		if now.Sub(peer.LastSeen) > timeout {
-			LogDebug(LogCluster, "ignore timeouted worker %v", peer.FQDN)
+			base.LogDebug(LogCluster, "ignore timeouted worker %v", peer.FQDN)
 			continue
 		}
 
-		LogVerbose(LogCluster, "selected random peer %v", peer.FQDN)
+		base.LogVerbose(LogCluster, "selected random peer %v", peer.FQDN)
 		return peer, true
 	}
 
 	return nil, false
 }
 
-func (x *PeerDiscovery) getPeerAnnounceFile(peer *PeerInfo) Filename {
+func (x *PeerDiscovery) getPeerAnnounceFile(peer *PeerInfo) utils.Filename {
 	announceFile := x.BrokeragePath.File(peer.FQDN)
-	UFS.Mkdir(announceFile.Dirname)
+	utils.UFS.Mkdir(announceFile.Dirname)
 	return announceFile
 }
 
@@ -83,9 +83,9 @@ func (x *PeerDiscovery) Announce(peer *PeerInfo) error {
 
 	announceFile := x.getPeerAnnounceFile(peer)
 
-	LogVerbose(LogCluster, "announce peer on brokerage %q", announceFile)
+	base.LogVerbose(LogCluster, "announce peer on brokerage %q", announceFile)
 
-	return UFS.CreateFile(announceFile, func(f *os.File) error {
+	return utils.UFS.CreateFile(announceFile, func(f *os.File) error {
 		return peer.Save(f)
 	})
 }
@@ -95,24 +95,24 @@ func (x *PeerDiscovery) Touch(peer *PeerInfo) error {
 
 	announceFile := x.getPeerAnnounceFile(peer)
 
-	LogVerbose(LogCluster, "touch peer on brokerage %q", announceFile)
+	base.LogVerbose(LogCluster, "touch peer on brokerage %q", announceFile)
 
-	return UFS.Touch(announceFile)
+	return utils.UFS.Touch(announceFile)
 }
 
 func (x *PeerDiscovery) Disapear(peer *PeerInfo) error {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 
-	LogVerbose(LogCluster, "remove %v peer from brokerage %q", peer.FQDN, x.BrokeragePath)
-	return UFS.Remove(x.BrokeragePath.File(peer.FQDN))
+	base.LogVerbose(LogCluster, "remove %v peer from brokerage %q", peer.FQDN, x.BrokeragePath)
+	return utils.UFS.Remove(x.BrokeragePath.File(peer.FQDN))
 }
 
 func (x *PeerDiscovery) Discover(retryCount int, timeout time.Duration) (int, error) {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 
-	defer LogBenchmark(LogCluster, "peer discovery").Close()
+	defer base.LogBenchmark(LogCluster, "peer discovery").Close()
 
 	// update discovery revision (for GC-ing old peers)
 	x.revision++
@@ -126,7 +126,10 @@ func (x *PeerDiscovery) Discover(retryCount int, timeout time.Duration) (int, er
 
 	// refresh brokerage path file listing
 	x.BrokeragePath.Invalidate()
-	files := x.BrokeragePath.Files()
+	files, err := x.BrokeragePath.Files()
+	if err != nil {
+		return 0, err
+	}
 
 	// shuffle input files: we will only save MaxPeers records at most
 	rand.Shuffle(len(files), func(i, j int) {
@@ -165,7 +168,7 @@ func (x *PeerDiscovery) Discover(retryCount int, timeout time.Duration) (int, er
 		if st, err := file.Info(); err == nil {
 
 			if since := now.Sub(st.ModTime()); since > timeout {
-				LogWarning(LogCluster, "ignore peer timeout %q: %v (%s)", file, err, since)
+				base.LogWarning(LogCluster, "ignore peer timeout %q: %v (%s)", file, err, since)
 				continue
 			}
 
@@ -180,14 +183,14 @@ func (x *PeerDiscovery) Discover(retryCount int, timeout time.Duration) (int, er
 			}
 
 		} else {
-			LogWarning(LogCluster, "ignore invalid peer stat %q: %v", file, err)
+			base.LogWarning(LogCluster, "ignore invalid peer stat %q: %v", file, err)
 			continue
 		}
 
-		if err := UFS.Open(file, func(r io.Reader) error {
+		if err := utils.UFS.Open(file, func(r io.Reader) error {
 			return peer.Load(r)
 		}); err != nil {
-			LogWarning(LogCluster, "ignore invalid peer info %q: %v", file, err)
+			base.LogWarning(LogCluster, "ignore invalid peer info %q: %v", file, err)
 			continue
 		}
 
@@ -200,13 +203,13 @@ func (x *PeerDiscovery) Discover(retryCount int, timeout time.Duration) (int, er
 		}
 	}
 
-	// delete all peer infos from previous revisions (in case a worker disapeared)
+	// delete all peer infos from previous revisions (in case a worker disappeared)
 	for basename, peer := range x.Peers {
 		if peer.Revision != x.revision {
 			delete(x.Peers, basename)
 		}
 	}
 
-	LogVerbose(LogCluster, "discovered %d peers", len(x.Peers))
+	base.LogVerbose(LogCluster, "discovered %d peers", len(x.Peers))
 	return len(x.Peers), nil
 }

@@ -3,52 +3,49 @@ package cmd
 import (
 	"os"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/compile"
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/compile"
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
-var CommandDistClean = NewCommand(
+var CommandDistClean = newCompletionCommand[utils.BuildAlias, *utils.BuildAlias](
 	"Compilation",
 	"distclean",
 	"erase generated artifacts",
-	OptionCommandCompletionArgs(),
-	OptionCommandRun(func(cc CommandContext) error {
-		args := GetCompletionArgs()
-		if len(args.Inputs) == 0 {
-			LogClaim(LogCommand, "dist-clean all output folders and database")
+	func(cc utils.CommandContext, ca *CompletionArgs[utils.BuildAlias, *utils.BuildAlias]) error {
+		if len(ca.Inputs) == 0 {
+			base.LogClaim(utils.LogCommand, "dist-clean all output folders and database")
 
-			distCleanDir(UFS.Binaries)
-			distCleanDir(UFS.Cache)
-			distCleanDir(UFS.Generated)
-			distCleanDir(UFS.Intermediate)
-			distCleanDir(UFS.Projects)
-			distCleanDir(UFS.Transient)
+			distCleanDir(utils.UFS.Binaries)
+			distCleanDir(utils.UFS.Cache)
+			distCleanDir(utils.UFS.Generated)
+			distCleanDir(utils.UFS.Intermediate)
+			distCleanDir(utils.UFS.Projects)
+			distCleanDir(utils.UFS.Transient)
 
 			// clean the database, not the config
-			distCleanFile(CommandEnv.DatabasePath())
+			distCleanFile(utils.CommandEnv.DatabasePath())
 
 		} else {
-			re := MakeGlobRegexp(Stringize(args.Inputs...)...)
-			LogClaim(LogCommand, "dist-clean all targets matching /%v/", re)
+			re := utils.MakeGlobRegexp(base.Stringize(ca.Inputs...)...)
+			base.LogClaim(utils.LogCommand, "dist-clean all targets matching /%v/", re)
 
-			units, err := NeedAllBuildUnits(CommandEnv.BuildGraph().GlobalContext())
+			units, err := compile.NeedAllBuildUnits(utils.CommandEnv.BuildGraph().GlobalContext())
 			if err != nil {
 				return err
 			}
 
 			for _, unit := range units {
 				if re.MatchString(unit.TargetAlias.String()) {
-					LogInfo(LogCommand, "dist-clean %q build unit", unit.String())
+					base.LogInfo(utils.LogCommand, "dist-clean %q build unit", unit.String())
 
 					distCleanDir(unit.GeneratedDir)
 					distCleanDir(unit.IntermediateDir)
 
-					unit.OutputFile.Dirname.MatchFiles(func(f Filename) error {
+					unit.OutputFile.Dirname.MatchFiles(func(f utils.Filename) error {
 						distCleanFile(f)
 						return nil
-					}, MakeGlobRegexp(unit.OutputFile.ReplaceExt(".*").Basename))
+					}, utils.MakeGlobRegexp(unit.OutputFile.ReplaceExt(".*").Basename))
 				}
 			}
 
@@ -56,24 +53,24 @@ var CommandDistClean = NewCommand(
 		}
 
 		return nil
-	}))
+	})
 
-func distCleanFile(f Filename) {
+func distCleanFile(f utils.Filename) {
 	if f.Exists() {
-		LogVerbose(LogCommand, "remove file '%v'", f)
+		base.LogVerbose(utils.LogCommand, "remove file '%v'", f)
 		err := os.Remove(f.String())
 		if err != nil {
-			LogWarning(LogCommand, "distclean: %v", err)
+			base.LogWarning(utils.LogCommand, "distclean: %v", err)
 		}
 		f.Invalidate()
 	}
 }
-func distCleanDir(d Directory) {
+func distCleanDir(d utils.Directory) {
 	if d.Exists() {
-		LogVerbose(LogCommand, "remove directory '%v'", d)
+		base.LogVerbose(utils.LogCommand, "remove directory '%v'", d)
 		err := os.RemoveAll(d.String())
 		if err != nil {
-			LogWarning(LogCommand, "distclean: %v", err)
+			base.LogWarning(utils.LogCommand, "distclean: %v", err)
 		}
 		d.Invalidate()
 	}

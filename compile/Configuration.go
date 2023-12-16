@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/poppolopoppo/ppb/internal/base"
+
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
@@ -26,13 +28,13 @@ func (x *ConfigurationAlias) Alias() BuildAlias {
 	return MakeBuildAlias("Rules", "Config", x.String())
 }
 func (x *ConfigurationAlias) String() string {
-	Assert(func() bool { return x.Valid() })
+	base.Assert(func() bool { return x.Valid() })
 	return x.ConfigName
 }
-func (x *ConfigurationAlias) Serialize(ar Archive) {
+func (x *ConfigurationAlias) Serialize(ar base.Archive) {
 	ar.String(&x.ConfigName)
 }
-func (x *ConfigurationAlias) Compare(o ConfigurationAlias) int {
+func (x ConfigurationAlias) Compare(o ConfigurationAlias) int {
 	return strings.Compare(x.ConfigName, o.ConfigName)
 }
 func (x *ConfigurationAlias) Set(in string) (err error) {
@@ -40,14 +42,15 @@ func (x *ConfigurationAlias) Set(in string) (err error) {
 	return nil
 }
 func (x *ConfigurationAlias) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *ConfigurationAlias) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *ConfigurationAlias) AutoComplete(in AutoComplete) {
-	AllConfigurations.Range(func(s string, c Configuration) {
-		in.Add(c.String())
+func (x *ConfigurationAlias) AutoComplete(in base.AutoComplete) {
+	AllConfigurations.Range(func(s string, c Configuration) error {
+		in.Add(c.String(), c.GetConfig().ConfigurationAlias.Alias().String())
+		return nil
 	})
 }
 
@@ -55,7 +58,7 @@ func (x *ConfigurationAlias) AutoComplete(in AutoComplete) {
  * Configuration Rules
  ***************************************/
 
-var AllConfigurations SharedMapT[string, Configuration]
+var AllConfigurations base.SharedMapT[string, Configuration]
 
 type ConfigRules struct {
 	ConfigurationAlias ConfigurationAlias
@@ -67,7 +70,7 @@ type ConfigRules struct {
 
 type Configuration interface {
 	GetConfig() *ConfigRules
-	Serializable
+	base.Serializable
 	fmt.Stringer
 }
 
@@ -84,7 +87,7 @@ func (rules *ConfigRules) GetCpp() *CppRules {
 func (rules *ConfigRules) GetFacet() *Facet {
 	return rules.Facet.GetFacet()
 }
-func (rules *ConfigRules) Serialize(ar Archive) {
+func (rules *ConfigRules) Serialize(ar base.Archive) {
 	ar.Serializable(&rules.ConfigurationAlias)
 	ar.Serializable(&rules.ConfigType)
 
@@ -100,7 +103,7 @@ func (rules *ConfigRules) Decorate(_ *CompileEnv, unit *Unit) error {
 	case PAYLOAD_SHAREDLIB:
 		unit.Facet.Defines.Append("BUILD_LINK_DYNAMIC")
 	default:
-		UnreachableCode()
+		base.UnreachableCode()
 	}
 	return nil
 }
@@ -111,17 +114,17 @@ var Configuration_Debug = &ConfigRules{
 	CppRules: CppRules{
 		CppRtti:       CPPRTTI_ENABLED,
 		DebugSymbols:  DEBUG_EMBEDDED,
-		DebugFastLink: INHERITABLE_TRUE,
+		DebugFastLink: base.INHERITABLE_TRUE,
 		Exceptions:    EXCEPTION_ENABLED,
 		Link:          LINK_STATIC,
 		PCH:           PCH_MONOLITHIC,
 		Sanitizer:     SANITIZER_NONE,
 		Unity:         UNITY_AUTOMATIC,
-		LTO:           INHERITABLE_FALSE,
+		LTO:           base.INHERITABLE_FALSE,
 	},
 	Facet: Facet{
 		Defines: []string{"DEBUG", "_DEBUG"},
-		Tags:    MakeEnumSet(TAG_DEBUG),
+		Tags:    base.MakeEnumSet(TAG_DEBUG),
 	},
 }
 var Configuration_FastDebug = &ConfigRules{
@@ -130,18 +133,18 @@ var Configuration_FastDebug = &ConfigRules{
 	CppRules: CppRules{
 		CppRtti:       CPPRTTI_ENABLED,
 		DebugSymbols:  DEBUG_HOTRELOAD,
-		DebugFastLink: INHERITABLE_INHERIT,
+		DebugFastLink: base.INHERITABLE_INHERIT,
 		Exceptions:    EXCEPTION_ENABLED,
 		Link:          LINK_DYNAMIC,
 		PCH:           PCH_MONOLITHIC,
 		Sanitizer:     SANITIZER_NONE,
 		Unity:         UNITY_DISABLED,
-		LTO:           INHERITABLE_FALSE,
-		Incremental:   INHERITABLE_TRUE,
+		LTO:           base.INHERITABLE_FALSE,
+		Incremental:   base.INHERITABLE_TRUE,
 	},
 	Facet: Facet{
 		Defines: []string{"DEBUG", "_DEBUG", "FASTDEBUG"},
-		Tags:    MakeEnumSet(TAG_FASTDEBUG, TAG_DEBUG),
+		Tags:    base.MakeEnumSet(TAG_FASTDEBUG, TAG_DEBUG),
 	},
 }
 var Configuration_Devel = &ConfigRules{
@@ -150,17 +153,17 @@ var Configuration_Devel = &ConfigRules{
 	CppRules: CppRules{
 		CppRtti:       CPPRTTI_DISABLED,
 		DebugSymbols:  DEBUG_EMBEDDED,
-		DebugFastLink: INHERITABLE_FALSE,
+		DebugFastLink: base.INHERITABLE_FALSE,
 		Exceptions:    EXCEPTION_ENABLED,
 		Link:          LINK_STATIC,
 		PCH:           PCH_MONOLITHIC,
 		Sanitizer:     SANITIZER_NONE,
 		Unity:         UNITY_AUTOMATIC,
-		LTO:           INHERITABLE_INHERIT,
+		LTO:           base.INHERITABLE_INHERIT,
 	},
 	Facet: Facet{
 		Defines: []string{"RELEASE", "NDEBUG"},
-		Tags:    MakeEnumSet(TAG_DEVEL, TAG_NDEBUG),
+		Tags:    base.MakeEnumSet(TAG_DEVEL, TAG_NDEBUG),
 	},
 }
 var Configuration_Test = &ConfigRules{
@@ -170,16 +173,16 @@ var Configuration_Test = &ConfigRules{
 		CppRtti:       CPPRTTI_DISABLED,
 		DebugSymbols:  DEBUG_EMBEDDED,
 		Exceptions:    EXCEPTION_ENABLED,
-		DebugFastLink: INHERITABLE_INHERIT,
+		DebugFastLink: base.INHERITABLE_INHERIT,
 		Link:          LINK_STATIC,
 		PCH:           PCH_MONOLITHIC,
 		Sanitizer:     SANITIZER_NONE,
 		Unity:         UNITY_AUTOMATIC,
-		LTO:           INHERITABLE_TRUE,
+		LTO:           base.INHERITABLE_TRUE,
 	},
 	Facet: Facet{
 		Defines: []string{"RELEASE", "NDEBUG", "PROFILING_ENABLED"},
-		Tags:    MakeEnumSet(TAG_TEST, TAG_NDEBUG, TAG_PROFILING),
+		Tags:    base.MakeEnumSet(TAG_TEST, TAG_NDEBUG, TAG_PROFILING),
 	},
 }
 var Configuration_Shipping = &ConfigRules{
@@ -188,19 +191,19 @@ var Configuration_Shipping = &ConfigRules{
 	CppRules: CppRules{
 		CppRtti:       CPPRTTI_DISABLED,
 		DebugSymbols:  DEBUG_SYMBOLS,
-		DebugFastLink: INHERITABLE_FALSE,
+		DebugFastLink: base.INHERITABLE_FALSE,
 		Exceptions:    EXCEPTION_ENABLED,
 		Link:          LINK_STATIC,
 		PCH:           PCH_MONOLITHIC,
 		Sanitizer:     SANITIZER_NONE,
 		Unity:         UNITY_AUTOMATIC,
-		LTO:           INHERITABLE_TRUE,
-		Deterministic: INHERITABLE_TRUE,
-		Incremental:   INHERITABLE_FALSE,
+		LTO:           base.INHERITABLE_TRUE,
+		Deterministic: base.INHERITABLE_TRUE,
+		Incremental:   base.INHERITABLE_FALSE,
 	},
 	Facet: Facet{
 		Defines: []string{"RELEASE", "NDEBUG", "FINAL_RELEASE"},
-		Tags:    MakeEnumSet(TAG_SHIPPING, TAG_NDEBUG),
+		Tags:    base.MakeEnumSet(TAG_SHIPPING, TAG_NDEBUG),
 	},
 }
 
@@ -218,8 +221,17 @@ func (x *BuildConfig) Alias() BuildAlias {
 func (x *BuildConfig) Build(bc BuildContext) error {
 	return nil
 }
-func (x *BuildConfig) Serialize(ar Archive) {
-	SerializeExternal(ar, &x.Configuration)
+func (x *BuildConfig) Serialize(ar base.Archive) {
+	base.SerializeExternal(ar, &x.Configuration)
+}
+
+func GetAllConfigurationAliases() (result []ConfigurationAlias) {
+	configs := AllConfigurations.Values()
+	result = make([]ConfigurationAlias, len(configs))
+	for i, it := range configs {
+		result[i] = it.GetConfig().ConfigurationAlias
+	}
+	return
 }
 
 func GetBuildConfig(configAlias ConfigurationAlias) BuildFactoryTyped[*BuildConfig] {
@@ -242,17 +254,21 @@ func ForeachBuildConfig(each func(BuildFactoryTyped[*BuildConfig]) error) error 
 	return nil
 }
 
-func FindConfiguration(in string) (result Configuration, err error) {
+func FindConfiguration(in string) (Configuration, error) {
+	if config, ok := AllConfigurations.Get(in); ok {
+		return config, nil
+	}
+
 	query := strings.ToLower(in)
-	names := AllConfigurations.Keys()
-	autocomplete := NewAutoComplete(in)
-	for _, name := range names {
-		autocomplete.Add(name)
-		if strings.ToLower(name) == query {
-			result, _ = AllConfigurations.Get(name)
-			return
+	autocomplete := base.NewAutoComplete(in, 3)
+
+	for _, key := range AllConfigurations.Keys() {
+		config, _ := AllConfigurations.Get(key)
+		autocomplete.Add(key, config.GetConfig().ConfigurationAlias.Alias().String())
+		if strings.ToLower(key) == query {
+			return config, nil
 		}
 	}
-	err = fmt.Errorf("unknown configuration %q, did you mean %q?", in, autocomplete.Results(1)[0])
-	return
+
+	return nil, fmt.Errorf("unknown configuration %q, did you mean %v?", in, autocomplete.Results())
 }

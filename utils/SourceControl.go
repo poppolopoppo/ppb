@@ -6,13 +6,16 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/poppolopoppo/ppb/internal/base"
 )
 
-var LogSourceControl = NewLogCategory("SourceControl")
+var LogSourceControl = base.NewLogCategory("SourceControl")
 
 type SourceControlProvider interface {
 	GetModifiedItems(*SourceControlModifiedFiles) error
@@ -36,11 +39,11 @@ func (x *SourceControlStatus) Alias() BuildAlias {
 func (x *SourceControlStatus) Build(bc BuildContext) (err error) {
 	err = GetSourceControlProvider().GetStatus(x)
 	if err == nil {
-		LogVerbose(LogSourceControl, "branch=%s, revision=%s, timestamp=%s", x.Branch, x.Revision, x.Timestamp)
+		base.LogVerbose(LogSourceControl, "branch=%s, revision=%s, timestamp=%s", x.Branch, x.Revision, x.Timestamp)
 	}
 	return
 }
-func (x *SourceControlStatus) Serialize(ar Archive) {
+func (x *SourceControlStatus) Serialize(ar base.Archive) {
 	ar.Serializable(&x.Path)
 	ar.String(&x.Branch)
 	ar.String(&x.Revision)
@@ -68,23 +71,33 @@ type SourceControlModifiedFiles struct {
 func (x *SourceControlModifiedFiles) Alias() BuildAlias {
 	return MakeBuildAlias("SourceControl", "ModifiedFiles", x.Path.String())
 }
-func (x *SourceControlModifiedFiles) HasUnversionedModifications(files ...Filename) bool {
-	for _, f := range files {
-		if x.ModifiedFiles.Contains(f) {
-			return true
+func (x *SourceControlModifiedFiles) GetUnversionedModificationsIndex(files ...Filename) int {
+	for i, f := range files {
+		found := sort.Search(len(x.ModifiedFiles), func(i int) bool {
+			return f.Compare(x.ModifiedFiles[i]) <= 0
+		})
+		if found < len(x.ModifiedFiles) && f == x.ModifiedFiles[found] {
+			return i
 		}
+
 		for _, folder := range x.ModifiedDirs {
 			if f.Dirname.IsIn(folder) {
-				return true
+				return i
 			}
 		}
 	}
-	return false
+	return len(files)
+}
+func (x *SourceControlModifiedFiles) HasUnversionedModifications(files ...Filename) bool {
+	return x.GetUnversionedModificationsIndex(files...) < len(files)
 }
 func (x *SourceControlModifiedFiles) Build(bc BuildContext) (err error) {
 	if err = GetSourceControlProvider().GetModifiedItems(x); err != nil {
 		return
 	}
+
+	x.ModifiedDirs.Sort()
+	x.ModifiedFiles.Sort()
 
 	// look for the date of the most recent modification
 	var timestamp time.Time
@@ -107,7 +120,7 @@ func (x *SourceControlModifiedFiles) Build(bc BuildContext) (err error) {
 	bc.Annotate(fmt.Sprintf("%d files, %d folders", len(x.ModifiedFiles), len(x.ModifiedDirs)))
 	return
 }
-func (x *SourceControlModifiedFiles) Serialize(ar Archive) {
+func (x *SourceControlModifiedFiles) Serialize(ar base.Archive) {
 	ar.Serializable(&x.Path)
 	ar.Serializable(&x.ModifiedDirs)
 	ar.Serializable(&x.ModifiedFiles)
@@ -169,7 +182,7 @@ func NewGitSourceControl(repository Directory) (*GitSourceControl, error) {
 
 func (git *GitSourceControl) Command(name string, args ...string) ([]byte, error) {
 	args = append([]string{"--no-optional-locks", name}, args...)
-	LogVeryVerbose(LogSourceControl, "run git command %v", MakeStringer(func() string {
+	base.LogVeryVerbose(LogSourceControl, "run git command %v", base.MakeStringer(func() string {
 		return strings.Join(args, " ")
 	}))
 
@@ -179,7 +192,7 @@ func (git *GitSourceControl) Command(name string, args ...string) ([]byte, error
 
 	output, err := proc.Output()
 	if err != nil {
-		LogError(LogSourceControl, "git command %v returned %v: %v", strings.Join(args, " "), err, output)
+		base.LogError(LogSourceControl, "git command %v returned %v: %v", strings.Join(args, " "), err, output)
 	}
 
 	return output, err
@@ -218,37 +231,37 @@ func (git *GitSourceControl) getModifiedFilesInCache() (*SourceControlModifiedFi
 			continue
 		}
 
-		line := UnsafeStringFromBytes(token)
+		line := base.UnsafeStringFromBytes(token)
 
 		if strings.HasPrefix(line, "A ") || strings.HasPrefix(line, " M") || strings.HasPrefix(line, "AM") || strings.HasPrefix(line, "??") {
 			path := strings.TrimSpace(line[3:])
 			stat, err := os.Stat(path)
 			if err != nil {
-				LogError(LogSourceControl, "ignore invalid modified path: %v", err)
+				base.LogError(LogSourceControl, "ignore invalid modified path: %v", err)
 				continue
 			}
 
 			if stat.IsDir() {
 				dir := git.Repository.AbsoluteFolder(path)
-				MakeDirectoryInfo(dir, &stat) // cache os.Stat() result
+				FileInfos.SetDirectoryInfo(dir, stat, nil)
 
 				modified.ModifiedDirs.Append(dir)
 
-				LogVeryVerbose(LogSourceControl, "git sees directory %q as modified", dir)
+				base.LogVeryVerbose(LogSourceControl, "git sees directory %q as modified", dir)
 
 			} else {
 				file := git.Repository.AbsoluteFile(path)
-				MakeFileInfo(file, &stat) // cache os.Stat() result
+				FileInfos.SetFileInfo(file, stat, nil)
 
 				modified.ModifiedFiles.Append(file)
 
-				LogVeryVerbose(LogSourceControl, "git sees file %q as modified", file)
+				base.LogVeryVerbose(LogSourceControl, "git sees file %q as modified", file)
 			}
 		}
 	}
 
 	if err = reader.Err(); err == nil {
-		LogVeryVerbose(LogSourceControl, "git found %d modified files and %d modified directories in whole repository", len(modified.ModifiedFiles), len(modified.ModifiedDirs))
+		base.LogVeryVerbose(LogSourceControl, "git found %d modified files and %d modified directories in whole repository", len(modified.ModifiedFiles), len(modified.ModifiedDirs))
 		git.modifiedFilesInCache = modified
 	}
 	return git.modifiedFilesInCache, err
@@ -264,10 +277,10 @@ func (git *GitSourceControl) GetModifiedItems(modified *SourceControlModifiedFil
 	}
 
 	// then filter global results by subfolder
-	modified.ModifiedDirs = RemoveUnless(func(d Directory) bool { return d.IsIn(modified.Path) }, global.ModifiedDirs...)
-	modified.ModifiedFiles = RemoveUnless(func(f Filename) bool { return f.IsIn(modified.Path) }, global.ModifiedFiles...)
+	modified.ModifiedDirs = base.RemoveUnless(func(d Directory) bool { return d.IsIn(modified.Path) }, global.ModifiedDirs...)
+	modified.ModifiedFiles = base.RemoveUnless(func(f Filename) bool { return f.IsIn(modified.Path) }, global.ModifiedFiles...)
 
-	LogVeryVerbose(LogSourceControl, "git found %d modified files and %d modified directories in %v", len(modified.ModifiedFiles), len(modified.ModifiedDirs))
+	base.LogVeryVerbose(LogSourceControl, "git found %d modified files and %d modified directories in %v", len(modified.ModifiedFiles), len(modified.ModifiedDirs))
 	return nil
 }
 func (git *GitSourceControl) GetStatus(status *SourceControlStatus) error {
@@ -280,7 +293,7 @@ func (git *GitSourceControl) GetStatus(status *SourceControlStatus) error {
 			return nil // output is empty when the path is known to Git (ignored or not git-added yet for instance)
 		}
 
-		line := strings.TrimSpace(UnsafeStringFromBytes(outp))
+		line := strings.TrimSpace(base.UnsafeStringFromBytes(outp))
 		line = strings.Trim(line, "\"")
 
 		log := strings.SplitN(line, ";", 4)
@@ -304,9 +317,9 @@ func (git *GitSourceControl) GetStatus(status *SourceControlStatus) error {
 	}
 }
 
-var GetSourceControlProvider = Memoize(func() SourceControlProvider {
+var GetSourceControlProvider = base.Memoize(func() SourceControlProvider {
 	if git, err := NewGitSourceControl(UFS.Root); err == nil {
-		LogVerbose(LogSourceControl, "found Git source control in %q", git.Repository)
+		base.LogVerbose(LogSourceControl, "found Git source control in %q", git.Repository)
 		return git
 	}
 	return &DummySourceControl{}

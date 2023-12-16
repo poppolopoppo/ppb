@@ -6,8 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
 )
 
 /***************************************
@@ -23,7 +22,7 @@ const (
 	ARCH_ARM64
 )
 
-var CurrentArch = Memoize(func() ArchType {
+var CurrentArch = base.Memoize(func() ArchType {
 	switch runtime.GOARCH {
 	case "386":
 		return ARCH_X86
@@ -34,7 +33,7 @@ var CurrentArch = Memoize(func() ArchType {
 	case "arm64":
 		return ARCH_ARM64
 	default:
-		UnexpectedValue(runtime.GOARCH)
+		base.UnexpectedValue(runtime.GOARCH)
 		return ARCH_ARM
 	}
 })
@@ -50,6 +49,21 @@ func ArchTypes() []ArchType {
 func (x ArchType) Equals(o ArchType) bool {
 	return (x == o)
 }
+func (x ArchType) Description() string {
+	switch x {
+	case ARCH_X86:
+		return "Intel x86 32 bits"
+	case ARCH_X64:
+		return "AMD x64 64 bits"
+	case ARCH_ARM:
+		return "unknown ARM 32 bits"
+	case ARCH_ARM64:
+		return "unknown ARM64 64 bits"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x ArchType) String() string {
 	switch x {
 	case ARCH_X86:
@@ -61,7 +75,7 @@ func (x ArchType) String() string {
 	case ARCH_ARM64:
 		return "ARM64"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -76,22 +90,22 @@ func (x *ArchType) Set(in string) (err error) {
 	case ARCH_ARM64.String():
 		*x = ARCH_ARM64
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *ArchType) Serialize(ar Archive) {
+func (x *ArchType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x ArchType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *ArchType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *ArchType) AutoComplete(in AutoComplete) {
+func (x *ArchType) AutoComplete(in base.AutoComplete) {
 	for _, it := range ArchTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -101,7 +115,7 @@ func (x *ArchType) AutoComplete(in AutoComplete) {
 
 type CompilerFeature int32
 
-type CompilerFeatureFlags = EnumSet[CompilerFeature, *CompilerFeature]
+type CompilerFeatureFlags = base.EnumSet[CompilerFeature, *CompilerFeature]
 
 const (
 	COMPILER_ALLOW_CACHING CompilerFeature = iota
@@ -122,6 +136,23 @@ func CompilerFeatures() []CompilerFeature {
 }
 func (x CompilerFeature) Ord() int32       { return int32(x) }
 func (x *CompilerFeature) FromOrd(v int32) { *x = CompilerFeature(v) }
+func (x CompilerFeature) Description() string {
+	switch x {
+	case COMPILER_ALLOW_CACHING:
+		return "compiler payload can be stored in cache"
+	case COMPILER_ALLOW_DISTRIBUTION:
+		return "compiler can be executed on a remote worker"
+	case COMPILER_ALLOW_RESPONSEFILE:
+		return "compiler allows usage of response files for long command-lines"
+	case COMPILER_ALLOW_SOURCEMAPPING:
+		return "compiler can remap source for debug files"
+	case COMPILER_ALLOW_EDITANDCONTINUE:
+		return "compiler can generate a hot-reloadable payload"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x CompilerFeature) String() string {
 	switch x {
 	case COMPILER_ALLOW_CACHING:
@@ -135,7 +166,7 @@ func (x CompilerFeature) String() string {
 	case COMPILER_ALLOW_EDITANDCONTINUE:
 		return "ALLOW_EDITANDCONTINUE"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -152,22 +183,22 @@ func (x *CompilerFeature) Set(in string) error {
 	case COMPILER_ALLOW_EDITANDCONTINUE.String():
 		*x = COMPILER_ALLOW_EDITANDCONTINUE
 	default:
-		return MakeUnexpectedValueError(x, in)
+		return base.MakeUnexpectedValueError(x, in)
 	}
 	return nil
 }
-func (x *CompilerFeature) Serialize(ar Archive) {
+func (x *CompilerFeature) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x CompilerFeature) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *CompilerFeature) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *CompilerFeature) AutoComplete(in AutoComplete) {
+func (x *CompilerFeature) AutoComplete(in base.AutoComplete) {
 	for _, it := range CompilerFeatures() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -207,7 +238,7 @@ func (x ConfigType) String() string {
 	case CONFIG_SHIPPING:
 		return "SHIPPING"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -224,22 +255,22 @@ func (x *ConfigType) Set(in string) (err error) {
 	case CONFIG_SHIPPING.String():
 		*x = CONFIG_SHIPPING
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *ConfigType) Serialize(ar Archive) {
+func (x *ConfigType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x ConfigType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *ConfigType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *ConfigType) AutoComplete(in AutoComplete) {
+func (x *ConfigType) AutoComplete(in base.AutoComplete) {
 	for _, it := range ConfigTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), "")
 	}
 }
 
@@ -262,6 +293,19 @@ func CppRttiTypes() []CppRttiType {
 		CPPRTTI_DISABLED,
 	}
 }
+func (x CppRttiType) Description() string {
+	switch x {
+	case CPPRTTI_INHERIT:
+		return "inherit default value from configuration"
+	case CPPRTTI_ENABLED:
+		return "enable C++ RunTime Type Information generation (dynamic_cast<> will be available)"
+	case CPPRTTI_DISABLED:
+		return "disable C++ RunTime Type Information generation (dynamic_cast<> won't be available)"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x CppRttiType) String() string {
 	switch x {
 	case CPPRTTI_INHERIT:
@@ -271,7 +315,7 @@ func (x CppRttiType) String() string {
 	case CPPRTTI_DISABLED:
 		return "DISABLED"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -287,22 +331,22 @@ func (x *CppRttiType) Set(in string) (err error) {
 	case CPPRTTI_DISABLED.String():
 		*x = CPPRTTI_DISABLED
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *CppRttiType) Serialize(ar Archive) {
+func (x *CppRttiType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x CppRttiType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *CppRttiType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *CppRttiType) AutoComplete(in AutoComplete) {
+func (x *CppRttiType) AutoComplete(in base.AutoComplete) {
 	for _, it := range CppRttiTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -331,6 +375,25 @@ func CppStdTypes() []CppStdType {
 		CPPSTD_11,
 	}
 }
+func (x CppStdType) Description() string {
+	switch x {
+	case CPPSTD_INHERIT:
+		return "inherit default value from configuration"
+	case CPPSTD_LATEST:
+		return "use latest C++ standard supported by the compiler"
+	case CPPSTD_20:
+		return "use C++20 standard"
+	case CPPSTD_17:
+		return "use C++17 standard"
+	case CPPSTD_14:
+		return "use C++14 standard"
+	case CPPSTD_11:
+		return "use C++11 standard"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x CppStdType) String() string {
 	switch x {
 	case CPPSTD_INHERIT:
@@ -346,7 +409,7 @@ func (x CppStdType) String() string {
 	case CPPSTD_11:
 		return "C++11"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -365,25 +428,25 @@ func (x *CppStdType) Set(in string) (err error) {
 	case CPPSTD_11.String():
 		*x = CPPSTD_11
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
 func (x CppStdType) IsInheritable() bool {
 	return x == CPPSTD_INHERIT
 }
-func (x *CppStdType) Serialize(ar Archive) {
+func (x *CppStdType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x CppStdType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *CppStdType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *CppStdType) AutoComplete(in AutoComplete) {
+func (x *CppStdType) AutoComplete(in base.AutoComplete) {
 	for _, it := range CppStdTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -410,6 +473,23 @@ func DebugTypes() []DebugType {
 		DEBUG_HOTRELOAD,
 	}
 }
+func (x DebugType) Description() string {
+	switch x {
+	case DEBUG_INHERIT:
+		return "inherit default value from configuration"
+	case DEBUG_DISABLED:
+		return "disable debugging symbols generation"
+	case DEBUG_EMBEDDED:
+		return "debugging symbols are embedded inside each compilation unit"
+	case DEBUG_SYMBOLS:
+		return "debugging symbols are stored in a Program Debugging Batabase (PDB)"
+	case DEBUG_HOTRELOAD:
+		return "debugging symbols are stored in a Program Debugging Batabase (PDB) with hot-reload support"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x DebugType) String() string {
 	switch x {
 	case DEBUG_INHERIT:
@@ -423,7 +503,7 @@ func (x DebugType) String() string {
 	case DEBUG_HOTRELOAD:
 		return "HOTRELOAD"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -443,22 +523,22 @@ func (x *DebugType) Set(in string) (err error) {
 	case DEBUG_HOTRELOAD.String():
 		*x = DEBUG_HOTRELOAD
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *DebugType) Serialize(ar Archive) {
+func (x *DebugType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x DebugType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *DebugType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *DebugType) AutoComplete(in AutoComplete) {
+func (x *DebugType) AutoComplete(in base.AutoComplete) {
 	for _, it := range DebugTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -481,6 +561,19 @@ func ExceptionTypes() []ExceptionType {
 		EXCEPTION_ENABLED,
 	}
 }
+func (x ExceptionType) Description() string {
+	switch x {
+	case EXCEPTION_INHERIT:
+		return "inherit default value from configuration"
+	case EXCEPTION_DISABLED:
+		return "disable C++ exception support"
+	case EXCEPTION_ENABLED:
+		return "enable C++ exception support"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x ExceptionType) String() string {
 	switch x {
 	case EXCEPTION_INHERIT:
@@ -490,7 +583,7 @@ func (x ExceptionType) String() string {
 	case EXCEPTION_ENABLED:
 		return "ENABLED"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -506,22 +599,22 @@ func (x *ExceptionType) Set(in string) (err error) {
 	case EXCEPTION_ENABLED.String():
 		*x = EXCEPTION_ENABLED
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *ExceptionType) Serialize(ar Archive) {
+func (x *ExceptionType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x ExceptionType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *ExceptionType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *ExceptionType) AutoComplete(in AutoComplete) {
+func (x *ExceptionType) AutoComplete(in base.AutoComplete) {
 	for _, it := range ExceptionTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -544,6 +637,19 @@ func LinkTypes() []LinkType {
 		LINK_DYNAMIC,
 	}
 }
+func (x LinkType) Description() string {
+	switch x {
+	case LINK_INHERIT:
+		return "inherit default value from configuration"
+	case LINK_STATIC:
+		return "compiler will produce a static library"
+	case LINK_DYNAMIC:
+		return "compiler will produce a shared library"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x LinkType) String() string {
 	switch x {
 	case LINK_INHERIT:
@@ -553,7 +659,7 @@ func (x LinkType) String() string {
 	case LINK_DYNAMIC:
 		return "DYNAMIC"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -569,22 +675,22 @@ func (x *LinkType) Set(in string) (err error) {
 	case LINK_DYNAMIC.String():
 		*x = LINK_DYNAMIC
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *LinkType) Serialize(ar Archive) {
+func (x *LinkType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x LinkType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *LinkType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *LinkType) AutoComplete(in AutoComplete) {
+func (x *LinkType) AutoComplete(in base.AutoComplete) {
 	for _, it := range LinkTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -610,6 +716,23 @@ func ModuleTypes() []ModuleType {
 		MODULE_HEADERS,
 	}
 }
+func (x ModuleType) Description() string {
+	switch x {
+	case MODULE_INHERIT:
+		return "inherit default value from configuration"
+	case MODULE_PROGRAM:
+		return "module will produce an executable program"
+	case MODULE_LIBRARY:
+		return "module will produce a library (static or dynamic)"
+	case MODULE_EXTERNAL:
+		return "module will produce a list of compiled objects"
+	case MODULE_HEADERS:
+		return "module will produce nothing, since it does not contain source files"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x ModuleType) String() string {
 	switch x {
 	case MODULE_INHERIT:
@@ -623,7 +746,7 @@ func (x ModuleType) String() string {
 	case MODULE_HEADERS:
 		return "HEADERS"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -640,25 +763,25 @@ func (x *ModuleType) Set(in string) (err error) {
 	case MODULE_HEADERS.String():
 		*x = MODULE_HEADERS
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
 func (x ModuleType) IsInheritable() bool {
 	return x == MODULE_INHERIT
 }
-func (x *ModuleType) Serialize(ar Archive) {
+func (x *ModuleType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x ModuleType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *ModuleType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *ModuleType) AutoComplete(in AutoComplete) {
+func (x *ModuleType) AutoComplete(in base.AutoComplete) {
 	for _, it := range ModuleTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -683,6 +806,21 @@ func PrecompiledHeaderTypes() []PrecompiledHeaderType {
 		PCH_SHARED,
 	}
 }
+func (x PrecompiledHeaderType) Description() string {
+	switch x {
+	case PCH_INHERIT:
+		return "inherit default value from configuration"
+	case PCH_DISABLED:
+		return "disable precompiled header usage"
+	case PCH_MONOLITHIC:
+		return "generate a dedicated precompiled header for this module"
+	case PCH_SHARED:
+		return "reuse a shared precompiled header for this module"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x PrecompiledHeaderType) String() string {
 	switch x {
 	case PCH_INHERIT:
@@ -694,7 +832,7 @@ func (x PrecompiledHeaderType) String() string {
 	case PCH_SHARED:
 		return "SHARED"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -712,22 +850,22 @@ func (x *PrecompiledHeaderType) Set(in string) (err error) {
 	case PCH_SHARED.String():
 		*x = PCH_SHARED
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *PrecompiledHeaderType) Serialize(ar Archive) {
+func (x *PrecompiledHeaderType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x PrecompiledHeaderType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *PrecompiledHeaderType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *PrecompiledHeaderType) AutoComplete(in AutoComplete) {
+func (x *PrecompiledHeaderType) AutoComplete(in base.AutoComplete) {
 	for _, it := range PrecompiledHeaderTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -770,6 +908,31 @@ func (x PayloadType) Ord() int32 {
 func (x *PayloadType) FromOrd(i int32) {
 	*(*int32)(x) = i
 }
+func (x PayloadType) Description() string {
+	switch x {
+	case PAYLOAD_EXECUTABLE:
+		return "executable program"
+	case PAYLOAD_OBJECTLIST:
+		return "collection of compiled objects"
+	case PAYLOAD_STATICLIB:
+		return "static library"
+	case PAYLOAD_SHAREDLIB:
+		return "shared dynamic library"
+	case PAYLOAD_PRECOMPILEDHEADER:
+		return "shared precompiled header"
+	case PAYLOAD_HEADERS:
+		return "header files"
+	case PAYLOAD_SOURCES:
+		return "source files"
+	case PAYLOAD_DEBUGSYMBOLS:
+		return "program debugging database"
+	case PAYLOAD_DEPENDENCIES:
+		return "source file dependency list"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x PayloadType) String() string {
 	switch x {
 	case PAYLOAD_EXECUTABLE:
@@ -791,7 +954,7 @@ func (x PayloadType) String() string {
 	case PAYLOAD_DEPENDENCIES:
 		return "DEPENDENCIES"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -816,7 +979,7 @@ func (x *PayloadType) Set(in string) (err error) {
 	case PAYLOAD_DEPENDENCIES.String():
 		*x = PAYLOAD_DEPENDENCIES
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
@@ -829,18 +992,18 @@ func (x PayloadType) Compare(o PayloadType) int {
 		return 1
 	}
 }
-func (x *PayloadType) Serialize(ar Archive) {
+func (x *PayloadType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x PayloadType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *PayloadType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *PayloadType) AutoComplete(in AutoComplete) {
+func (x *PayloadType) AutoComplete(in base.AutoComplete) {
 	for _, it := range PayloadTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -851,7 +1014,7 @@ func (x PayloadType) HasLinker() bool {
 	case PAYLOAD_OBJECTLIST, PAYLOAD_STATICLIB:
 	case PAYLOAD_HEADERS, PAYLOAD_SOURCES, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_DEBUGSYMBOLS, PAYLOAD_DEPENDENCIES:
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 	}
 	return false
 }
@@ -861,7 +1024,7 @@ func (x PayloadType) HasOutput() bool {
 		return true
 	case PAYLOAD_HEADERS, PAYLOAD_SOURCES, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_DEBUGSYMBOLS, PAYLOAD_DEPENDENCIES:
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 	}
 	return false
 }
@@ -871,7 +1034,7 @@ func (x PayloadType) HasMultipleInput() bool {
 		return true
 	case PAYLOAD_OBJECTLIST, PAYLOAD_HEADERS, PAYLOAD_SOURCES, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_DEBUGSYMBOLS, PAYLOAD_DEPENDENCIES:
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 	}
 	return false
 }
@@ -895,6 +1058,19 @@ func CompilerSupportTypes() []CompilerSupportType {
 		COMPILERSUPPORT_UNSUPPORTED,
 	}
 }
+func (x CompilerSupportType) Description() string {
+	switch x {
+	case COMPILERSUPPORT_INHERIT:
+		return "inherit default value from configuration"
+	case COMPILERSUPPORT_ALLOWED:
+		return "compiler supports this feature"
+	case COMPILERSUPPORT_UNSUPPORTED:
+		return "compiler do not support this feature"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x CompilerSupportType) String() string {
 	switch x {
 	case COMPILERSUPPORT_INHERIT:
@@ -904,7 +1080,7 @@ func (x CompilerSupportType) String() string {
 	case COMPILERSUPPORT_UNSUPPORTED:
 		return "UNSUPPORTED"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -920,22 +1096,22 @@ func (x *CompilerSupportType) Set(in string) (err error) {
 	case COMPILERSUPPORT_UNSUPPORTED.String():
 		*x = COMPILERSUPPORT_UNSUPPORTED
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *CompilerSupportType) Serialize(ar Archive) {
+func (x *CompilerSupportType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x CompilerSupportType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *CompilerSupportType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *CompilerSupportType) AutoComplete(in AutoComplete) {
+func (x *CompilerSupportType) AutoComplete(in base.AutoComplete) {
 	for _, it := range CompilerSupportTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -945,7 +1121,7 @@ func (x CompilerSupportType) Enabled() bool {
 		return true
 	case COMPILERSUPPORT_UNSUPPORTED, COMPILERSUPPORT_INHERIT:
 	default:
-		UnexpectedValuePanic(x, x)
+		base.UnexpectedValuePanic(x, x)
 	}
 	return false
 }
@@ -973,6 +1149,23 @@ func SanitizerTypes() []SanitizerType {
 		SANITIZER_UNDEFINED_BEHAVIOR,
 	}
 }
+func (x SanitizerType) Description() string {
+	switch x {
+	case SANITIZER_INHERIT:
+		return "inherit default value from configuration"
+	case SANITIZER_NONE:
+		return "don't use a sanitizer"
+	case SANITIZER_ADDRESS:
+		return "use address sanitizer for memory issues"
+	case SANITIZER_THREAD:
+		return "use thread sanitizer for race conditions"
+	case SANITIZER_UNDEFINED_BEHAVIOR:
+		return "use undefined behavior sanitizer to bad practices"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x SanitizerType) String() string {
 	switch x {
 	case SANITIZER_INHERIT:
@@ -986,7 +1179,7 @@ func (x SanitizerType) String() string {
 	case SANITIZER_UNDEFINED_BEHAVIOR:
 		return "UNDEFINED_BEHAVIOR"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -1009,22 +1202,22 @@ func (x *SanitizerType) Set(in string) (err error) {
 	case SANITIZER_UNDEFINED_BEHAVIOR.String():
 		*x = SANITIZER_UNDEFINED_BEHAVIOR
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *SanitizerType) Serialize(ar Archive) {
+func (x *SanitizerType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x SanitizerType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *SanitizerType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *SanitizerType) AutoComplete(in AutoComplete) {
+func (x *SanitizerType) AutoComplete(in base.AutoComplete) {
 	for _, it := range SanitizerTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -1034,7 +1227,7 @@ func (x *SanitizerType) AutoComplete(in AutoComplete) {
 
 type TagType int32
 
-type TagFlags = EnumSet[TagType, *TagType]
+type TagFlags = base.EnumSet[TagType, *TagType]
 
 const (
 	TAG_DEBUG TagType = iota
@@ -1059,6 +1252,27 @@ func TagTypes() []TagType {
 }
 func (x TagType) Ord() int32           { return int32(x) }
 func (x *TagType) FromOrd(value int32) { *x = TagType(value) }
+func (x TagType) Description() string {
+	switch x {
+	case TAG_DEBUG:
+		return "unit with use debug"
+	case TAG_NDEBUG:
+		return "unit won't use debug"
+	case TAG_PROFILING:
+		return "unit will support profiling tools"
+	case TAG_SHIPPING:
+		return "unit targets shipping for final release"
+	case TAG_DEVEL:
+		return "unit is aimed at developers for debugging"
+	case TAG_TEST:
+		return "unit is aimed at tester for AQ"
+	case TAG_FASTDEBUG:
+		return "unit will be compiled as a shared library for faster link times and hot-reload support"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x TagType) String() string {
 	switch x {
 	case TAG_DEBUG:
@@ -1076,7 +1290,7 @@ func (x TagType) String() string {
 	case TAG_FASTDEBUG:
 		return "FASTDEBUG"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -1097,22 +1311,22 @@ func (x *TagType) Set(in string) (err error) {
 	case TAG_FASTDEBUG.String():
 		*x = TAG_FASTDEBUG
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *TagType) Serialize(ar Archive) {
+func (x *TagType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x TagType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *TagType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *TagType) AutoComplete(in AutoComplete) {
+func (x *TagType) AutoComplete(in base.AutoComplete) {
 	for _, it := range TagTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -1138,6 +1352,21 @@ func UnityTypes() []UnityType {
 		UNITY_DISABLED,
 	}
 }
+func (x UnityType) Description() string {
+	switch x {
+	case UNITY_INHERIT:
+		return "inherit default value from configuration"
+	case UNITY_AUTOMATIC:
+		return "will bundle source files in large auto-generated unity files for faster compilation times"
+	case UNITY_DISABLED:
+		return "do not generate unity files, each file will be compiled individually"
+	default:
+		if x <= 0 {
+			base.LogPanic(LogCompile, "invalid unity type: %d", x.Ord())
+		}
+		return fmt.Sprint(int32(x))
+	}
+}
 func (x UnityType) String() string {
 	switch x {
 	case UNITY_INHERIT:
@@ -1148,7 +1377,7 @@ func (x UnityType) String() string {
 		return "DISABLED"
 	default:
 		if x <= 0 {
-			LogPanic(LogCompile, "invalid unity type: %d", x.Ord())
+			base.LogPanic(LogCompile, "invalid unity type: %d", x.Ord())
 		}
 		return fmt.Sprint(int32(x))
 	}
@@ -1165,26 +1394,26 @@ func (x *UnityType) Set(in string) error {
 	case UNITY_DISABLED.String():
 		*x = UNITY_DISABLED
 	default:
-		if i, err := strconv.Atoi(in); err == nil {
-			*x = UnityType(i) // explicit number
+		if i64, err := strconv.ParseInt(in, 10, 32); err == nil {
+			*x = UnityType(int32(i64)) // explicit number
 		} else {
 			return err
 		}
 	}
 	return nil
 }
-func (x *UnityType) Serialize(ar Archive) {
+func (x *UnityType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x UnityType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *UnityType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *UnityType) AutoComplete(in AutoComplete) {
+func (x *UnityType) AutoComplete(in base.AutoComplete) {
 	for _, it := range UnityTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -1207,6 +1436,19 @@ func VisibilityTypes() []VisibilityType {
 		RUNTIME,
 	}
 }
+func (x VisibilityType) Description() string {
+	switch x {
+	case PRIVATE:
+		return "private dependency can be referenced from private source files, but not from public"
+	case PUBLIC:
+		return "public dependency can be referenced from both private and public source files, and are transitive"
+	case RUNTIME:
+		return "runtime dependency can only be loaded at runtime from a shared-library"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x VisibilityType) String() string {
 	switch x {
 	case PRIVATE:
@@ -1216,7 +1458,7 @@ func (x VisibilityType) String() string {
 	case RUNTIME:
 		return "RUNTIME"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -1229,22 +1471,22 @@ func (x *VisibilityType) Set(in string) (err error) {
 	case RUNTIME.String():
 		*x = RUNTIME
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *VisibilityType) Serialize(ar Archive) {
+func (x *VisibilityType) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x VisibilityType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *VisibilityType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *VisibilityType) AutoComplete(in AutoComplete) {
+func (x *VisibilityType) AutoComplete(in base.AutoComplete) {
 	for _, it := range VisibilityTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -1311,12 +1553,12 @@ func (m VisibilityMask) String() (result string) {
 	}
 	return result
 }
-func (x *VisibilityMask) Serialize(ar Archive) {
+func (x *VisibilityMask) Serialize(ar base.Archive) {
 	ar.UInt32((*uint32)(x))
 }
 func (x VisibilityMask) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *VisibilityMask) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }

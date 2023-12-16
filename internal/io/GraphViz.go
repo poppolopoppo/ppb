@@ -4,14 +4,13 @@ import (
 	"fmt"
 	"io"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
 )
 
 // https://graphviz.org/doc/info/lang.html
 
 type GraphVizFile struct {
-	*StructuredFile
+	*base.StructuredFile
 	Directed bool
 }
 
@@ -47,13 +46,13 @@ type GraphVizAttributes struct {
 	Tooltip    string
 	FontColor  string
 	FontName   string
-	FontSize   InheritableInt
+	FontSize   base.InheritableInt
 	Shape      GraphVizShape
 	Style      GraphVizStyle
-	Scale      InheritableInt
-	Constraint InheritableBool
-	Compound   InheritableBool
-	Weight     InheritableInt
+	Scale      base.InheritableInt
+	Constraint base.InheritableBool
+	Compound   base.InheritableBool
+	Weight     base.InheritableInt
 }
 
 type GraphVizOptions struct {
@@ -165,7 +164,7 @@ func OptionGraphVizWeight(value int) GraphVizOptionFunc {
 
 func NewGraphVizFile(dst io.Writer) (result GraphVizFile) {
 	result = GraphVizFile{
-		StructuredFile: NewStructuredFile(dst, "  ", false),
+		StructuredFile: base.NewStructuredFile(dst, "  ", false),
 		Directed:       false,
 	}
 	return

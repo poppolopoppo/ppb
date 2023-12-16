@@ -3,8 +3,8 @@ package compile
 import (
 	"fmt"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
 type CustomRules struct {
@@ -17,7 +17,7 @@ type CustomRules struct {
 
 type Custom interface {
 	GetCustom() *CustomRules
-	Serializable
+	base.Serializable
 	fmt.Stringer
 }
 
@@ -28,14 +28,14 @@ func (rules *CustomRules) GetConfig() *CustomRules {
 	return rules
 }
 func (rules *CustomRules) GetCompiler() Compiler {
-	compiler, err := FindGlobalBuildable[Compiler](rules.CompilerAlias.Alias())
-	LogPanicIfFailed(LogCompile, err)
+	compiler, err := utils.FindGlobalBuildable[Compiler](rules.CompilerAlias.Alias())
+	base.LogPanicIfFailed(LogCompile, err)
 	return compiler
 }
 func (rules *CustomRules) GetFacet() *Facet {
 	return rules.Facet.GetFacet()
 }
-func (rules *CustomRules) Serialize(ar Archive) {
+func (rules *CustomRules) Serialize(ar base.Archive) {
 	ar.String(&rules.CustomName)
 
 	ar.Serializable(&rules.CompilerAlias)
@@ -51,9 +51,9 @@ func (list *CustomList) Append(it ...Custom) {
 func (list *CustomList) Prepend(it ...Custom) {
 	*list = append(it, *list...)
 }
-func (list *CustomList) Serialize(ar Archive) {
-	SerializeMany(ar, func(it *Custom) {
-		SerializeExternal(ar, it)
+func (list *CustomList) Serialize(ar base.Archive) {
+	base.SerializeMany(ar, func(it *Custom) {
+		base.SerializeExternal(ar, it)
 	}, (*[]Custom)(list))
 }
 
@@ -66,6 +66,6 @@ type CustomUnitList []CustomUnit
 func (list *CustomUnitList) Append(it ...CustomUnit) {
 	*list = append(*list, it...)
 }
-func (list *CustomUnitList) Serialize(ar Archive) {
-	SerializeSlice(ar, (*[]CustomUnit)(list))
+func (list *CustomUnitList) Serialize(ar base.Archive) {
+	base.SerializeSlice(ar, (*[]CustomUnit)(list))
 }

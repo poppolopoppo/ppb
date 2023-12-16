@@ -4,21 +4,13 @@ import (
 	"fmt"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/internal/io"
+	"github.com/poppolopoppo/ppb/internal/base"
+
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
+
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
-
-/***************************************
- * Target Build Order
- ***************************************/
-
-type TargetBuildOrder int32
-
-func (x *TargetBuildOrder) Serialize(ar Archive) {
-	ar.Int32((*int32)(x))
-}
 
 /***************************************
  * Target Alias
@@ -29,7 +21,7 @@ type TargetAlias struct {
 	ModuleAlias
 }
 
-type TargetAliases = SetT[TargetAlias]
+type TargetAliases = base.SetT[TargetAlias]
 
 func NewTargetAlias(module Module, platform Platform, config Configuration) TargetAlias {
 	return TargetAlias{
@@ -41,9 +33,12 @@ func (x *TargetAlias) Valid() bool {
 	return x.EnvironmentAlias.Valid() && x.ModuleAlias.Valid()
 }
 func (x TargetAlias) Alias() BuildAlias {
-	return MakeBuildAlias("Unit", x.String())
+	return MakeBuildAlias("Unit", x.PlatformName, x.ConfigName, x.ModuleAlias.NamespaceName, x.ModuleAlias.ModuleName)
 }
-func (x *TargetAlias) Serialize(ar Archive) {
+func (x TargetAlias) String() string {
+	return fmt.Sprintf("%v-%v-%v", x.ModuleAlias, x.PlatformName, x.ConfigName)
+}
+func (x *TargetAlias) Serialize(ar base.Archive) {
 	ar.Serializable(&x.EnvironmentAlias)
 	ar.Serializable(&x.ModuleAlias)
 }
@@ -70,23 +65,31 @@ func (x *TargetAlias) Set(in string) error {
 	}
 	return nil
 }
-func (x TargetAlias) String() string {
-	return fmt.Sprintf("%v-%v-%v", x.ModuleAlias, x.PlatformName, x.ConfigName)
-}
 func (x *TargetAlias) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *TargetAlias) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *TargetAlias) AutoComplete(in AutoComplete) {
-	for _, a := range FindBuildAliases(CommandEnv.BuildGraph(), "Unit") {
-		in.Add(strings.TrimPrefix(a.String(), "Unit://"))
-	}
+func (x *TargetAlias) AutoComplete(in base.AutoComplete) {
+	moduleAliases, err := NeedAllModuleAliases(CommandEnv.BuildGraph().GlobalContext())
+	base.LogPanicIfFailed(base.LogAutoComplete, err)
+
+	err = ForeachEnvironmentAlias(func(ea EnvironmentAlias) error {
+		for _, ma := range moduleAliases {
+			targetAlias := TargetAlias{
+				EnvironmentAlias: ea,
+				ModuleAlias:      ma,
+			}
+			in.Add(targetAlias.String(), "")
+		}
+		return nil
+	})
+	base.LogPanicIfFailed(base.LogAutoComplete, err)
 }
 
 /***************************************
- * Unit Rules
+ * Compilation Environment injection
  ***************************************/
 
 type UnitDecorator interface {
@@ -94,12 +97,30 @@ type UnitDecorator interface {
 	fmt.Stringer
 }
 
-type Units = SetT[*Unit]
+type UnitCompileEvent struct {
+	Environment *CompileEnv
+	Unit        *Unit
+}
+
+var onUnitCompileEvent base.ConcurrentEvent[UnitCompileEvent]
+
+func OnUnitCompile(e base.EventDelegate[UnitCompileEvent]) base.DelegateHandle {
+	return onUnitCompileEvent.Add(e)
+}
+func RemoveOnUnitCompile(h base.DelegateHandle) bool {
+	return onUnitCompileEvent.Remove(h)
+}
+
+/***************************************
+ * Unit Rules
+ ***************************************/
+
+type Units = base.SetT[*Unit]
 
 type Unit struct {
 	TargetAlias TargetAlias
 
-	Ordinal     TargetBuildOrder
+	Ordinal     int32
 	Payload     PayloadType
 	OutputFile  Filename
 	SymbolsFile Filename
@@ -123,7 +144,7 @@ type Unit struct {
 	CompilerAlias     CompilerAlias
 	PreprocessorAlias CompilerAlias
 
-	Environment ProcessEnvironment
+	Environment internal_io.ProcessEnvironment
 
 	TransitiveFacet Facet // append in case of public dependency
 	GeneratedFiles  FileSet
@@ -154,7 +175,7 @@ func (unit *Unit) GetModule() *ModuleRules {
 	if module, err := unit.GetBuildModule(); err == nil {
 		return module.GetModule()
 	} else {
-		LogPanicErr(LogCompile, err)
+		base.LogPanicErr(LogCompile, err)
 		return nil
 	}
 }
@@ -162,7 +183,7 @@ func (unit *Unit) GetCompiler() *CompilerRules {
 	if compiler, err := unit.GetBuildCompiler(); err == nil {
 		return compiler.GetCompiler()
 	} else {
-		LogPanicErr(LogCompile, err)
+		base.LogPanicErr(LogCompile, err)
 		return nil
 	}
 }
@@ -170,7 +191,7 @@ func (unit *Unit) GetPreprocessor() *CompilerRules {
 	if compiler, err := unit.GetBuildPreprocessor(); err == nil {
 		return compiler.GetCompiler()
 	} else {
-		LogPanicErr(LogCompile, err)
+		base.LogPanicErr(LogCompile, err)
 		return nil
 	}
 }
@@ -179,11 +200,11 @@ func (unit *Unit) GetFacet() *Facet {
 	return &unit.Facet
 }
 func (unit *Unit) DebugString() string {
-	return PrettyPrint(unit)
+	return base.PrettyPrint(unit)
 }
 func (unit *Unit) Decorate(env *CompileEnv, decorator ...UnitDecorator) error {
-	LogVeryVerbose(LogCompile, "unit %v: decorate with [%v]", unit.TargetAlias, MakeStringer(func() string {
-		return Join(",", decorator...).String()
+	base.LogVeryVerbose(LogCompile, "unit %v: decorate with [%v]", unit.TargetAlias, base.MakeStringer(func() string {
+		return base.Join(",", decorator...).String()
 	}))
 	for _, x := range decorator {
 		if err := x.Decorate(env, unit); err != nil {
@@ -194,7 +215,7 @@ func (unit *Unit) Decorate(env *CompileEnv, decorator ...UnitDecorator) error {
 }
 
 func (unit *Unit) GetBinariesOutput(compiler Compiler, src Filename, payload PayloadType) Filename {
-	AssertIn(payload, PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB)
+	base.AssertIn(payload, PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB)
 	modulePath := src.Relative(UFS.Source)
 	modulePath = SanitizePath(modulePath, '-')
 	return UFS.Binaries.AbsoluteFile(modulePath).Normalize().ReplaceExt(
@@ -205,7 +226,7 @@ func (unit *Unit) GetGeneratedOutput(compiler Compiler, src Filename, payload Pa
 	return unit.GeneratedDir.AbsoluteFile(modulePath).Normalize().ReplaceExt(compiler.Extname(payload))
 }
 func (unit *Unit) GetIntermediateOutput(compiler Compiler, src Filename, payload PayloadType) Filename {
-	AssertIn(payload, PAYLOAD_OBJECTLIST, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_STATICLIB)
+	base.AssertIn(payload, PAYLOAD_OBJECTLIST, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_STATICLIB)
 	var modulePath string
 	if src.Dirname.IsIn(unit.GeneratedDir) {
 		modulePath = src.Relative(unit.GeneratedDir)
@@ -223,15 +244,15 @@ func (unit *Unit) GetPayloadOutput(compiler Compiler, src Filename, payload Payl
 	case PAYLOAD_HEADERS:
 		result = src
 	default:
-		UnexpectedValue(payload)
+		base.UnexpectedValue(payload)
 	}
 	return
 }
 
-func (unit *Unit) Serialize(ar Archive) {
+func (unit *Unit) Serialize(ar base.Archive) {
 	ar.Serializable(&unit.TargetAlias)
 
-	ar.Serializable(&unit.Ordinal)
+	ar.Int32(&unit.Ordinal)
 	ar.Serializable(&unit.Payload)
 	ar.Serializable(&unit.OutputFile)
 	ar.Serializable(&unit.SymbolsFile)
@@ -247,10 +268,10 @@ func (unit *Unit) Serialize(ar Archive) {
 	ar.Serializable(&unit.PrecompiledSource)
 	ar.Serializable(&unit.PrecompiledObject)
 
-	SerializeSlice(ar, unit.IncludeDependencies.Ref())
-	SerializeSlice(ar, unit.CompileDependencies.Ref())
-	SerializeSlice(ar, unit.LinkDependencies.Ref())
-	SerializeSlice(ar, unit.RuntimeDependencies.Ref())
+	base.SerializeSlice(ar, unit.IncludeDependencies.Ref())
+	base.SerializeSlice(ar, unit.CompileDependencies.Ref())
+	base.SerializeSlice(ar, unit.LinkDependencies.Ref())
+	base.SerializeSlice(ar, unit.RuntimeDependencies.Ref())
 
 	ar.Serializable(&unit.CompilerAlias)
 	ar.Serializable(&unit.PreprocessorAlias)
@@ -282,17 +303,13 @@ func (unit *Unit) Build(bc BuildContext) error {
 		return err
 	}
 
-	if err := bc.NeedBuildable(&compileEnv.CompilerAlias); err != nil {
-		return err
-	}
-
-	compiler, err := compileEnv.GetBuildCompiler()
+	compilerBuildable, err := bc.NeedBuildable(compileEnv.CompilerAlias)
 	if err != nil {
 		return err
 	}
+	compiler := compilerBuildable.(Compiler)
 
-	bc.BuildGraph()
-	moduleRules, err := FindGlobalBuildable[*ModuleRules](unit.TargetAlias.ModuleAlias.Alias())
+	moduleRules, err := FindBuildable[*ModuleRules](bc.BuildGraph(), unit.TargetAlias.ModuleAlias.Alias())
 	if err != nil {
 		return err
 	}
@@ -333,27 +350,27 @@ func (unit *Unit) Build(bc BuildContext) error {
 	case PCH_MONOLITHIC, PCH_SHARED:
 		if expandedModule.PrecompiledHeader == nil || expandedModule.PrecompiledSource == nil {
 			if expandedModule.PrecompiledHeader != nil {
-				LogPanic(LogCompile, "unit is using PCH_%s, but precompiled header is nil (source: %v)", unit.PCH, expandedModule.PrecompiledSource)
+				base.LogPanic(LogCompile, "unit is using PCH_%s, but precompiled header is nil (source: %v)", unit.PCH, expandedModule.PrecompiledSource)
 			}
 			if expandedModule.PrecompiledSource != nil {
-				LogPanic(LogCompile, "unit is using PCH_%s, but precompiled source is nil (header: %v)", unit.PCH, expandedModule.PrecompiledHeader)
+				base.LogPanic(LogCompile, "unit is using PCH_%s, but precompiled source is nil (header: %v)", unit.PCH, expandedModule.PrecompiledHeader)
 			}
 			unit.PCH = PCH_DISABLED
 		} else {
 			unit.PrecompiledHeader = *expandedModule.PrecompiledHeader
 			unit.PrecompiledSource = unit.PrecompiledHeader
 
-			IfWindows(func() {
+			base.IfWindows(func() {
 				// CPP is only used on Windows platform
 				unit.PrecompiledSource = *expandedModule.PrecompiledSource
 			})
 
-			Assert(func() bool { return expandedModule.PrecompiledHeader.Exists() })
-			Assert(func() bool { return expandedModule.PrecompiledSource.Exists() })
+			base.Assert(func() bool { return expandedModule.PrecompiledHeader.Exists() })
+			base.Assert(func() bool { return expandedModule.PrecompiledSource.Exists() })
 			unit.PrecompiledObject = unit.GetPayloadOutput(compiler, unit.PrecompiledSource, PAYLOAD_PRECOMPILEDHEADER)
 		}
 	default:
-		UnexpectedValuePanic(unit.PCH, unit.PCH)
+		base.UnexpectedValuePanic(unit.PCH, unit.PCH)
 	}
 
 	unit.Facet = NewFacet()
@@ -383,10 +400,10 @@ func (unit *Unit) Build(bc BuildContext) error {
 		return err
 	}
 
-	if err := CreateDirectory(bc, unit.OutputFile.Dirname); err != nil {
+	if err := internal_io.CreateDirectory(bc, unit.OutputFile.Dirname); err != nil {
 		return err
 	}
-	if err := CreateDirectory(bc, unit.IntermediateDir); err != nil {
+	if err := internal_io.CreateDirectory(bc, unit.IntermediateDir); err != nil {
 		return err
 	}
 
@@ -402,6 +419,11 @@ func (unit *Unit) Build(bc BuildContext) error {
 		unit.GeneratedFiles.Append(generated.OutputFile)
 	}
 
+	onUnitCompileEvent.Invoke(UnitCompileEvent{
+		Environment: compileEnv,
+		Unit:        unit,
+	})
+
 	_, err = bc.OutputFactory(WrapBuildFactory[*TargetActions](func(bi BuildInitializer) (*TargetActions, error) {
 		return &TargetActions{
 			TargetAlias: unit.TargetAlias,
@@ -414,6 +436,19 @@ func FindBuildUnit(target TargetAlias) (*Unit, error) {
 	return FindGlobalBuildable[*Unit](target.Alias())
 }
 
+func ForeachBuildUnits(ea EnvironmentAlias, each func(*Unit) error, ma ...ModuleAlias) error {
+	for _, it := range ma {
+		unit, err := FindBuildUnit(TargetAlias{EnvironmentAlias: ea, ModuleAlias: it})
+		if err != nil {
+			return err
+		}
+		if err = each(unit); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func NeedAllBuildUnits(bc BuildContext) (units []*Unit, err error) {
 	modules, err := NeedAllBuildModules(bc)
 	if err != nil {
@@ -422,7 +457,7 @@ func NeedAllBuildUnits(bc BuildContext) (units []*Unit, err error) {
 
 	if err = ForeachEnvironmentAlias(func(ea EnvironmentAlias) error {
 		for _, module := range modules {
-			unit, err := FindBuildUnit(TargetAlias{
+			buildable, err := bc.NeedBuildable(TargetAlias{
 				ModuleAlias:      module.GetModule().ModuleAlias,
 				EnvironmentAlias: ea,
 			})
@@ -430,7 +465,7 @@ func NeedAllBuildUnits(bc BuildContext) (units []*Unit, err error) {
 				return err
 			}
 
-			units = append(units, unit)
+			units = append(units, buildable.(*Unit))
 		}
 
 		return nil
@@ -438,34 +473,48 @@ func NeedAllBuildUnits(bc BuildContext) (units []*Unit, err error) {
 		return
 	}
 
-	if err = bc.DependsOn(MakeBuildAliases(units...)...); err != nil {
+	return
+}
+
+func NeedAllUnitAliases(bc BuildContext) (aliases []TargetAlias, err error) {
+	moduleAliases, err := NeedAllModuleAliases(bc)
+	if err != nil {
 		return
 	}
 
+	err = ForeachEnvironmentAlias(func(ea EnvironmentAlias) error {
+		for _, ma := range moduleAliases {
+			aliases = append(aliases, TargetAlias{
+				ModuleAlias:      ma,
+				EnvironmentAlias: ea,
+			})
+		}
+		return nil
+	})
 	return
 }
 
 func (unit *Unit) addIncludeDependency(other *Unit) {
 	if unit.IncludeDependencies.AppendUniq(other.TargetAlias) {
-		LogDebug(LogCompile, "[%v] include dep -> %v", unit.TargetAlias, other.TargetAlias)
+		base.LogDebug(LogCompile, "[%v] include dep -> %v", unit.TargetAlias, other.TargetAlias)
 		unit.Facet.AppendUniq(&other.TransitiveFacet)
 	}
 }
 func (unit *Unit) addCompileDependency(other *Unit) {
 	if unit.CompileDependencies.AppendUniq(other.TargetAlias) {
-		LogDebug(LogCompile, "[%v] compile dep -> %v", unit.TargetAlias, other.TargetAlias)
+		base.LogDebug(LogCompile, "[%v] compile dep -> %v", unit.TargetAlias, other.TargetAlias)
 		unit.Facet.AppendUniq(&other.TransitiveFacet)
 	}
 }
 func (unit *Unit) addLinkDependency(other *Unit) {
 	if unit.LinkDependencies.AppendUniq(other.TargetAlias) {
-		LogDebug(LogCompile, "[%v] link dep -> %v", unit.TargetAlias, other.TargetAlias)
+		base.LogDebug(LogCompile, "[%v] link dep -> %v", unit.TargetAlias, other.TargetAlias)
 		unit.Facet.AppendUniq(&other.TransitiveFacet)
 	}
 }
 func (unit *Unit) addRuntimeDependency(other *Unit) {
 	if unit.RuntimeDependencies.AppendUniq(other.TargetAlias) {
-		LogDebug(LogCompile, "[%v] runtime dep -> %v", unit.TargetAlias, other.TargetAlias)
+		base.LogDebug(LogCompile, "[%v] runtime dep -> %v", unit.TargetAlias, other.TargetAlias)
 		unit.IncludePaths.AppendUniq(other.TransitiveFacet.IncludePaths...)
 		unit.ForceIncludes.AppendUniq(other.TransitiveFacet.ForceIncludes...)
 	}
@@ -473,18 +522,14 @@ func (unit *Unit) addRuntimeDependency(other *Unit) {
 
 func (unit *Unit) linkModuleDependencies(bc BuildContext, compileEnv *CompileEnv, vis VisibilityType, moduleAliases ...ModuleAlias) error {
 	for _, moduleAlias := range moduleAliases {
-		targetAlias := TargetAlias{
+		buildable, err := bc.NeedBuildable(TargetAlias{
 			ModuleAlias:      moduleAlias,
 			EnvironmentAlias: compileEnv.EnvironmentAlias,
-		}
-		if err := bc.DependsOn(targetAlias.Alias()); err != nil {
-			return err
-		}
-
-		other, err := FindBuildUnit(targetAlias)
+		}.Alias())
 		if err != nil {
 			return err
 		}
+		other := buildable.(*Unit)
 
 		if other.Ordinal >= unit.Ordinal {
 			unit.Ordinal = other.Ordinal + 1
@@ -510,17 +555,17 @@ func (unit *Unit) linkModuleDependencies(bc BuildContext, compileEnv *CompileEnv
 				if other.Payload == PAYLOAD_SHAREDLIB {
 					unit.addRuntimeDependency(other)
 				} else {
-					LogPanic(LogCompile, "%v <%v> is linking against %v <%v> with %v visibility, which is not allowed",
+					base.LogPanic(LogCompile, "%v <%v> is linking against %v <%v> with %v visibility, which is not allowed",
 						unit.Payload, unit, unit.Payload, other, vis)
 				}
 
 			default:
-				UnexpectedValue(vis)
+				base.UnexpectedValue(vis)
 			}
 		case PAYLOAD_EXECUTABLE:
 			fallthrough // can't depend on an executable
 		default:
-			return MakeUnexpectedValueError(unit.Payload, other.Payload)
+			return base.MakeUnexpectedValueError(unit.Payload, other.Payload)
 		}
 	}
 
@@ -529,16 +574,12 @@ func (unit *Unit) linkModuleDependencies(bc BuildContext, compileEnv *CompileEnv
 
 func foreachModule(bc BuildContext, compileEnv *CompileEnv, each func(*ModuleRules) error, moduleAliases ...ModuleAlias) error {
 	for _, moduleAlias := range moduleAliases {
-		if err := bc.NeedBuildable(moduleAlias); err != nil {
-			return err
-		}
-
-		moduleDependency, err := FindBuildModule(moduleAlias)
+		buildable, err := bc.NeedBuildable(moduleAlias)
 		if err != nil {
 			return err
 		}
 
-		moduleRules, err := compileModuleForEnv(bc, compileEnv, moduleDependency.GetModule())
+		moduleRules, err := compileModuleForEnv(bc, compileEnv, buildable.(Module).GetModule())
 		if err != nil {
 			return err
 		}

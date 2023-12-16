@@ -3,10 +3,10 @@ package windows
 import (
 	"io"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/compile"
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/action"
+	"github.com/poppolopoppo/ppb/internal/base"
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
 /***************************************
@@ -17,17 +17,17 @@ import (
 
 type MsvcSourceDependenciesImportModule struct {
 	Name string
-	BMI  Filename
+	BMI  utils.Filename
 }
 type MsvcSourceDependenciesImportHeaderUnit struct {
-	Header Filename
-	BMI    Filename
+	Header utils.Filename
+	BMI    utils.Filename
 }
 type MsvcSourceDependenciesData struct {
-	Source              Filename
+	Source              utils.Filename
 	ProvidedModule      string
-	PCH                 Filename
-	Includes            FileSet
+	PCH                 utils.Filename
+	Includes            utils.FileSet
 	ImportedModules     []MsvcSourceDependenciesImportModule
 	ImportedHeaderUnits []MsvcSourceDependenciesImportHeaderUnit
 }
@@ -37,9 +37,9 @@ type MsvcSourceDependencies struct {
 }
 
 func (x *MsvcSourceDependencies) Load(r io.Reader) error {
-	return JsonDeserialize(x, r)
+	return base.JsonDeserialize(x, r)
 }
-func (x MsvcSourceDependencies) Files() (result []Filename) {
+func (x MsvcSourceDependencies) Files() (result []utils.Filename) {
 	result = x.Data.Includes.Normalize()
 	if x.Data.PCH.Valid() {
 		result = append(result, x.Data.PCH.Normalize())
@@ -58,25 +58,25 @@ func (x MsvcSourceDependencies) Files() (result []Filename) {
  ***************************************/
 
 type MsvcSourceDependenciesAction struct {
-	ActionRules
-	SourceDependenciesFile Filename
+	action.ActionRules
+	SourceDependenciesFile utils.Filename
 }
 
-func NewMsvcSourceDependenciesAction(rules *ActionRules, output Filename) *MsvcSourceDependenciesAction {
+func NewMsvcSourceDependenciesAction(rules *action.ActionRules, output utils.Filename) *MsvcSourceDependenciesAction {
 	result := &MsvcSourceDependenciesAction{
 		ActionRules:            *rules,
 		SourceDependenciesFile: output,
 	}
 
-	result.Arguments.Append("/sourceDependencies", MakeLocalFilename(output))
+	result.Arguments.Append("/sourceDependencies", utils.MakeLocalFilename(output))
 	result.Extras.Append(output)
 	return result
 }
 
-func (x *MsvcSourceDependenciesAction) Alias() BuildAlias {
-	return MakeBuildAlias("Action", "Msvc", x.Outputs.Join(";"))
+func (x *MsvcSourceDependenciesAction) Alias() utils.BuildAlias {
+	return utils.MakeBuildAlias("Action", "Msvc", x.Outputs.Join(";"))
 }
-func (x *MsvcSourceDependenciesAction) Build(bc BuildContext) error {
+func (x *MsvcSourceDependenciesAction) Build(bc utils.BuildContext) error {
 	// compile the action with /sourceDependencies
 	if err := x.ActionRules.Build(bc); err != nil {
 		return err
@@ -89,27 +89,27 @@ func (x *MsvcSourceDependenciesAction) Build(bc BuildContext) error {
 
 	// parse source dependencies outputted by cl.exe
 	var sourceDeps MsvcSourceDependencies
-	if err := UFS.OpenBuffered(x.SourceDependenciesFile, sourceDeps.Load); err != nil {
+	if err := utils.UFS.OpenBuffered(x.SourceDependenciesFile, sourceDeps.Load); err != nil {
 		return err
 	}
 
 	// add all parsed filenames as dynamic dependencies: when a header is modified, this action will have to be rebuild
 	dependentFiles := sourceDeps.Files()
-	LogDebug(LogWindows, "sourceDependencies: parsed output in %q\n%v", x.SourceDependenciesFile, MakeStringer(func() string {
-		return PrettyPrint(dependentFiles)
+	base.LogDebug(LogWindows, "sourceDependencies: parsed output in %q\n%v", x.SourceDependenciesFile, base.MakeStringer(func() string {
+		return base.PrettyPrint(dependentFiles)
 	}))
 
-	if flags := GetActionFlags(); flags.ShowFiles.Get() {
+	if flags := action.GetActionFlags(); flags.ShowFiles.Get() {
 		for _, file := range dependentFiles {
-			LogForwardf("%v: [%s]  %s", MakeStringer(func() string {
+			base.LogForwardf("%v: [%s]  %s", base.MakeStringer(func() string {
 				return x.Alias().String()
-			}), FILEACCESS_READ, file)
+			}), internal_io.FILEACCESS_READ, file)
 		}
 	}
 
-	return bc.NeedFile(dependentFiles...)
+	return bc.NeedFiles(dependentFiles...)
 }
-func (x *MsvcSourceDependenciesAction) Serialize(ar Archive) {
+func (x *MsvcSourceDependenciesAction) Serialize(ar base.Archive) {
 	ar.Serializable(&x.ActionRules)
 	ar.Serializable(&x.SourceDependenciesFile)
 }

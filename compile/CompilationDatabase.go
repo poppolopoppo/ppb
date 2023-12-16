@@ -3,10 +3,10 @@ package compile
 import (
 	"io"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/internal/io"
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/action"
+	"github.com/poppolopoppo/ppb/internal/base"
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
 /***************************************
@@ -15,25 +15,25 @@ import (
 
 // https://clang.llvm.org/docs/JSONCompilationDatabase.html
 type CompileCommand struct {
-	Directory Directory `json:"directory"`
-	File      Filename  `json:"file"`
-	Output    Filename  `json:"output"`
-	Arguments StringSet `json:"arguments"`
+	Directory utils.Directory `json:"directory"`
+	File      utils.Filename  `json:"file"`
+	Output    utils.Filename  `json:"output"`
+	Arguments base.StringSet  `json:"arguments"`
 }
 
 type CompilationDatabase []CompileCommand
 
 func (x *CompilationDatabase) Append(cmd CompileCommand) {
-	Assert(func() bool {
+	base.Assert(func() bool {
 		for _, it := range *x {
 			if it.File == cmd.File {
-				LogError(LogCompile, "input file already present in compiledb: %v\n\told output: %v\n\tnew output: %v", cmd.File, it.Output, cmd.Output)
+				base.LogError(LogCompile, "input file already present in compiledb: %v\n\told output: %v\n\tnew output: %v", cmd.File, it.Output, cmd.Output)
 				return false
 			}
 		}
 		return true
 	})
-	LogTrace(LogCompile, "append %v to compiledb (%v)", cmd.File, cmd.Output)
+	base.LogTrace(LogCompile, "append %v to compiledb (%v)", cmd.File, cmd.Output)
 	*x = append(*x, cmd)
 }
 
@@ -41,54 +41,54 @@ func (x *CompilationDatabase) Append(cmd CompileCommand) {
  * Compilation Database Builder
  ***************************************/
 
-func BuildCompilationDatabase(ea EnvironmentAlias) BuildFactoryTyped[*CompilationDatabaseBuilder] {
-	return MakeBuildFactory(func(bi BuildInitializer) (CompilationDatabaseBuilder, error) {
-		outputDir := UFS.Intermediate.Folder(ea.PlatformName).Folder(ea.ConfigName)
+func BuildCompilationDatabase(ea EnvironmentAlias) utils.BuildFactoryTyped[*CompilationDatabaseBuilder] {
+	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (CompilationDatabaseBuilder, error) {
+		outputDir := utils.UFS.Intermediate.Folder(ea.PlatformName).Folder(ea.ConfigName)
 		return CompilationDatabaseBuilder{
 			EnvironmentAlias: ea,
 			OutputFile:       outputDir.AbsoluteFile("compile_commands.json"),
-		}, CreateDirectory(bi, outputDir)
+		}, internal_io.CreateDirectory(bi, outputDir)
 	})
 }
 
 type CompilationDatabaseBuilder struct {
 	EnvironmentAlias
-	OutputFile Filename
+	OutputFile utils.Filename
 }
 
-func (x *CompilationDatabaseBuilder) Alias() BuildAlias {
-	return MakeBuildAlias("CompileDb", x.EnvironmentAlias.String())
+func (x *CompilationDatabaseBuilder) Alias() utils.BuildAlias {
+	return utils.MakeBuildAlias("CompileDb", x.EnvironmentAlias.PlatformName, x.EnvironmentAlias.ConfigName)
 }
-func (x *CompilationDatabaseBuilder) Build(bc BuildContext) error {
-	LogVerbose(LogCommand, "generate compilation database for %v in %q...", x.EnvironmentAlias, x.OutputFile)
+func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
+	base.LogVerbose(utils.LogCommand, "generate compilation database for %v in %q...", x.EnvironmentAlias, x.OutputFile)
 
 	moduleAliases, err := NeedAllModuleAliases(bc)
 	if err != nil {
 		return err
 	}
 
-	LogTrace(LogCompile, "retrieved %q modules", moduleAliases)
+	base.LogTrace(LogCompile, "retrieved %q modules", moduleAliases)
 
 	// need to depends from the compiler
 	if _, err := GetCompileEnvironment(x.EnvironmentAlias).Need(bc); err != nil {
 		return nil
 	}
 
-	expandedActions := make(ActionSet, 0, len(moduleAliases))
+	expandedActions := make(action.ActionSet, 0, len(moduleAliases))
 
 	err = ForeachTargetActions(x.EnvironmentAlias, func(targetActions *TargetActions) error {
-		if err := bc.NeedBuildable(targetActions); err != nil {
+		if err := bc.NeedBuildables(targetActions); err != nil {
 			return err
 		}
 
-		LogTrace(LogCompile, "retrieved target actions %q with %d payloads", targetActions.Alias(), targetActions.PresentPayloads.Len())
+		base.LogTrace(LogCompile, "retrieved target actions %q with %d payloads", targetActions.Alias(), targetActions.PresentPayloads.Len())
 
 		actions, err := targetActions.GetOutputActions()
 		if err != nil {
 			return err
 		}
 
-		LogTrace(LogCompile, "retrieved %d output actions for target %q", len(actions), targetActions.Alias())
+		base.LogTrace(LogCompile, "retrieved %d output actions for target %q", len(actions), targetActions.Alias())
 
 		if err = actions.ExpandDependencies(&expandedActions); err != nil {
 			return err
@@ -122,7 +122,7 @@ func (x *CompilationDatabaseBuilder) Build(bc BuildContext) error {
 
 		for _, input := range action.GetAction().Inputs {
 			if unityFile, err := FindUnityFile(input); err == nil {
-				LogVerbose(LogCompile, "expand unity file %q action inputs for compilation database", unityFile.Alias())
+				base.LogVerbose(LogCompile, "expand unity file %q action inputs for compilation database", unityFile.Alias())
 
 				for _, source := range unityFile.Inputs {
 					if !unityFile.Excludeds.Contains(source) {
@@ -138,8 +138,8 @@ func (x *CompilationDatabaseBuilder) Build(bc BuildContext) error {
 		}
 	}
 
-	err = UFS.SafeCreate(x.OutputFile, func(w io.Writer) error {
-		return JsonSerialize(database, w, OptionJsonPrettyPrint(true))
+	err = utils.UFS.SafeCreate(x.OutputFile, func(w io.Writer) error {
+		return base.JsonSerialize(database, w, base.OptionJsonPrettyPrint(true))
 	})
 	if err != nil {
 		return err
@@ -147,7 +147,7 @@ func (x *CompilationDatabaseBuilder) Build(bc BuildContext) error {
 
 	return bc.OutputFile(x.OutputFile)
 }
-func (x *CompilationDatabaseBuilder) Serialize(ar Archive) {
+func (x *CompilationDatabaseBuilder) Serialize(ar base.Archive) {
 	ar.Serializable(&x.EnvironmentAlias)
 	ar.Serializable(&x.OutputFile)
 }
