@@ -1,15 +1,16 @@
+//go:build windows
+
 package windows
 
 import (
+	"fmt"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/compile"
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/compile"
+	"github.com/poppolopoppo/ppb/internal/base"
 )
 
-type CompilerType int32
+type CompilerType byte
 
 const (
 	COMPILER_MSVC CompilerType = iota
@@ -22,6 +23,17 @@ func CompilerTypes() []CompilerType {
 		COMPILER_CLANGCL,
 	}
 }
+func (x CompilerType) Description() string {
+	switch x {
+	case COMPILER_MSVC:
+		return "Microsoft Visual C++ compiler"
+	case COMPILER_CLANGCL:
+		return "LLVM Clang C++ compiler"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x CompilerType) String() string {
 	switch x {
 	case COMPILER_MSVC:
@@ -29,7 +41,7 @@ func (x CompilerType) String() string {
 	case COMPILER_CLANGCL:
 		return "CLANGCL"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -40,22 +52,22 @@ func (x *CompilerType) Set(in string) (err error) {
 	case COMPILER_CLANGCL.String():
 		*x = COMPILER_CLANGCL
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *CompilerType) Serialize(ar Archive) {
-	ar.Int32((*int32)(x))
+func (x *CompilerType) Serialize(ar base.Archive) {
+	ar.Byte((*byte)(x))
 }
 func (x CompilerType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *CompilerType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *CompilerType) AutoComplete(in AutoComplete) {
+func (x *CompilerType) AutoComplete(in base.AutoComplete) {
 	for _, it := range CompilerTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -104,7 +116,7 @@ func (v MsvcVersion) String() string {
 	case MSC_VER_2013:
 		return "2013"
 	default:
-		UnreachableCode()
+		base.UnreachableCode()
 		return ""
 	}
 }
@@ -123,33 +135,33 @@ func (v *MsvcVersion) Set(in string) (err error) {
 	case MSC_VER_2013.String():
 		*v = MSC_VER_2013
 	default:
-		err = MakeUnexpectedValueError(v, in)
+		err = base.MakeUnexpectedValueError(v, in)
 	}
 	return err
 }
-func (x *MsvcVersion) Serialize(ar Archive) {
+func (x *MsvcVersion) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
-func (x *MsvcVersion) AutoComplete(in AutoComplete) {
+func (x *MsvcVersion) AutoComplete(in base.AutoComplete) {
 	for _, it := range MsvcVersions() {
-		in.Add(it.String())
+		in.Add(it.String(), fmt.Sprint("Microsoft Visual Studio ", it.String()))
 	}
 }
 
-func getCppStdFromMsc(msc_ver MsvcVersion) CppStdType {
+func getCppStdFromMsc(msc_ver MsvcVersion) compile.CppStdType {
 	switch msc_ver {
 	case MSC_VER_2022:
-		return CPPSTD_20
+		return compile.CPPSTD_20
 	case MSC_VER_2019:
-		return CPPSTD_17
+		return compile.CPPSTD_17
 	case MSC_VER_2017:
-		return CPPSTD_14
+		return compile.CPPSTD_14
 	case MSC_VER_2015:
-		return CPPSTD_14
+		return compile.CPPSTD_14
 	case MSC_VER_2013:
-		return CPPSTD_11
+		return compile.CPPSTD_11
 	default:
-		UnexpectedValue(msc_ver)
-		return CPPSTD_17
+		base.UnexpectedValue(msc_ver)
+		return compile.CPPSTD_17
 	}
 }

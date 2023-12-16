@@ -1,10 +1,21 @@
 package cmd
 
-//lint:ignore ST1001 ignore dot imports warning
-import . "github.com/poppolopoppo/ppb/utils"
+import (
+	"github.com/poppolopoppo/ppb/internal/base"
+)
 
 func InitCmd() {
-	RegisterSerializable(&BffBuilder{})
-	RegisterSerializable(&VcxprojBuilder{})
-	RegisterSerializable(&VscodeBuilder{})
+	base.RegisterSerializable[SlnAdditionalOptions]()
+	base.RegisterSerializable[SlnSolution]()
+	base.RegisterSerializable[SlnSolutionConfig]()
+	base.RegisterSerializable[SlnSolutionDependencies]()
+	base.RegisterSerializable[SlnSolutionFolder]()
+	base.RegisterSerializable[SlnSolutionBuilder]()
+	base.RegisterSerializable[VcxAdditionalOptions]()
+	base.RegisterSerializable[VcxFileType]()
+	base.RegisterSerializable[VcxProject]()
+	base.RegisterSerializable[VcxProjectBuilder]()
+	base.RegisterSerializable[VcxProjectConfig]()
+	base.RegisterSerializable[VcxProjectImport]()
+	base.RegisterSerializable[VscodeBuilder]()
 }

@@ -1,77 +1,90 @@
+//go:build windows
+
 package windows
 
 import (
 	"fmt"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/compile"
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
+
+	"github.com/poppolopoppo/ppb/action"
+	"github.com/poppolopoppo/ppb/compile"
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
 type ResourceCompiler struct {
-	CompilerRules
+	compile.CompilerRules
 }
 
-func (res *ResourceCompiler) GetCompiler() *CompilerRules { return &res.CompilerRules }
+func (res *ResourceCompiler) GetCompiler() *compile.CompilerRules { return &res.CompilerRules }
 
-func (res *ResourceCompiler) Extname(PayloadType) string {
+func (res *ResourceCompiler) Extname(compile.PayloadType) string {
 	return ".res"
 }
 
-func (res *ResourceCompiler) CppRtti(*Facet, bool)      {}
-func (res *ResourceCompiler) CppStd(*Facet, CppStdType) {}
+func (res *ResourceCompiler) CppRtti(*compile.Facet, bool)              {}
+func (res *ResourceCompiler) CppStd(*compile.Facet, compile.CppStdType) {}
 
-func (res *ResourceCompiler) DebugSymbols(*Unit) {}
+func (res *ResourceCompiler) DebugSymbols(*compile.Unit) {}
 
-func (res *ResourceCompiler) AllowCaching(*Unit, PayloadType) CacheModeType     { return CACHE_NONE }
-func (res *ResourceCompiler) AllowDistribution(*Unit, PayloadType) DistModeType { return DIST_NONE }
-func (res *ResourceCompiler) AllowResponseFile(*Unit, PayloadType) CompilerSupportType {
-	return COMPILERSUPPORT_UNSUPPORTED
+func (res *ResourceCompiler) AllowCaching(*compile.Unit, compile.PayloadType) action.CacheModeType {
+	return action.CACHE_NONE
 }
-func (res *ResourceCompiler) AllowEditAndContinue(*Unit, PayloadType) CompilerSupportType {
-	return COMPILERSUPPORT_UNSUPPORTED
+func (res *ResourceCompiler) AllowDistribution(*compile.Unit, compile.PayloadType) action.DistModeType {
+	return action.DIST_NONE
+}
+func (res *ResourceCompiler) AllowResponseFile(*compile.Unit, compile.PayloadType) compile.CompilerSupportType {
+	return compile.COMPILERSUPPORT_UNSUPPORTED
+}
+func (res *ResourceCompiler) AllowEditAndContinue(*compile.Unit, compile.PayloadType) compile.CompilerSupportType {
+	return compile.COMPILERSUPPORT_UNSUPPORTED
 }
 
-func (res *ResourceCompiler) Define(facet *Facet, def ...string) {
+func (res *ResourceCompiler) Define(facet *compile.Facet, def ...string) {
 	for _, x := range def {
-		facet.AddCompilationFlag(fmt.Sprintf("/d%s", x))
+		facet.AddCompilationFlag(fmt.Sprint("/d", x))
 	}
 }
-func (res *ResourceCompiler) Link(*Facet, LinkType) {}
-func (res *ResourceCompiler) PrecompiledHeader(*Unit) {
+func (res *ResourceCompiler) Link(*compile.Facet, compile.LinkType) {}
+func (res *ResourceCompiler) PrecompiledHeader(*compile.Unit) {
 }
-func (res *ResourceCompiler) Sanitizer(*Facet, SanitizerType) {}
+func (res *ResourceCompiler) Sanitizer(*compile.Facet, compile.SanitizerType) {}
 
-func (res *ResourceCompiler) ForceInclude(*Facet, ...Filename) {}
-func (res *ResourceCompiler) IncludePath(facet *Facet, dirs ...Directory) {
+func (res *ResourceCompiler) ForceInclude(*compile.Facet, ...utils.Filename) {}
+func (res *ResourceCompiler) IncludePath(facet *compile.Facet, dirs ...utils.Directory) {
 	for _, x := range dirs {
 		facet.AddCompilationFlag(fmt.Sprintf("/i%v", x))
 	}
 }
-func (res *ResourceCompiler) ExternIncludePath(facet *Facet, dirs ...Directory) {
+func (res *ResourceCompiler) ExternIncludePath(facet *compile.Facet, dirs ...utils.Directory) {
 	res.IncludePath(facet, dirs...)
 }
-func (res *ResourceCompiler) SystemIncludePath(facet *Facet, dirs ...Directory) {
+func (res *ResourceCompiler) SystemIncludePath(facet *compile.Facet, dirs ...utils.Directory) {
 	res.IncludePath(facet, dirs...)
 }
-func (res *ResourceCompiler) Library(*Facet, ...Filename)      {}
-func (res *ResourceCompiler) LibraryPath(*Facet, ...Directory) {}
-func (res *ResourceCompiler) SourceDependencies(obj *ActionRules) Action {
-	return obj
+func (res *ResourceCompiler) Library(*compile.Facet, ...utils.Filename)      {}
+func (res *ResourceCompiler) LibraryPath(*compile.Facet, ...utils.Directory) {}
+
+func (res *ResourceCompiler) GetPayloadOutput(u *compile.Unit, payload compile.PayloadType, file utils.Filename) utils.Filename {
+	return file.ReplaceExt(res.Extname(payload))
+}
+func (res *ResourceCompiler) CreateAction(_ *compile.Unit, _ compile.PayloadType, model *action.ActionModel) action.Action {
+	rules := model.CreateActionRules()
+	return &rules
 }
 
-func (res *ResourceCompiler) Decorate(_ *CompileEnv, u *Unit) error {
-	if u.Payload == PAYLOAD_SHAREDLIB {
+func (res *ResourceCompiler) Decorate(_ *compile.CompileEnv, u *compile.Unit) error {
+	if u.Payload == compile.PAYLOAD_SHAREDLIB {
 		// Generate minimal resources for DLLs
 		u.CompilerOptions.Append("/q")
 	}
 	return nil
 }
 
-func (res *ResourceCompiler) Build(bc BuildContext) error {
-	windowsFlags := GetWindowsFlags()
-	if _, err := GetBuildableFlags(windowsFlags).Need(bc); err != nil {
+func (res *ResourceCompiler) Build(bc utils.BuildContext) error {
+	windowsFlags, err := GetWindowsFlags(bc)
+	if err != nil {
 		return err
 	}
 
@@ -81,14 +94,14 @@ func (res *ResourceCompiler) Build(bc BuildContext) error {
 	}
 
 	res.CompilerRules.Executable = windowsSDKInstall.ResourceCompiler
-	if err := bc.NeedFile(res.CompilerRules.Executable); err != nil {
+	if err := bc.NeedFiles(res.CompilerRules.Executable); err != nil {
 		return err
 	}
 
-	res.CompilerRules.Environment = NewProcessEnvironment()
+	res.CompilerRules.Environment = internal_io.NewProcessEnvironment()
 	res.CompilerRules.Environment.Append("PATH", res.CompilerRules.Executable.Dirname.String(), "%PATH%")
 
-	res.CompilerOptions = StringSet{
+	res.CompilerOptions = base.StringSet{
 		"/nologo", // no copyright when compiling
 		"/fo%2",   // output file injection
 		"%1",      // input file
@@ -96,18 +109,19 @@ func (res *ResourceCompiler) Build(bc BuildContext) error {
 
 	return nil
 }
-func (res *ResourceCompiler) Serialize(ar Archive) {
+func (res *ResourceCompiler) Serialize(ar base.Archive) {
 	ar.Serializable(&res.CompilerRules)
 }
 
-func (res *ResourceCompiler) checkCompilerInterfaceAtCompileTime() Compiler { return res }
-
-func GetWindowsResourceCompiler() BuildFactoryTyped[*ResourceCompiler] {
-	return MakeBuildFactory(func(bi BuildInitializer) (ResourceCompiler, error) {
+func GetWindowsResourceCompiler() utils.BuildFactoryTyped[*ResourceCompiler] {
+	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (ResourceCompiler, error) {
 		rc := ResourceCompiler{
-			CompilerRules: NewCompilerRules(NewCompilerAlias("custom", "rc", "windows_sdk")),
+			CompilerRules: compile.NewCompilerRules(compile.NewCompilerAlias("custom", "rc", "windows_sdk")),
 		}
-		rc.checkCompilerInterfaceAtCompileTime()
+		base.Assert(func() bool {
+			var compiler compile.Compiler = &rc
+			return compiler == &rc
+		})
 		return rc, nil
 	})
 }

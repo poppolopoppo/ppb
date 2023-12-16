@@ -1,3 +1,5 @@
+//go:build windows
+
 package windows
 
 import (
@@ -5,12 +7,15 @@ import (
 	"os/exec"
 	"regexp"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/internal/hal/generic"
+	"github.com/poppolopoppo/ppb/action"
+	"github.com/poppolopoppo/ppb/compile"
+
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/internal/hal/generic"
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
+
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/compile"
 )
 
 /***************************************
@@ -40,23 +45,23 @@ func (clang *ClangCompiler) GetLlvmProduct() (*LlvmProductInstall, error) {
  * Compiler interface (override MsvcCompiler)
  ***************************************/
 
-func (clang *ClangCompiler) Extname(x PayloadType) string {
+func (clang *ClangCompiler) Extname(x compile.PayloadType) string {
 	switch x {
-	case PAYLOAD_DEPENDENCIES:
+	case compile.PAYLOAD_DEPENDENCIES:
 		return ".obj.d"
 	default:
 		return clang.MsvcCompiler.Extname(x)
 	}
 }
-func (clang *ClangCompiler) ExternIncludePath(f *Facet, dirs ...Directory) {
+func (clang *ClangCompiler) ExternIncludePath(f *compile.Facet, dirs ...Directory) {
 	for _, x := range dirs {
 		f.AddCompilationFlag_NoAnalysis("/imsvc" + x.String())
 	}
 }
-func (clang *ClangCompiler) SystemIncludePath(facet *Facet, dirs ...Directory) {
+func (clang *ClangCompiler) SystemIncludePath(facet *compile.Facet, dirs ...Directory) {
 	clang.ExternIncludePath(facet, dirs...)
 }
-func (clang *ClangCompiler) DebugSymbols(u *Unit) {
+func (clang *ClangCompiler) DebugSymbols(u *compile.Unit) {
 	clang.MsvcCompiler.DebugSymbols(u)
 
 	// https://blog.llvm.org/2018/01/improving-link-time-on-windows-with.html
@@ -68,16 +73,25 @@ func (clang *ClangCompiler) DebugSymbols(u *Unit) {
 	// not supported by clang-cl
 	u.RemoveCompilationFlag("/Zf")
 }
-func (clang *ClangCompiler) SourceDependencies(obj *ActionRules) Action {
-	result := &GnuSourceDependenciesAction{
-		ActionRules: *obj.GetAction(),
+func (clang *ClangCompiler) GetPayloadOutput(u *compile.Unit, payload compile.PayloadType, file Filename) Filename {
+	return file.ReplaceExt(clang.Extname(payload))
+}
+func (clang *ClangCompiler) CreateAction(_ *compile.Unit, _ compile.PayloadType, model *action.ActionModel) action.Action {
+	if internal_io.OnRunCommandWithDetours != nil || // use IO detouring with DLL injection
+		!model.Options.Has(action.OPT_ALLOW_SOURCECONTROL) { // rely on internal logic to track dependencies
+		rules := model.CreateActionRules()
+		return &rules
 	}
-	result.GnuDepFile = result.Outputs[0].ReplaceExt(clang.Extname(PAYLOAD_DEPENDENCIES))
+
+	result := &generic.GnuSourceDependenciesAction{
+		ActionRules: model.CreateActionRules(),
+	}
+	result.GnuDepFile = result.GetExportFile().ReplaceExt(clang.Extname(compile.PAYLOAD_DEPENDENCIES))
 	result.Arguments.Append("/clang:--write-dependencies", "/clang:-MF"+MakeLocalFilename(result.GnuDepFile))
-	result.Extras.Append(result.GnuDepFile)
+	result.OutputFiles.Append(result.GnuDepFile)
 	return result
 }
-func (clang *ClangCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
+func (clang *ClangCompiler) Decorate(compileEnv *compile.CompileEnv, u *compile.Unit) error {
 	err := clang.MsvcCompiler.Decorate(compileEnv, u)
 	if err != nil {
 		return err
@@ -85,12 +99,12 @@ func (clang *ClangCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 
 	// add platform command flags for clang, intellisense is still assuming a cl-like frontend
 	switch compileEnv.GetPlatform().Arch {
-	case ARCH_ARM, ARCH_X86:
+	case compile.ARCH_ARM, compile.ARCH_X86:
 		u.AddCompilationFlag_NoAnalysis("-m32")
-	case ARCH_ARM64, ARCH_X64:
+	case compile.ARCH_ARM64, compile.ARCH_X64:
 		u.AddCompilationFlag_NoAnalysis("-m64")
 	default:
-		UnexpectedValue(compileEnv.GetPlatform().Arch)
+		base.UnexpectedValue(compileEnv.GetPlatform().Arch)
 	}
 
 	if u.CppRules.CompilerVerbose.Get() {
@@ -133,13 +147,13 @@ func (clang *ClangCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 	// #TODO: wait for MSTL/llvm to be fixed with this optimization
 	// if u.Payload == PAYLOAD_SHAREDLIB {
 	// 	// https://blog.llvm.org/2018/11/30-faster-windows-builds-with-clang-cl_14.html
-	// 	u.CompilerOptions.Append("/Zc:dllexportInlines-") // not workig with /MD and std
+	// 	u.CompilerOptions.Append("/Zc:dllexportInlines-") // not working with /MD and std
 	// 	u.PrecompiledHeaderOptions.Append("/Zc:dllexportInlines-")
 	// }
 
 	return nil
 }
-func (clang *ClangCompiler) Serialize(ar Archive) {
+func (clang *ClangCompiler) Serialize(ar base.Archive) {
 	ar.Serializable(&clang.LlvmProductInstall)
 	ar.Bool(&clang.UseMsvcLibrarian)
 	ar.Bool(&clang.UseMsvcLinker)
@@ -162,11 +176,13 @@ func (clang *ClangCompiler) Build(bc BuildContext) error {
 		return err
 	}
 
-	compileFlags := GetCompileFlags()
-	windowsFlags := GetWindowsFlags()
+	compileFlags, err := compile.GetCompileFlags(bc)
+	if err != nil {
+		return err
+	}
 
-	clang.UseMsvcLibrarian = !windowsFlags.LlvmToolchain.Get()
-	clang.UseMsvcLinker = !windowsFlags.LlvmToolchain.Get()
+	clang.UseMsvcLibrarian = !clang.WindowsFlags.LlvmToolchain.Get()
+	clang.UseMsvcLinker = !clang.WindowsFlags.LlvmToolchain.Get()
 
 	rules := clang.GetCompiler()
 	rules.Executable = llvm.ClangCl_exe
@@ -176,11 +192,11 @@ func (clang *ClangCompiler) Build(bc BuildContext) error {
 	}
 
 	if !clang.UseMsvcLibrarian {
-		LogVeryVerbose(LogWindows, "%v: use llvm librarian %q", clang.CompilerAlias, llvm.LlvmLib_exe)
+		base.LogVeryVerbose(LogWindows, "%v: use llvm librarian %q", clang.CompilerAlias, llvm.LlvmLib_exe)
 		rules.Librarian = llvm.LlvmLib_exe
 	}
 	if !clang.UseMsvcLinker {
-		LogVeryVerbose(LogWindows, "%v: use llvm linker %q", clang.CompilerAlias, llvm.LldLink_exe)
+		base.LogVeryVerbose(LogWindows, "%v: use llvm linker %q", clang.CompilerAlias, llvm.LldLink_exe)
 		rules.Linker = llvm.LldLink_exe
 	}
 
@@ -207,7 +223,7 @@ func (clang *ClangCompiler) Build(bc BuildContext) error {
 		rules.CompilerOptions.Append("/clang:-ftime-trace")
 	}
 
-	if windowsFlags.Permissive.Get() {
+	if clang.WindowsFlags.Permissive.Get() {
 		rules.AddCompilationFlag_NoAnalysis("-Wno-error")
 	} else {
 		rules.AddCompilationFlag_NoAnalysis(
@@ -249,7 +265,7 @@ var re_clangClVersion = regexp.MustCompile(`(?m)^clang\s+version\s+([\.\d]+)$`)
 func (llvm *LlvmProductInstall) Alias() BuildAlias {
 	return MakeBuildAlias("HAL", "Windows", "LLVM", "Latest")
 }
-func (llvm *LlvmProductInstall) Serialize(ar Archive) {
+func (llvm *LlvmProductInstall) Serialize(ar base.Archive) {
 	ar.String(&llvm.Version)
 	ar.Serializable(&llvm.InstallDir)
 	ar.Serializable(&llvm.ClangCl_exe)
@@ -269,7 +285,7 @@ func (llvm *LlvmProductInstall) Build(bc BuildContext) error {
 			llvm.LldLink_exe = x.Folder("bin").File("lld-link.exe")
 
 			if fullVersion, err := exec.Command(llvm.ClangCl_exe.String(), "--version").Output(); err == nil {
-				parsed := re_clangClVersion.FindStringSubmatch(UnsafeStringFromBytes(fullVersion))
+				parsed := re_clangClVersion.FindStringSubmatch(base.UnsafeStringFromBytes(fullVersion))
 				if nil == parsed {
 					return fmt.Errorf("failed to parse clang-cl version: %v", fullVersion)
 				}
@@ -278,8 +294,8 @@ func (llvm *LlvmProductInstall) Build(bc BuildContext) error {
 				return err
 			}
 
-			LogTrace(LogWindows, "using LLVM v%s for Windows found in '%v'", llvm.Version, llvm.InstallDir)
-			if err := bc.NeedFile(llvm.ClangCl_exe, llvm.LlvmLib_exe, llvm.LldLink_exe); err != nil {
+			base.LogTrace(LogWindows, "using LLVM v%s for Windows found in '%v'", llvm.Version, llvm.InstallDir)
+			if err := bc.NeedFiles(llvm.ClangCl_exe, llvm.LlvmLib_exe, llvm.LldLink_exe); err != nil {
 				return err
 			}
 
@@ -296,17 +312,20 @@ func GetLlvmProductInstall() BuildFactoryTyped[*LlvmProductInstall] {
 	})
 }
 
-func GetClangCompiler(arch ArchType) BuildFactoryTyped[*ClangCompiler] {
+func GetClangCompiler(arch compile.ArchType) BuildFactoryTyped[*ClangCompiler] {
 	return MakeBuildFactory(func(bi BuildInitializer) (ClangCompiler, error) {
-		return ClangCompiler{
-				UseMsvcLibrarian: false,
-				UseMsvcLinker:    false,
-				MsvcCompiler: MsvcCompiler{
-					Arch:          arch,
-					CompilerRules: NewCompilerRules(NewCompilerAlias("clang-cl", "LLVM", arch.String())),
-				},
-			}, bi.NeedFactories(
-				GetBuildableFlags(GetCompileFlags()),
-				GetBuildableFlags(GetWindowsFlags()))
+		clang_cl := ClangCompiler{
+			UseMsvcLibrarian: false,
+			UseMsvcLinker:    false,
+			MsvcCompiler: MsvcCompiler{
+				Arch:          arch,
+				CompilerRules: compile.NewCompilerRules(compile.NewCompilerAlias("clang-cl", "LLVM", arch.String())),
+			},
+		}
+		base.Assert(func() bool {
+			var compiler compile.Compiler = &clang_cl
+			return compiler == &clang_cl
+		})
+		return clang_cl, nil
 	})
 }

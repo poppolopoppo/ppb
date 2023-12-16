@@ -5,61 +5,56 @@ import (
 	"io"
 	"reflect"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/internal/io"
+	"github.com/poppolopoppo/ppb/internal/base"
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
+
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
 
-var CommandGraphviz = NewCommand(
+var CommandGraphviz = newCompletionCommand[BuildAlias, *BuildAlias](
 	"Export",
 	"export-gvz",
 	"dump build node to graphviz .dot",
-	OptionCommandCompletionArgs(),
-	OptionCommandRun(func(cc CommandContext) error {
+	func(cc CommandContext, ca *CompletionArgs[BuildAlias, *BuildAlias]) error {
 		bg := CommandEnv.BuildGraph()
-		aliases := bg.Aliases()
-		args := GetCompletionArgs()
 
-		completion := make(map[string]BuildAlias, len(aliases))
-		for _, a := range aliases {
-			completion[a.String()] = a
+		nodes := make([]BuildNode, len(ca.Inputs))
+		for i, a := range ca.Inputs {
+			var err error
+			if nodes[i], err = bg.Expect(a); err != nil {
+				return err
+			}
 		}
 
-		results := make(map[BuildAlias]BuildNode, 8)
-		mapCompletion(args, func(s string) {
-			alias := completion[s]
-			results[alias] = bg.Find(alias)
-		}, completion)
-
-		return openCompletion(args, func(w io.Writer) error {
+		return openCompletion(ca, func(w io.Writer) error {
 			gvz := newBuildGraphViz(bg, w)
 			gvz.Digraph("G", func() {
-				for _, node := range results {
-					gvz.Visit(node, OptionGraphVizFontSize(36), OptionGraphVizFillColor("red"), OptionGraphVizFontColor("yellow"), OptionGraphVizScale(2))
+				for _, node := range nodes {
+					gvz.Visit(node, internal_io.OptionGraphVizFontSize(36), internal_io.OptionGraphVizFillColor("red"), internal_io.OptionGraphVizFontColor("yellow"), internal_io.OptionGraphVizScale(2))
 				}
 				gvz.CloseSubGraphs()
 			},
-				OptionGraphVizCustom(`rankdir="LR"`),
-				OptionGraphVizScale(5),
-				OptionGraphVizFontName("Helvetica,Arial,sans-serif"),
-				OptionGraphVizFontSize(9))
+				internal_io.OptionGraphVizCustom(`rankdir="LR"`),
+				internal_io.OptionGraphVizScale(5),
+				internal_io.OptionGraphVizFontName("Helvetica,Arial,sans-serif"),
+				internal_io.OptionGraphVizFontSize(9))
 
 			return nil
 		})
-	}))
+	})
 
 type buildGraphVizEdge struct {
 	from, to string
-	GraphVizOptions
+	internal_io.GraphVizOptions
 }
 type buildGraphVizNode struct {
 	id string
-	GraphVizOptions
+	internal_io.GraphVizOptions
 }
 
 type buildGraphViz struct {
-	GraphVizFile
+	internal_io.GraphVizFile
 	graph     BuildGraph
 	visited   map[BuildNode]string
 	clustered bool
@@ -70,7 +65,7 @@ type buildGraphViz struct {
 func newBuildGraphViz(graph BuildGraph, w io.Writer) buildGraphViz {
 	return buildGraphViz{
 		graph:        graph,
-		GraphVizFile: NewGraphVizFile(w),
+		GraphVizFile: internal_io.NewGraphVizFile(w),
 		visited:      make(map[BuildNode]string),
 		subgraphs:    make(map[string][]buildGraphVizNode),
 		edges:        make([]buildGraphVizEdge, 0),
@@ -80,32 +75,32 @@ func (x *buildGraphViz) CloseSubGraphs() error {
 	for id, nodes := range x.subgraphs {
 		x.SubGraph(id, func() {
 			for _, node := range nodes {
-				x.Node(node.id, OptionGraphVizOptions(&node.GraphVizOptions))
+				x.Node(node.id, internal_io.OptionGraphVizOptions(&node.GraphVizOptions))
 			}
 		})
 	}
 	for _, edge := range x.edges {
-		x.Edge(edge.from, edge.to, OptionGraphVizOptions(&edge.GraphVizOptions))
+		x.Edge(edge.from, edge.to, internal_io.OptionGraphVizOptions(&edge.GraphVizOptions))
 	}
 	return nil
 }
-func (x *buildGraphViz) CompoundNode(subgraph, id string, options *GraphVizOptions) {
+func (x *buildGraphViz) CompoundNode(subgraph, id string, options *internal_io.GraphVizOptions) {
 	if x.clustered {
-		nodes, _ := x.subgraphs[subgraph]
+		nodes := x.subgraphs[subgraph]
 		nodes = append(nodes, buildGraphVizNode{id: id, GraphVizOptions: *options})
 		x.subgraphs[subgraph] = nodes
 	} else {
-		x.Node(id, OptionGraphVizOptions(options))
+		x.Node(id, internal_io.OptionGraphVizOptions(options))
 	}
 }
-func (x *buildGraphViz) CompoundEdge(from, to string, options ...GraphVizOptionFunc) {
+func (x *buildGraphViz) CompoundEdge(from, to string, options ...internal_io.GraphVizOptionFunc) {
 	if x.clustered {
-		x.edges = append(x.edges, buildGraphVizEdge{from: from, to: to, GraphVizOptions: NewGraphVizOptions(options...)})
+		x.edges = append(x.edges, buildGraphVizEdge{from: from, to: to, GraphVizOptions: internal_io.NewGraphVizOptions(options...)})
 	} else {
 		x.Edge(from, to, options...)
 	}
 }
-func (x *buildGraphViz) Visit(node BuildNode, userOptions ...GraphVizOptionFunc) string {
+func (x *buildGraphViz) Visit(node BuildNode, userOptions ...internal_io.GraphVizOptionFunc) string {
 	if id, ok := x.visited[node]; ok {
 		return id
 	}
@@ -113,47 +108,45 @@ func (x *buildGraphViz) Visit(node BuildNode, userOptions ...GraphVizOptionFunc)
 	id := node.Alias().String()
 	x.visited[node] = id
 
-	options := GraphVizOptions{}
+	options := internal_io.GraphVizOptions{}
 	options.Label = trimNodeLabel(id)
 	options.Tooltip = id
 
 	switch buildable := node.GetBuildable().(type) {
-	case *Filename:
+	case *FileDependency:
 		options.Color = "#AAE4B580"
-		options.Shape = GRAPHVIZ_Note
+		options.Shape = internal_io.GRAPHVIZ_Note
 		options.FontSize = 7
-	case *Directory:
+	case *DirectoryDependency:
 		options.Color = "#AAFACD80"
-		options.Shape = GRAPHVIZ_Folder
+		options.Shape = internal_io.GRAPHVIZ_Folder
 		options.FontSize = 7
-	case *DirectoryCreator, *DirectoryGlob, *DirectoryList:
+	case BuildableSourceFile:
+		options.Color = "#7BE86E50"
+		options.Shape = internal_io.GRAPHVIZ_Component
+		options.FontSize = 7
+	case BuildableSourceDirectory:
 		options.Color = "#7B68EE50"
-		options.Shape = GRAPHVIZ_Component
+		options.Shape = internal_io.GRAPHVIZ_Component
 		options.FontSize = 7
 	default:
 		ty := reflect.TypeOf(buildable)
-		digest := StringFingerprint(ty.String())
-
-		color := NewColor3f(
-			float64(digest[len(digest)-1])/0xFF,
-			0.7,
-			0.8,
-		).HslToRgb().Quantize()
+		color := base.NewColorFromStringHash(ty.String()).Quantize(true)
 
 		options.Color = color.ToHTML(0x80)
-		options.Style = GRAPHVIZ_Filled
-		options.Shape = GRAPHVIZ_Cds
+		options.Style = internal_io.GRAPHVIZ_Filled
+		options.Shape = internal_io.GRAPHVIZ_Cds
 	}
 
 	options.Init(userOptions...)
-	category := "cluster" + SanitizeIdentifier(reflect.TypeOf(node.GetBuildable()).String())
+	category := "cluster" + base.SanitizeIdentifier(reflect.TypeOf(node.GetBuildable()).String())
 	x.CompoundNode(category, id, &options)
 
 	for _, dep := range x.graph.GetStaticDependencies(node) {
-		x.CompoundEdge(id, x.Visit(dep), OptionGraphVizColor("#1E90FF30"), OptionGraphVizWeight(2))
+		x.CompoundEdge(id, x.Visit(dep), internal_io.OptionGraphVizColor("#1E90FF30"), internal_io.OptionGraphVizWeight(2))
 	}
 	for _, dep := range x.graph.GetDynamicDependencies(node) {
-		x.CompoundEdge(id, x.Visit(dep), OptionGraphVizColor("#E16F0030"), OptionGraphVizWeight(1))
+		x.CompoundEdge(id, x.Visit(dep), internal_io.OptionGraphVizColor("#E16F0030"), internal_io.OptionGraphVizWeight(1))
 	}
 	// for _, dep := range x.graph.GetOutputDependencies(node) {
 	// 	x.Edge(id, x.Visit(dep), OptionGraphVizColor("#F4A46090"), OptionGraphVizWeight(3))

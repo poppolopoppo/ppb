@@ -7,10 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Showmax/go-fqdn"
+	"github.com/poppolopoppo/ppb/internal/base"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/Showmax/go-fqdn"
 )
 
 /***************************************
@@ -29,7 +28,7 @@ const CURRENT_PEERVERSION = PEERVERSION_1_0
  * Peer mode
  ***************************************/
 
-type PeerMode int32
+type PeerMode byte
 
 const (
 	PEERMODE_DISABLED PeerMode = iota
@@ -49,6 +48,21 @@ func PeerModes() []PeerMode {
 func (x PeerMode) Equals(o PeerMode) bool {
 	return (x == o)
 }
+func (x PeerMode) Description() string {
+	switch x {
+	case PEERMODE_DISABLED:
+		return "worker won't accept any remote task"
+	case PEERMODE_IDLE:
+		return "worker will accept remote task when idle"
+	case PEERMODE_DEDICATED:
+		return "worker will always accept remote task"
+	case PEERMODE_PROPORTIONAL:
+		return "worker will accept remote task until according to machine usage"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x PeerMode) String() string {
 	switch x {
 	case PEERMODE_DISABLED:
@@ -60,7 +74,7 @@ func (x PeerMode) String() string {
 	case PEERMODE_PROPORTIONAL:
 		return "PROPORTIONAL"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -75,22 +89,22 @@ func (x *PeerMode) Set(in string) (err error) {
 	case PEERMODE_PROPORTIONAL.String():
 		*x = PEERMODE_PROPORTIONAL
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *PeerMode) Serialize(ar Archive) {
-	ar.Int32((*int32)(x))
+func (x *PeerMode) Serialize(ar base.Archive) {
+	ar.Byte((*byte)(x))
 }
 func (x PeerMode) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *PeerMode) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *PeerMode) AutoComplete(in AutoComplete) {
+func (x *PeerMode) AutoComplete(in base.AutoComplete) {
 	for _, it := range PeerModes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -104,10 +118,10 @@ type PeerInfo struct {
 	FQDN        string
 	Hardware    PeerHardware
 	PeerPort    string
-	Compression CompressionFormat
+	Compression base.CompressionFormat
 }
 
-func CurrentPeerInfo(iface net.Interface, localAddr net.IPNet, tunnelPort string, compression CompressionFormat) (peer PeerInfo, err error) {
+func CurrentPeerInfo(iface net.Interface, localAddr net.IPNet, tunnelPort string, compression base.CompressionFormat) (peer PeerInfo, err error) {
 	peer.Version = CURRENT_PEERVERSION
 	peer.PeerPort = tunnelPort
 	peer.Addr = localAddr
@@ -118,7 +132,7 @@ func CurrentPeerInfo(iface net.Interface, localAddr net.IPNet, tunnelPort string
 	if err != nil {
 		return
 	}
-	LogVerbose(LogCluster, "peer FQDN: %q, addr: %q, compression: %q, iface[%d]: %q (%v)", peer.FQDN, peer.Addr.IP, compression, iface.Index, iface.Name, iface.Flags)
+	base.LogVerbose(LogCluster, "peer FQDN: %q, addr: %q, compression: %q, iface[%d]: %q (%v)", peer.FQDN, peer.Addr.IP, compression, iface.Index, iface.Name, iface.Flags)
 
 	// Retrieve hardware survey
 	peer.Hardware, err = CurrentPeerHardware()
@@ -131,11 +145,11 @@ func (x *PeerInfo) String() string {
 	return fmt.Sprintf("%s:%s -> %v", x.FQDN, x.PeerPort, x.Hardware)
 }
 func (x *PeerInfo) Load(rd io.Reader) error {
-	return JsonDeserialize(x, rd)
+	return base.JsonDeserialize(x, rd)
 }
 func (x *PeerInfo) Save(wr *os.File) error {
 	if err := wr.Chmod(0644); err != nil {
 		return err
 	}
-	return JsonSerialize(x, wr)
+	return base.JsonSerialize(x, wr)
 }

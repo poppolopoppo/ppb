@@ -1,18 +1,20 @@
+//go:build linux
+
 package linux
 
 import (
+	"fmt"
 	"strings"
 
-	. "github.com/poppolopoppo/ppb/compile"
-
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/compile"
+	"github.com/poppolopoppo/ppb/internal/base"
 )
 
 /***************************************
  * Compiler type
  ***************************************/
 
-type CompilerType int32
+type CompilerType byte
 
 const (
 	COMPILER_CLANG CompilerType = iota
@@ -25,6 +27,17 @@ func CompilerTypes() []CompilerType {
 		COMPILER_GCC,
 	}
 }
+func (x CompilerType) Description() string {
+	switch x {
+	case COMPILER_CLANG:
+		return "LLVM Clang C++ compiler"
+	case COMPILER_GCC:
+		return "GNU Compiler Collection"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x CompilerType) String() string {
 	switch x {
 	case COMPILER_CLANG:
@@ -32,7 +45,7 @@ func (x CompilerType) String() string {
 	case COMPILER_GCC:
 		return "GCC"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -43,22 +56,22 @@ func (x *CompilerType) Set(in string) (err error) {
 	case COMPILER_GCC.String():
 		*x = COMPILER_GCC
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *CompilerType) Serialize(ar Archive) {
-	ar.Int32((*int32)(x))
+func (x *CompilerType) Serialize(ar base.Archive) {
+	ar.Byte((*byte)(x))
 }
 func (x CompilerType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *CompilerType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *CompilerType) AutoComplete(in AutoComplete) {
+func (x *CompilerType) AutoComplete(in base.AutoComplete) {
 	for _, it := range CompilerTypes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
 
@@ -119,7 +132,7 @@ func (v LlvmVersion) String() string {
 	case LLVM_9:
 		return "9"
 	default:
-		UnreachableCode()
+		base.UnreachableCode()
 		return ""
 	}
 }
@@ -144,32 +157,32 @@ func (v *LlvmVersion) Set(in string) (err error) {
 	case LLVM_9.String():
 		*v = LLVM_9
 	default:
-		err = MakeUnexpectedValueError(v, in)
+		err = base.MakeUnexpectedValueError(v, in)
 	}
 	return err
 }
-func (x *LlvmVersion) Serialize(ar Archive) {
+func (x *LlvmVersion) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
-func (x *LlvmVersion) AutoComplete(in AutoComplete) {
+func (x *LlvmVersion) AutoComplete(in base.AutoComplete) {
 	for _, it := range LlvmVersions() {
-		in.Add(it.String())
+		in.Add(it.String(), fmt.Sprintf("LLVM compiler version %v", it))
 	}
 }
 
-func getCppStdFromLlvm(ver LlvmVersion) CppStdType {
+func getCppStdFromLlvm(ver LlvmVersion) compile.CppStdType {
 	switch ver {
 	case LLVM_16:
-		return CPPSTD_20
+		return compile.CPPSTD_20
 	case LLVM_15, LLVM_14, LLVM_13, LLVM_12, LLVM_11:
-		return CPPSTD_17
+		return compile.CPPSTD_17
 	case LLVM_10:
-		return CPPSTD_14
+		return compile.CPPSTD_14
 	case LLVM_9:
-		return CPPSTD_11
+		return compile.CPPSTD_11
 	default:
-		UnexpectedValue(ver)
-		return CPPSTD_11
+		base.UnexpectedValue(ver)
+		return compile.CPPSTD_11
 	}
 }
 
@@ -177,7 +190,7 @@ func getCppStdFromLlvm(ver LlvmVersion) CppStdType {
  * Dump record layouts type
  ***************************************/
 
-type DumpRecordLayoutsType int32
+type DumpRecordLayoutsType byte
 
 const (
 	DUMPRECORDLAYOUTS_NONE DumpRecordLayoutsType = iota
@@ -192,6 +205,19 @@ func DumpRecordLayouts() []DumpRecordLayoutsType {
 		DUMPRECORDLAYOUTS_FULL,
 	}
 }
+func (x DumpRecordLayoutsType) Description() string {
+	switch x {
+	case DUMPRECORDLAYOUTS_NONE:
+		return "do not dump record layouts"
+	case DUMPRECORDLAYOUTS_SIMPLE:
+		return "dump simple record layouts"
+	case DUMPRECORDLAYOUTS_FULL:
+		return "dump full record layouts"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
 func (x DumpRecordLayoutsType) String() string {
 	switch x {
 	case DUMPRECORDLAYOUTS_NONE:
@@ -201,7 +227,7 @@ func (x DumpRecordLayoutsType) String() string {
 	case DUMPRECORDLAYOUTS_FULL:
 		return "FULL"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -214,21 +240,21 @@ func (x *DumpRecordLayoutsType) Set(in string) (err error) {
 	case DUMPRECORDLAYOUTS_FULL.String():
 		*x = DUMPRECORDLAYOUTS_FULL
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *DumpRecordLayoutsType) Serialize(ar Archive) {
-	ar.Int32((*int32)(x))
+func (x *DumpRecordLayoutsType) Serialize(ar base.Archive) {
+	ar.Byte((*byte)(x))
 }
 func (x DumpRecordLayoutsType) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *DumpRecordLayoutsType) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *DumpRecordLayoutsType) AutoComplete(in AutoComplete) {
+func (x *DumpRecordLayoutsType) AutoComplete(in base.AutoComplete) {
 	for _, it := range DumpRecordLayouts() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }

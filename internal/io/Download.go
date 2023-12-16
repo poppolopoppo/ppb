@@ -2,27 +2,28 @@ package io
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
 	"strconv"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
-var LogDownload = NewLogCategory("Download")
+var LogDownload = base.NewLogCategory("Download")
 
-type DownloadMode int32
+type DownloadMode byte
 
 const (
 	DOWNLOAD_DEFAULT DownloadMode = iota
 	DOWNLOAD_REDIRECT
 )
 
-func (x *DownloadMode) Serialize(ar Archive) {
-	ar.Int32((*int32)(x))
+func (x *DownloadMode) Serialize(ar base.Archive) {
+	ar.Byte((*byte)(x))
 }
 func (x DownloadMode) String() string {
 	switch x {
@@ -31,17 +32,17 @@ func (x DownloadMode) String() string {
 	case DOWNLOAD_REDIRECT:
 		return "DOWNLOAD_REDIRECT"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
 
-func BuildDownloader(uri string, dst Filename, mode DownloadMode) BuildFactoryTyped[*Downloader] {
+func BuildDownloader(uri string, dst utils.Filename, mode DownloadMode) utils.BuildFactoryTyped[*Downloader] {
 	parsedUrl, err := url.Parse(uri)
 	if err != nil {
-		LogFatal("download: %v", err)
+		base.LogFatal("download: %v", err)
 	}
-	return MakeBuildFactory(func(bi BuildInitializer) (Downloader, error) {
+	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (Downloader, error) {
 		return Downloader{
 			Source:      *parsedUrl,
 			Destination: dst,
@@ -52,16 +53,16 @@ func BuildDownloader(uri string, dst Filename, mode DownloadMode) BuildFactoryTy
 
 type Downloader struct {
 	Source      url.URL
-	Destination Filename
+	Destination utils.Filename
 	Mode        DownloadMode
 }
 
-func (dl *Downloader) Alias() BuildAlias {
-	return MakeBuildAlias("Download", dl.Destination.String())
+func (dl *Downloader) Alias() utils.BuildAlias {
+	return utils.MakeBuildAlias("Download", dl.Destination.String())
 }
-func (dl *Downloader) Build(bc BuildContext) error {
+func (dl *Downloader) Build(bc utils.BuildContext) error {
 	var err error
-	var written SizeInBytes
+	var written int64
 	switch dl.Mode {
 	case DOWNLOAD_DEFAULT:
 		written, err = DownloadFile(dl.Destination, dl.Source)
@@ -73,12 +74,13 @@ func (dl *Downloader) Build(bc BuildContext) error {
 		err = bc.OutputFile(dl.Destination)
 	}
 	if err == nil { // avoid re-downloading after each rebuild
-		bc.Annotate(written.String())
-		bc.Timestamp(UFS.MTime(dl.Destination))
+		bc.Annotate(
+			utils.AnnocateBuildCommentWith(base.SizeInBytes(written)),
+			utils.AnnocateBuildTimestamp(utils.UFS.MTime(dl.Destination)))
 	}
 	return err
 }
-func (dl *Downloader) Serialize(ar Archive) {
+func (dl *Downloader) Serialize(ar base.Archive) {
 	if ar.Flags().IsLoading() {
 		var uri string
 		ar.String(&uri)
@@ -116,22 +118,22 @@ func (nonCachableResponse) ShouldCache() bool {
 	return false
 }
 
-func downloadFromCache(resp *http.Response) (Filename, downloadCacheResult) {
+func downloadFromCache(resp *http.Response) (utils.Filename, downloadCacheResult) {
 	var contentHash []string
 	if contentHash = resp.Header.Values("Content-Md5"); contentHash == nil {
 		contentHash = resp.Header.Values("X-Goog-Hash")
 	}
 
 	if contentHash != nil {
-		uid, err := SerializeAnyFingerprint(func(ar Archive) error {
+		uid, err := base.SerializeAnyFingerprint(func(ar base.Archive) error {
 			for _, it := range contentHash {
 				ar.String(&it)
 			}
 			return nil
-		}, Fingerprint{})
-		LogPanicIfFailed(LogDownload, err)
+		}, base.Fingerprint{})
+		base.LogPanicIfFailed(LogDownload, err)
 
-		inCache := UFS.Transient.Folder("DownloadCache").File(fmt.Sprintf("%v.bin", uid))
+		inCache := utils.UFS.Transient.Folder("DownloadCache").File(fmt.Sprintf("%v.bin", uid))
 		if info, err := inCache.Info(); info != nil && err == nil {
 			var totalSize int
 			totalSize, err = strconv.Atoi(resp.Header.Get("Content-Length"))
@@ -148,15 +150,15 @@ func downloadFromCache(resp *http.Response) (Filename, downloadCacheResult) {
 			return inCache, invalidCacheItem{fmt.Errorf("%v: entry does not exist", inCache)}
 		}
 	}
-	return Filename{}, nonCachableResponse{fmt.Errorf("can't find content hash in http header")}
+	return utils.Filename{}, nonCachableResponse{fmt.Errorf("can't find content hash in http header")}
 }
 
-func DownloadFile(dst Filename, src url.URL) (SizeInBytes, error) {
-	LogVerbose(LogDownload, "downloading url '%v' to '%v'...", src.String(), dst.String())
+func DownloadFile(dst utils.Filename, src url.URL) (int64, error) {
+	base.LogVerbose(LogDownload, "downloading url '%v' to '%v'...", src.String(), dst.String())
 
-	var written SizeInBytes
-	cacheFile, shouldCache := Filename{}, false
-	err := UFS.CreateFile(dst, func(w *os.File) error {
+	var written int64
+	cacheFile, shouldCache := utils.Filename{}, false
+	err := utils.UFS.CreateFile(dst, func(w *os.File) error {
 		client := http.Client{
 			CheckRedirect: func(r *http.Request, _ []*http.Request) error {
 				r.URL.Opaque = r.URL.Path
@@ -174,33 +176,28 @@ func DownloadFile(dst Filename, src url.URL) (SizeInBytes, error) {
 		var cacheResult downloadCacheResult
 		cacheFile, cacheResult = downloadFromCache(resp)
 		if cacheResult == nil { // cache hit
-			LogDebug(LogDownload, "cache hit on '%v'", cacheFile)
+			base.LogDebug(LogDownload, "cache hit on '%v'", cacheFile)
 
-			return UFS.OpenFile(cacheFile, func(r *os.File) (err error) {
-				if info, err := r.Stat(); err == nil {
-					SetMTime(w, info.ModTime()) // keep mtime consistent
-				} else {
+			return utils.UFS.OpenFile(cacheFile, func(r *os.File) (err error) {
+				info, err := r.Stat()
+				if err == nil {
+					err = base.SetMTime(w, info.ModTime()) // keep mtime consistent
+				}
+				if err != nil {
 					return err
 				}
 
-				written, err = TransientIoCopy(w, r)
+				err = base.CopyWithProgress(dst.Basename, info.Size(), w, r)
+				written += info.Size()
 				return
 			})
 
 		} else { // cache miss
 			shouldCache = cacheResult.ShouldCache() // cachable ?
 
-			if EnableInteractiveShell() {
-				totalSize, err := strconv.ParseUint(resp.Header.Get("Content-Length"), 10, 64)
-				if err != nil {
-					return err
-				}
-
-				written.Assign(totalSize)
-				err = CopyWithProgress(dst.Basename, int64(totalSize), w, resp.Body)
-
-			} else {
-				written, err = TransientIoCopy(w, resp.Body)
+			written, err = strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+			if err == nil {
+				err = base.CopyWithProgress(dst.Basename, int64(written), w, resp.Body)
 			}
 		}
 
@@ -208,9 +205,9 @@ func DownloadFile(dst Filename, src url.URL) (SizeInBytes, error) {
 	})
 
 	if err == nil && shouldCache {
-		LogDebug(LogDownload, "cache store in '%v'", cacheFile)
-		if err := UFS.Copy(dst, cacheFile); err != nil {
-			LogWarning(LogDownload, "failed to cache download with %v", err)
+		base.LogDebug(LogDownload, "cache store in '%v'", cacheFile)
+		if err := utils.UFS.Copy(dst, cacheFile); err != nil {
+			base.LogWarning(LogDownload, "failed to cache download with %v", err)
 		}
 	}
 
@@ -219,8 +216,8 @@ func DownloadFile(dst Filename, src url.URL) (SizeInBytes, error) {
 
 var re_metaRefreshRedirect = regexp.MustCompile(`(?i)<meta.*http-equiv="refresh".*content=".*url=(.*)".*?/>`)
 
-func DownloadHttpRedirect(dst Filename, src url.URL) (SizeInBytes, error) {
-	LogVerbose(LogDownload, "download http redirect '%v' to '%v'...", src.String(), dst.String())
+func DownloadHttpRedirect(dst utils.Filename, src url.URL) (int64, error) {
+	base.LogVerbose(LogDownload, "download http redirect '%v' to '%v'...", src.String(), dst.String())
 
 	client := http.Client{
 		CheckRedirect: func(r *http.Request, _ []*http.Request) error {
@@ -236,16 +233,16 @@ func DownloadHttpRedirect(dst Filename, src url.URL) (SizeInBytes, error) {
 	}
 	defer resp.Body.Close()
 
-	parse := TransientBuffer.Allocate()
-	defer TransientBuffer.Release(parse)
+	parse := base.TransientBuffer.Allocate()
+	defer base.TransientBuffer.Release(parse)
 
-	_, err = TransientIoCopy(parse, resp.Body)
+	_, err = io.Copy(parse, resp.Body)
 
 	if err == nil {
 		match := re_metaRefreshRedirect.FindSubmatch(parse.Bytes())
 		if len(match) > 1 {
 			var url *url.URL
-			if url, err = url.Parse(UnsafeStringFromBytes(match[1])); err == nil {
+			if url, err = url.Parse(base.UnsafeStringFromBytes(match[1])); err == nil {
 				return DownloadFile(dst, *url)
 			}
 		} else {

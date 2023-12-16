@@ -6,7 +6,8 @@ import (
 	"path/filepath"
 	"unicode"
 
-	. "github.com/poppolopoppo/ppb/compile"
+	"github.com/poppolopoppo/ppb/action"
+	"github.com/poppolopoppo/ppb/internal/base"
 
 	. "github.com/poppolopoppo/ppb/utils"
 )
@@ -26,8 +27,8 @@ func (x *GnuDepFile) Load(src Filename) error {
 		var rb bufio.Reader
 		rb.Reset(rd)
 
-		buf := TransientBuffer.Allocate()
-		defer TransientBuffer.Release(buf)
+		buf := base.TransientBuffer.Allocate()
+		defer base.TransientBuffer.Release(buf)
 
 		var err error
 		for {
@@ -36,7 +37,7 @@ func (x *GnuDepFile) Load(src Filename) error {
 			}
 
 			appendFile := func() {
-				filename := UnsafeStringFromBuffer(buf)
+				filename := base.UnsafeStringFromBuffer(buf)
 				if len(filename) > 0 {
 					if filepath.IsLocal(filename) {
 						x.Dependencies.AppendUniq(UFS.Root.AbsoluteFile(filename).Normalize())
@@ -96,12 +97,13 @@ func (x *GnuDepFile) Load(src Filename) error {
  ***************************************/
 
 type GnuSourceDependenciesAction struct {
-	ActionRules
+	action.ActionRules
 	GnuDepFile Filename
 }
 
 func (x *GnuSourceDependenciesAction) Alias() BuildAlias {
-	return MakeBuildAlias("Action", "Gnu", x.Outputs.Join(";"))
+	exportFile := x.GetExportFile()
+	return MakeBuildAlias("Action", "Gnu", exportFile.Dirname.Path, exportFile.Basename)
 }
 func (x *GnuSourceDependenciesAction) Build(bc BuildContext) error {
 	// compile the action with /sourceDependencies
@@ -121,13 +123,13 @@ func (x *GnuSourceDependenciesAction) Build(bc BuildContext) error {
 	}
 
 	// add all parsed filenames as dynamic dependencies: when a header is modified, this action will have to be rebuild
-	LogDebug(LogGeneric, "gnu-dep-file: parsed output in %q\n%v", x.GnuDepFile, MakeStringer(func() string {
-		return PrettyPrint(sourceDeps.Dependencies)
+	base.LogDebug(LogGeneric, "gnu-dep-file: parsed output in %q\n%v", x.GnuDepFile, base.MakeStringer(func() string {
+		return base.PrettyPrint(sourceDeps.Dependencies)
 	}))
 
-	return bc.NeedFile(sourceDeps.Dependencies...)
+	return bc.NeedFiles(sourceDeps.Dependencies...)
 }
-func (x *GnuSourceDependenciesAction) Serialize(ar Archive) {
+func (x *GnuSourceDependenciesAction) Serialize(ar base.Archive) {
 	ar.Serializable(&x.ActionRules)
 	ar.Serializable(&x.GnuDepFile)
 }

@@ -4,20 +4,23 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"sort"
+
+	"github.com/poppolopoppo/ppb/internal/base"
 )
 
-var LogPersistent = NewLogCategory("Persistent")
+var LogPersistent = base.NewLogCategory("Persistent")
 
 type PersistentVar interface {
 	fmt.Stringer
 	flag.Value
-	Serializable
+	base.Serializable
 }
 
-type BoolVar = InheritableBool
-type IntVar = InheritableInt
-type BigIntVar = InheritableBigInt
-type StringVar = InheritableString
+type BoolVar = base.InheritableBool
+type IntVar = base.InheritableInt
+type BigIntVar = base.InheritableBigInt
+type StringVar = base.InheritableString
 
 type PersistentData interface {
 	PinData() map[string]string
@@ -26,7 +29,8 @@ type PersistentData interface {
 }
 
 type persistentData struct {
-	Data map[string]map[string]string
+	checksum base.Fingerprint
+	Data     map[string]map[string]string
 }
 
 func NewPersistentMap(name string) *persistentData {
@@ -52,22 +56,22 @@ func (pmp *persistentData) PinData() (result map[string]string) {
 func (pmp *persistentData) LoadData(name string, property string, dst PersistentVar) error {
 	if object, ok := pmp.Data[name]; ok {
 		if value, ok := object[property]; ok {
-			LogDebug(LogPersistent, "load object property %s.%s = %v", name, property, value)
+			base.LogDebug(LogPersistent, "load object property %s.%s = %v", name, property, value)
 			return dst.Set(value)
 		} else {
 			err := fmt.Errorf("object %q has no property %q", name, property)
-			LogWarningVerbose(LogPersistent, "load(%s.%s): %v", name, property, err)
+			base.LogWarningVerbose(LogPersistent, "load(%s.%s): %v", name, property, err)
 			return err
 		}
 
 	} else {
 		err := fmt.Errorf("object '%s' not found", name)
-		LogWarningVerbose(LogPersistent, "load(%s.%s): %v", name, property, err)
+		base.LogWarningVerbose(LogPersistent, "load(%s.%s): %v", name, property, err)
 		return err
 	}
 }
 func (pmp *persistentData) StoreData(name string, property string, dst PersistentVar) {
-	LogDebug(LogPersistent, "store in %s.%s = %v", name, property, dst)
+	base.LogDebug(LogPersistent, "store in %s.%s = %v", name, property, dst)
 	object, ok := pmp.Data[name]
 	if !ok {
 		object = make(map[string]string)
@@ -75,19 +79,46 @@ func (pmp *persistentData) StoreData(name string, property string, dst Persisten
 	}
 	object[property] = dst.String()
 }
+func (pmp *persistentData) Dirty() bool {
+	checksum, err := getPersistentDataFingerprint(pmp)
+	base.LogPanicIfFailed(LogPersistent, err)
+	if checksum == pmp.checksum {
+		return false
+	}
+	base.LogDebug(LogPersistent, "content was updated, need to resave (%s != %s)", checksum.String(), pmp.checksum)
+	return true
+}
 func (pmp *persistentData) Serialize(dst io.Writer) error {
-	if err := JsonSerialize(&pmp.Data, dst, OptionJsonPrettyPrint(true)); err == nil {
-		LogDebug(LogPersistent, "saved %d vars from config to disk", pmp.Len())
+	if err := base.JsonSerialize(&pmp.Data, dst, base.OptionJsonPrettyPrint(true)); err == nil {
+		base.LogDebug(LogPersistent, "saved %d vars from config to disk", pmp.Len())
 		return nil
 	} else {
 		return fmt.Errorf("failed to serialize config: %v", err)
 	}
 }
 func (pmp *persistentData) Deserialize(src io.Reader) error {
-	if err := JsonDeserialize(&pmp.Data, src); err == nil {
-		LogVerbose(LogPersistent, "loaded %d vars from disk to config", pmp.Len())
-		return nil
+	if err := base.JsonDeserialize(&pmp.Data, src); err == nil {
+		base.LogVerbose(LogPersistent, "loaded %d vars from disk to config", pmp.Len())
+		// record checksum to skip Serialize if content did not changed
+		pmp.checksum, err = getPersistentDataFingerprint(pmp)
+		return err
 	} else {
 		return fmt.Errorf("failed to deserialize config: %v", err)
 	}
+}
+
+func getPersistentDataFingerprint(pmp *persistentData) (base.Fingerprint, error) {
+	return base.SerializeAnyFingerprint(func(ar base.Archive) error {
+		pinned := pmp.PinData()
+		keys := base.Keys(pinned)
+		sort.Strings(keys)
+
+		for _, k := range keys {
+			v := pinned[k]
+			ar.String(&k)
+			ar.String(&v)
+		}
+
+		return nil
+	}, base.Fingerprint{})
 }

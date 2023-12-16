@@ -1,27 +1,25 @@
 package cmd
 
 import (
+	"github.com/poppolopoppo/ppb/compile"
+	"github.com/poppolopoppo/ppb/internal/base"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/compile"
-
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
-var CommandCompileDb = NewCommand(
+var CommandCompileDb = utils.NewCommand(
 	"Configure",
 	"compiledb",
 	"generate json compilation database",
-	OptionCommandAllCompilationFlags(),
-	OptionCommandRun(func(cc CommandContext) error {
-		LogClaim(LogCommand, "generation json compilation database in %q", UFS.Intermediate)
+	compile.OptionCommandAllCompilationFlags(),
+	utils.OptionCommandRun(func(cc utils.CommandContext) error {
+		base.LogClaim(utils.LogCommand, "generation json compilation database in %q", utils.UFS.Intermediate)
 
-		bg := CommandEnv.BuildGraph()
+		bg := utils.CommandEnv.BuildGraph()
 
-		for _, future := range Map(func(ea EnvironmentAlias) Future[*CompilationDatabaseBuilder] {
-			return BuildCompilationDatabase(ea).Prepare(bg)
-		}, GetEnvironmentAliases()...) {
+		for _, future := range base.Map(func(ea compile.EnvironmentAlias) base.Future[*compile.CompilationDatabaseBuilder] {
+			return compile.BuildCompilationDatabase(ea).Prepare(bg)
+		}, compile.GetEnvironmentAliases()...) {
 			result := future.Join()
 			if err := result.Failure(); err != nil {
 				return err

@@ -3,35 +3,34 @@
 package hal
 
 import (
-	"net"
 	"os"
 	"strings"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 
+	"github.com/poppolopoppo/ppb/internal/base"
 	"github.com/poppolopoppo/ppb/internal/hal/generic"
-	"github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/hal/linux"
 )
 
 func InitHAL() {
 	var uname syscall.Utsname
 	if err := syscall.Uname(&uname); err != nil {
-		utils.LogFatal("Uname: %s", err)
+		base.LogFatal("Uname: %s", err)
 	}
-	utils.SetCurrentHost(&utils.HostPlatform{
-		Id:   utils.HOST_LINUX,
+	base.SetCurrentHost(&base.HostPlatform{
+		Id:   base.HOST_LINUX,
 		Name: arrayToString(uname.Version),
 	})
 
-	utils.SetEnableInteractiveShell(isInteractiveShell())
+	base.SetEnableInteractiveShell(isInteractiveShell())
 
 	generic.InitGenericHAL()
 	linux.InitLinuxHAL()
 }
 
 func InitCompile() {
-	utils.FBUILD_BIN = utils.UFS.Build.Folder("hal", "linux", "bin").File("fbuild")
 	generic.InitGenericCompile()
 	linux.InitLinuxCompile()
 }

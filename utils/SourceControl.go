@@ -6,116 +6,212 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/poppolopoppo/ppb/internal/base"
 )
 
-var LogSourceControl = NewLogCategory("SourceControl")
+var LogSourceControl = base.NewLogCategory("SourceControl")
 
 type SourceControlProvider interface {
-	GetModifiedItems(*SourceControlModifiedFiles) error
-	GetStatus(*SourceControlStatus) error
+	IsInRepository(Filename) bool
+	GetRepositoryStatus(*SourceControlRepositoryStatus) error
+	GetFileStatus(*SourceControlFileStatus) error
+	GetFolderStatus(*SourceControlFolderStatus) error
+}
+
+type SourceControlRepositoryStatus struct {
+	Files       map[Filename]SourceControlState
+	Directories []struct {
+		Directory
+		State SourceControlState
+	}
+}
+
+var GetSourceControlProvider = base.Memoize(func() SourceControlProvider {
+	if git, err := NewGitSourceControl(UFS.Root); err == nil {
+		base.LogVerbose(LogSourceControl, "found Git source control in %q", git.Repository)
+		return git
+	}
+	return &DummySourceControl{}
+})
+
+/***************************************
+ * Source Control State
+ ***************************************/
+
+type SourceControlState byte
+
+const (
+	SOURCECONTROL_IGNORED SourceControlState = iota
+	SOURCECONTROL_UNTRACKED
+	SOURCECONTROL_UPTODATE
+	SOURCECONTROL_MODIFIED
+	SOURCECONTROL_ADDED
+	SOURCECONTROL_DELETED
+	SOURCECONTROL_RENAMED
+)
+
+func SourceControlStates() []SourceControlState {
+	return []SourceControlState{
+		SOURCECONTROL_IGNORED,
+		SOURCECONTROL_UNTRACKED,
+		SOURCECONTROL_UPTODATE,
+		SOURCECONTROL_MODIFIED,
+		SOURCECONTROL_ADDED,
+		SOURCECONTROL_DELETED,
+		SOURCECONTROL_RENAMED,
+	}
+}
+func (x SourceControlState) Ignored() bool {
+	return x == SOURCECONTROL_IGNORED
+}
+func (x SourceControlState) Description() string {
+	switch x {
+	case SOURCECONTROL_IGNORED:
+		return "ignored by source control"
+	case SOURCECONTROL_UNTRACKED:
+		return "not tracked by source control"
+	case SOURCECONTROL_UPTODATE:
+		return "all changes are in source control"
+	case SOURCECONTROL_MODIFIED:
+		return "local modifications present"
+	case SOURCECONTROL_ADDED:
+		return "added to source control"
+	case SOURCECONTROL_DELETED:
+		return "deleted from source control"
+	case SOURCECONTROL_RENAMED:
+		return "renamed locally"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x SourceControlState) String() string {
+	switch x {
+	case SOURCECONTROL_IGNORED:
+		return "IGNORED"
+	case SOURCECONTROL_UNTRACKED:
+		return "UNVERSIONED"
+	case SOURCECONTROL_UPTODATE:
+		return "UPTODATE"
+	case SOURCECONTROL_MODIFIED:
+		return "MODIFIED"
+	case SOURCECONTROL_ADDED:
+		return "ADDED"
+	case SOURCECONTROL_DELETED:
+		return "DELETED"
+	case SOURCECONTROL_RENAMED:
+		return "RENAMED"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x *SourceControlState) Set(in string) error {
+	switch strings.ToUpper(in) {
+	case SOURCECONTROL_IGNORED.String():
+		*x = SOURCECONTROL_IGNORED
+	case SOURCECONTROL_UNTRACKED.String():
+		*x = SOURCECONTROL_UNTRACKED
+	case SOURCECONTROL_UPTODATE.String():
+		*x = SOURCECONTROL_UPTODATE
+	case SOURCECONTROL_MODIFIED.String():
+		*x = SOURCECONTROL_MODIFIED
+	case SOURCECONTROL_ADDED.String():
+		*x = SOURCECONTROL_ADDED
+	case SOURCECONTROL_DELETED.String():
+		*x = SOURCECONTROL_DELETED
+	case SOURCECONTROL_RENAMED.String():
+		*x = SOURCECONTROL_RENAMED
+	}
+	return nil
+}
+func (x *SourceControlState) Serialize(ar base.Archive) {
+	ar.Byte((*byte)(x))
+}
+func (x SourceControlState) MarshalText() ([]byte, error) {
+	return base.UnsafeBytesFromString(x.String()), nil
+}
+func (x *SourceControlState) UnmarshalText(data []byte) error {
+	return x.Set(base.UnsafeStringFromBytes(data))
+}
+func (x *SourceControlState) AutoComplete(in base.AutoComplete) {
+	for _, it := range SourceControlStates() {
+		in.Add(it.String(), it.Description())
+	}
 }
 
 /***************************************
- * Source Control Status
+ * Source Control File Status
  ***************************************/
 
-type SourceControlStatus struct {
+type SourceControlFileStatus struct {
+	Path  Filename
+	State SourceControlState
+}
+
+func ForeachLocalSourceControlModifications(bc BuildContext, each func(Filename, SourceControlState) error, files ...Filename) (count int, err error) {
+	scm := GetSourceControlProvider()
+
+	futures := make([]base.Future[BuildResult], 0, len(files))
+	for _, it := range files {
+		if scm.IsInRepository(it) {
+			futures = append(futures, PrepareBuildFactory(bc.BuildGraph(), BuildFile(it)))
+		}
+	}
+
+	err = base.ParallelJoin(func(i int, br BuildResult) error {
+		bc.NeedBuildResult(br)
+		if file := br.Buildable.(*FileDependency); !file.SourceControl.Ignored() {
+			count++
+			if each != nil {
+				return each(file.Filename, file.SourceControl)
+			}
+		}
+		return nil
+	}, futures...)
+	return
+}
+
+/***************************************
+ * Source Control Folder Status
+ ***************************************/
+
+type SourceControlFolderStatus struct {
 	Path      Directory
 	Branch    string
 	Revision  string
 	Timestamp time.Time
 }
 
-func (x *SourceControlStatus) Alias() BuildAlias {
-	return MakeBuildAlias("SourceControl", "Status", x.Path.String())
+func (x *SourceControlFolderStatus) GetSourceDirectory() Directory {
+	return x.Path
 }
-func (x *SourceControlStatus) Build(bc BuildContext) (err error) {
-	err = GetSourceControlProvider().GetStatus(x)
+func (x *SourceControlFolderStatus) Alias() BuildAlias {
+	return MakeBuildAlias("SourceControl", x.Path.String())
+}
+func (x *SourceControlFolderStatus) Build(bc BuildContext) (err error) {
+	err = GetSourceControlProvider().GetFolderStatus(x)
 	if err == nil {
-		LogVerbose(LogSourceControl, "branch=%s, revision=%s, timestamp=%s", x.Branch, x.Revision, x.Timestamp)
+		base.LogVerbose(LogSourceControl, "%s: branch=%s, revision=%s, timestamp=%s", x.Path, x.Branch, x.Revision, x.Timestamp)
 	}
 	return
 }
-func (x *SourceControlStatus) Serialize(ar Archive) {
+func (x *SourceControlFolderStatus) Serialize(ar base.Archive) {
 	ar.Serializable(&x.Path)
 	ar.String(&x.Branch)
 	ar.String(&x.Revision)
 	ar.Time(&x.Timestamp)
 }
 
-func BuildSourceControlStatus(path Directory) BuildFactoryTyped[*SourceControlStatus] {
-	return MakeBuildFactory(func(bi BuildInitializer) (SourceControlStatus, error) {
-		return SourceControlStatus{
-			Path: path,
-		}, nil
-	})
-}
-
-/***************************************
- * Source Control Modified Files
- ***************************************/
-
-type SourceControlModifiedFiles struct {
-	Path          Directory
-	ModifiedDirs  DirSet
-	ModifiedFiles FileSet
-}
-
-func (x *SourceControlModifiedFiles) Alias() BuildAlias {
-	return MakeBuildAlias("SourceControl", "ModifiedFiles", x.Path.String())
-}
-func (x *SourceControlModifiedFiles) HasUnversionedModifications(files ...Filename) bool {
-	for _, f := range files {
-		if x.ModifiedFiles.Contains(f) {
-			return true
-		}
-		for _, folder := range x.ModifiedDirs {
-			if f.Dirname.IsIn(folder) {
-				return true
-			}
-		}
-	}
-	return false
-}
-func (x *SourceControlModifiedFiles) Build(bc BuildContext) (err error) {
-	if err = GetSourceControlProvider().GetModifiedItems(x); err != nil {
-		return
-	}
-
-	// look for the date of the most recent modification
-	var timestamp time.Time
-	for _, dir := range x.ModifiedDirs {
-		if st, err := dir.Info(); err == nil && timestamp.Before(st.ModTime()) {
-			timestamp = st.ModTime()
-		}
-	}
-	for _, file := range x.ModifiedFiles {
-		if st, err := file.Info(); err == nil && timestamp.Before(st.ModTime()) {
-			timestamp = st.ModTime()
-		}
-	}
-
-	// explicit time tracking: avoid recompiling when nothing changed
-	if timestamp != (time.Time{}) {
-		bc.Timestamp(timestamp)
-	}
-
-	bc.Annotate(fmt.Sprintf("%d files, %d folders", len(x.ModifiedFiles), len(x.ModifiedDirs)))
-	return
-}
-func (x *SourceControlModifiedFiles) Serialize(ar Archive) {
-	ar.Serializable(&x.Path)
-	ar.Serializable(&x.ModifiedDirs)
-	ar.Serializable(&x.ModifiedFiles)
-}
-
-func BuildSourceControlModifiedFiles(path Directory) BuildFactoryTyped[*SourceControlModifiedFiles] {
-	return MakeBuildFactory(func(bi BuildInitializer) (SourceControlModifiedFiles, error) {
-		return SourceControlModifiedFiles{
+func BuildSourceControlFolderStatus(path Directory) BuildFactoryTyped[*SourceControlFolderStatus] {
+	return MakeBuildFactory(func(bi BuildInitializer) (SourceControlFolderStatus, error) {
+		return SourceControlFolderStatus{
 			Path: path,
 		}, nil
 	})
@@ -127,15 +223,25 @@ func BuildSourceControlModifiedFiles(path Directory) BuildFactoryTyped[*SourceCo
 
 type DummySourceControl struct{}
 
-func (x DummySourceControl) GetModifiedItems(modified *SourceControlModifiedFiles) error {
-	modified.ModifiedDirs = DirSet{}
-	modified.ModifiedFiles = FileSet{}
+func (x DummySourceControl) IsInRepository(Filename) bool {
+	return false
+}
+func (x DummySourceControl) GetRepositoryStatus(repo *SourceControlRepositoryStatus) error {
+	repo.Files = make(map[Filename]SourceControlState)
+	repo.Directories = []struct {
+		Directory
+		State SourceControlState
+	}{}
 	return nil
 }
-func (x DummySourceControl) GetStatus(status *SourceControlStatus) error {
-	status.Branch = "Dummy"
-	status.Revision = "Unknown"
-	status.Timestamp = time.Now()
+func (x DummySourceControl) GetFileStatus(file *SourceControlFileStatus) error {
+	file.State = SOURCECONTROL_IGNORED
+	return nil
+}
+func (x DummySourceControl) GetFolderStatus(folder *SourceControlFolderStatus) error {
+	folder.Branch = "Dummy"
+	folder.Revision = "Unknown"
+	folder.Timestamp = time.Now()
 	return nil
 }
 
@@ -147,8 +253,11 @@ type GitSourceControl struct {
 	Executable string
 	Repository Directory
 
-	modifiedFilesInCache *SourceControlModifiedFiles
-	modifiedFilesBarrier sync.Mutex
+	status struct {
+		once sync.Once
+		err  error
+		SourceControlRepositoryStatus
+	}
 }
 
 func NewGitSourceControl(repository Directory) (*GitSourceControl, error) {
@@ -166,10 +275,12 @@ func NewGitSourceControl(repository Directory) (*GitSourceControl, error) {
 		Repository: repository,
 	}, nil
 }
-
+func (git *GitSourceControl) IsInRepository(f Filename) bool {
+	return f.IsIn(git.Repository)
+}
 func (git *GitSourceControl) Command(name string, args ...string) ([]byte, error) {
 	args = append([]string{"--no-optional-locks", name}, args...)
-	LogVeryVerbose(LogSourceControl, "run git command %v", MakeStringer(func() string {
+	base.LogVeryVerbose(LogSourceControl, "run git command %v", base.MakeStringer(func() string {
 		return strings.Join(args, " ")
 	}))
 
@@ -179,34 +290,31 @@ func (git *GitSourceControl) Command(name string, args ...string) ([]byte, error
 
 	output, err := proc.Output()
 	if err != nil {
-		LogError(LogSourceControl, "git command %v returned %v: %v", strings.Join(args, " "), err, output)
+		base.LogError(LogSourceControl, "git command %v returned %v: %v", strings.Join(args, " "), err, output)
 	}
 
 	return output, err
 }
-func (git *GitSourceControl) getModifiedFilesInCache() (*SourceControlModifiedFiles, error) {
-	git.modifiedFilesBarrier.Lock()
-	defer git.modifiedFilesBarrier.Unlock()
+func getGitRepositoryStatus(git *GitSourceControl) (repo SourceControlRepositoryStatus, err error) {
+	repo.Files = make(map[Filename]SourceControlState)
+	repo.Directories = []struct {
+		Directory
+		State SourceControlState
+	}{}
 
-	if git.modifiedFilesInCache != nil {
-		return git.modifiedFilesInCache, nil
-	}
-
-	modified := new(SourceControlModifiedFiles)
-	modified.Path = git.Repository
-
-	status, err := git.Command("status",
+	var status []byte
+	status, err = git.Command("status",
 		"--ignore-submodules", // Git will recursve into each submodule without this, which can be very slow (1.5s to 250ms on PPE)
 		"-s", "--porcelain=v1")
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	reader := bufio.NewScanner(bytes.NewReader(status))
 	for {
 		advance, token, err := bufio.ScanLines(status, true)
 		if err != nil {
-			return nil, err
+			return repo, err
 		}
 		if advance == 0 {
 			break
@@ -218,83 +326,130 @@ func (git *GitSourceControl) getModifiedFilesInCache() (*SourceControlModifiedFi
 			continue
 		}
 
-		line := UnsafeStringFromBytes(token)
+		line := base.UnsafeStringFromBytes(token)
 
-		if strings.HasPrefix(line, "A ") || strings.HasPrefix(line, " M") || strings.HasPrefix(line, "AM") || strings.HasPrefix(line, "??") {
-			path := strings.TrimSpace(line[3:])
-			stat, err := os.Stat(path)
-			if err != nil {
-				LogError(LogSourceControl, "ignore invalid modified path: %v", err)
-				continue
-			}
+		status := SOURCECONTROL_IGNORED
+		switch line[:2] {
+		case "A ":
+			status = SOURCECONTROL_ADDED
+		case " M", "AM":
+			status = SOURCECONTROL_MODIFIED
+		case " R":
+			status = SOURCECONTROL_RENAMED
+		case " D":
+			status = SOURCECONTROL_DELETED
+		case "??":
+			status = SOURCECONTROL_UNTRACKED
+		default:
+			continue
+		}
+		path := strings.TrimSpace(line[3:])
 
-			if stat.IsDir() {
-				dir := git.Repository.AbsoluteFolder(path)
-				MakeDirectoryInfo(dir, &stat) // cache os.Stat() result
+		stat, err := os.Stat(path)
+		if err != nil {
+			base.LogError(LogSourceControl, "ignore invalid modified path: %v", err)
+			continue
+		}
 
-				modified.ModifiedDirs.Append(dir)
+		if stat.IsDir() {
+			dir := git.Repository.AbsoluteFolder(path)
+			FileInfos.SetDirectoryInfo(dir, stat, nil)
 
-				LogVeryVerbose(LogSourceControl, "git sees directory %q as modified", dir)
+			repo.Directories = append(repo.Directories, struct {
+				Directory
+				State SourceControlState
+			}{
+				Directory: dir,
+				State:     status,
+			})
 
-			} else {
-				file := git.Repository.AbsoluteFile(path)
-				MakeFileInfo(file, &stat) // cache os.Stat() result
+			base.LogVeryVerbose(LogSourceControl, "git sees directory %q as %v", dir, status)
+		} else {
+			file := git.Repository.AbsoluteFile(path)
+			FileInfos.SetFileInfo(file, stat, nil)
 
-				modified.ModifiedFiles.Append(file)
+			repo.Files[file] = status
 
-				LogVeryVerbose(LogSourceControl, "git sees file %q as modified", file)
-			}
+			base.LogVeryVerbose(LogSourceControl, "git sees file %q as %v", file, status)
 		}
 	}
 
-	if err = reader.Err(); err == nil {
-		LogVeryVerbose(LogSourceControl, "git found %d modified files and %d modified directories in whole repository", len(modified.ModifiedFiles), len(modified.ModifiedDirs))
-		git.modifiedFilesInCache = modified
-	}
-	return git.modifiedFilesInCache, err
-}
-func (git *GitSourceControl) GetModifiedItems(modified *SourceControlModifiedFiles) error {
-	modified.ModifiedDirs = NewDirSet()
-	modified.ModifiedFiles = NewFileSet()
+	sort.Slice(repo.Directories, func(i, j int) bool {
+		return repo.Directories[i].Compare(repo.Directories[j].Directory) < 0
+	})
 
-	// list modified files from Git only once for whole repo
-	global, err := git.getModifiedFilesInCache()
-	if err != nil {
+	if err = reader.Err(); err == nil {
+		base.LogVerbose(LogSourceControl, "git found %d modified files and %d modified directories in whole repository",
+			len(repo.Files), len(repo.Directories))
+	}
+
+	return repo, err
+}
+
+func (git *GitSourceControl) GetRepositoryStatus(repo *SourceControlRepositoryStatus) error {
+	git.status.once.Do(func() {
+		git.status.SourceControlRepositoryStatus, git.status.err = getGitRepositoryStatus(git)
+	})
+
+	if git.status.err == nil {
+		*repo = git.status.SourceControlRepositoryStatus
+		return nil
+	} else {
+		repo.Files = map[Filename]SourceControlState{}
+		repo.Directories = []struct {
+			Directory
+			State SourceControlState
+		}{}
+		return git.status.err
+	}
+}
+func (git *GitSourceControl) GetFileStatus(file *SourceControlFileStatus) error {
+	file.State = SOURCECONTROL_IGNORED
+
+	var repo SourceControlRepositoryStatus
+	if err := git.GetRepositoryStatus(&repo); err != nil {
 		return err
 	}
 
-	// then filter global results by subfolder
-	modified.ModifiedDirs = RemoveUnless(func(d Directory) bool { return d.IsIn(modified.Path) }, global.ModifiedDirs...)
-	modified.ModifiedFiles = RemoveUnless(func(f Filename) bool { return f.IsIn(modified.Path) }, global.ModifiedFiles...)
+	if state, ok := repo.Files[file.Path]; ok {
+		file.State = state
+	} else if len(repo.Directories) > 0 {
+		found := sort.Search(len(repo.Directories), func(i int) bool {
+			return file.Path.Dirname.Compare(repo.Directories[i].Directory) >= 0
+		})
 
-	LogVeryVerbose(LogSourceControl, "git found %d modified files and %d modified directories in %v", len(modified.ModifiedFiles), len(modified.ModifiedDirs))
+		if found < len(repo.Directories) && file.Path.Dirname.IsIn(repo.Directories[found].Directory) {
+			file.State = repo.Directories[found].State
+		}
+	}
+
 	return nil
 }
-func (git *GitSourceControl) GetStatus(status *SourceControlStatus) error {
-	status.Revision = "no-revision-available"
-	status.Branch = "no-branch-available"
-	status.Timestamp = CommandEnv.BuildTime()
+func (git *GitSourceControl) GetFolderStatus(dir *SourceControlFolderStatus) error {
+	dir.Revision = "no-revision-available"
+	dir.Branch = "no-branch-available"
+	dir.Timestamp = CommandEnv.BuildTime()
 
-	if outp, err := git.Command("log", "-1", "--format=\"%H;%ct;%D\"", "--", status.Path.Relative(git.Repository)); err == nil {
+	if outp, err := git.Command("log", "-1", "--format=\"%H;%ct;%D\"", "--", dir.Path.Relative(git.Repository)); err == nil {
 		if len(outp) == 0 {
 			return nil // output is empty when the path is known to Git (ignored or not git-added yet for instance)
 		}
 
-		line := strings.TrimSpace(UnsafeStringFromBytes(outp))
+		line := strings.TrimSpace(base.UnsafeStringFromBytes(outp))
 		line = strings.Trim(line, "\"")
 
 		log := strings.SplitN(line, ";", 4)
 
-		status.Revision = strings.TrimSpace(log[0])
+		dir.Revision = strings.TrimSpace(log[0])
 		timestamp := strings.TrimSpace(log[1])
 
 		branchInfo := strings.Split(log[2], "->")
-		status.Branch = branchInfo[len(branchInfo)-1]
-		status.Branch = strings.Split(status.Branch, `,`)[0]
-		status.Branch = strings.TrimSpace(status.Branch)
+		dir.Branch = branchInfo[len(branchInfo)-1]
+		dir.Branch = strings.Split(dir.Branch, `,`)[0]
+		dir.Branch = strings.TrimSpace(dir.Branch)
 
 		if unitT, err := strconv.ParseInt(timestamp, 10, 64); err == nil {
-			status.Timestamp = time.Unix(unitT, 0)
+			dir.Timestamp = time.Unix(unitT, 0)
 			return nil
 		} else {
 			return err
@@ -303,11 +458,3 @@ func (git *GitSourceControl) GetStatus(status *SourceControlStatus) error {
 		return err
 	}
 }
-
-var GetSourceControlProvider = Memoize(func() SourceControlProvider {
-	if git, err := NewGitSourceControl(UFS.Root); err == nil {
-		LogVerbose(LogSourceControl, "found Git source control in %q", git.Repository)
-		return git
-	}
-	return &DummySourceControl{}
-})

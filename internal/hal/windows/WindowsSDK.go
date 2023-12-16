@@ -1,30 +1,31 @@
+//go:build windows
+
 package windows
 
 import (
 	"regexp"
 	"sort"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/compile"
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/compile"
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
 type WindowsSDK struct {
 	Name             string
-	RootDir          Directory
+	RootDir          utils.Directory
 	Version          string
-	ResourceCompiler Filename
-	Facet
+	ResourceCompiler utils.Filename
+	compile.Facet
 }
 
-func newWindowsSDK(rootDir Directory, version string) (result WindowsSDK) {
+func newWindowsSDK(rootDir utils.Directory, version string) (result WindowsSDK) {
 	result = WindowsSDK{
 		Name:             "WindowsSDK_" + version,
 		RootDir:          rootDir,
 		Version:          version,
-		ResourceCompiler: rootDir.Folder("Bin", version, "x64").File("RC.exe"),
-		Facet:            NewFacet(),
+		ResourceCompiler: rootDir.Folder("bin", version, "x64").File("rc.exe"),
+		Facet:            compile.NewFacet(),
 	}
 	result.Facet.LibraryPaths.Append(
 		rootDir.Folder("Lib", version, "ucrt", "{{.Windows/Platform}}"),
@@ -50,10 +51,10 @@ func newWindowsSDK(rootDir Directory, version string) (result WindowsSDK) {
 	return result
 }
 
-func (sdk *WindowsSDK) GetFacet() *Facet {
+func (sdk *WindowsSDK) GetFacet() *compile.Facet {
 	return &sdk.Facet
 }
-func (sdk *WindowsSDK) Serialize(ar Archive) {
+func (sdk *WindowsSDK) Serialize(ar base.Archive) {
 	ar.String(&sdk.Name)
 	ar.Serializable(&sdk.RootDir)
 	ar.String(&sdk.Version)
@@ -63,99 +64,102 @@ func (sdk *WindowsSDK) Serialize(ar Archive) {
 
 type WindowsSDKInstall struct {
 	MajorVer   string
-	SearchDir  Directory
+	SearchDir  utils.Directory
 	SearchGlob string
 	WindowsSDK
 }
 
-func (x *WindowsSDKInstall) Alias() BuildAlias {
-	return MakeBuildAlias("HAL", "Windows", "SDK", x.MajorVer)
+func (x *WindowsSDKInstall) Alias() utils.BuildAlias {
+	return utils.MakeBuildAlias("HAL", "Windows", "SDK", x.MajorVer)
 }
-func (x *WindowsSDKInstall) Build(bc BuildContext) error {
-	var dirs DirSet
+func (x *WindowsSDKInstall) Build(bc utils.BuildContext) error {
+	var dirs utils.DirSet
 	var err error
 	if x.MajorVer != "User" {
-		err = x.SearchDir.MatchDirectories(func(d Directory) error {
+		err = x.SearchDir.MatchDirectories(func(d utils.Directory) error {
 			dirs.Append(d)
 			return nil
 		}, regexp.MustCompile(x.SearchGlob))
 	} else {
-		windowsFlags := GetWindowsFlags()
-		if _, err = GetBuildableFlags(windowsFlags).Need(bc); err != nil {
+		windowsFlags, err := GetWindowsFlags(bc)
+		if err != nil {
 			return err
 		}
 
 		dirs.Append(windowsFlags.WindowsSDK)
-		_, err = windowsFlags.WindowsSDK.Info()
+
+		if err = bc.NeedDirectories(windowsFlags.WindowsSDK); err != nil {
+			return err
+		}
 	}
 	if err == nil && len(dirs) > 0 {
 		sort.Sort(dirs)
 		lib := dirs[len(dirs)-1]
-		if err = bc.NeedDirectory(lib); err != nil {
+		if err = bc.NeedDirectories(lib); err != nil {
 			return err
 		}
 
-		LogDebug(LogWindows, "found WindowsSDK@%v in '%v'", x.MajorVer, lib)
+		base.LogDebug(LogWindows, "found WindowsSDK@%v in '%v'", x.MajorVer, lib)
 
 		libParent, ver := lib.Split()
 		x.WindowsSDK = newWindowsSDK(libParent.Parent(), ver)
-		err = bc.NeedFile(x.WindowsSDK.ResourceCompiler)
+		err = bc.NeedFiles(x.WindowsSDK.ResourceCompiler)
 	}
 	return err
 }
-func (x *WindowsSDKInstall) Serialize(ar Archive) {
+func (x *WindowsSDKInstall) Serialize(ar base.Archive) {
 	ar.String(&x.MajorVer)
 	ar.Serializable(&x.SearchDir)
 	ar.String(&x.SearchGlob)
 	ar.Serializable(&x.WindowsSDK)
 }
 
-func getWindowsSDK_10() BuildFactoryTyped[*WindowsSDKInstall] {
-	return MakeBuildFactory(func(bi BuildInitializer) (WindowsSDKInstall, error) {
-		searchDir := MakeDirectory("C:/Program Files (x86)/Windows Kits/10/Lib")
+func getWindowsSDK_10() utils.BuildFactoryTyped[*WindowsSDKInstall] {
+	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (WindowsSDKInstall, error) {
+		searchDir := utils.MakeDirectory("C:/Program Files (x86)/Windows Kits/10/Lib")
 		return WindowsSDKInstall{
 			MajorVer:   "10",
 			SearchDir:  searchDir,
 			SearchGlob: `10\..*`,
-		}, bi.NeedDirectory(searchDir)
+		}, bi.NeedDirectories(searchDir)
 	})
 }
 
-func getWindowsSDK_8_1() BuildFactoryTyped[*WindowsSDKInstall] {
-	return MakeBuildFactory(func(bi BuildInitializer) (WindowsSDKInstall, error) {
-		searchDir := MakeDirectory("C:/Program Files (x86)/Windows Kits/8.1/Lib")
+func getWindowsSDK_8_1() utils.BuildFactoryTyped[*WindowsSDKInstall] {
+	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (WindowsSDKInstall, error) {
+		searchDir := utils.MakeDirectory("C:/Program Files (x86)/Windows Kits/8.1/Lib")
 		return WindowsSDKInstall{
 			MajorVer:   "8.1",
 			SearchDir:  searchDir,
 			SearchGlob: `8\..*`,
-		}, bi.NeedDirectory(searchDir)
+		}, bi.NeedDirectories(searchDir)
 	})
 }
 
-func getWindowsSDK_User(overrideDir Directory) BuildFactoryTyped[*WindowsSDKInstall] {
-	return MakeBuildFactory(func(bi BuildInitializer) (WindowsSDKInstall, error) {
+func getWindowsSDK_User(overrideDir utils.Directory) utils.BuildFactoryTyped[*WindowsSDKInstall] {
+	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (WindowsSDKInstall, error) {
 		return WindowsSDKInstall{
 			MajorVer:  "User",
 			SearchDir: overrideDir,
-		}, bi.NeedDirectory(overrideDir)
+		}, bi.NeedDirectories(overrideDir)
 	})
 }
 
-func GetWindowsSDKInstall(bi BuildInitializer, overrideDir Directory) (*WindowsSDKInstall, error) {
+func GetWindowsSDKInstall(bi utils.BuildInitializer, overrideDir utils.Directory) (*WindowsSDKInstall, error) {
 	if len(overrideDir.Path) > 0 {
-		LogPanicIfFailed(LogWindows, bi.NeedDirectory(overrideDir))
+		base.LogPanicIfFailed(LogWindows, bi.NeedDirectories(overrideDir))
 
-		LogVeryVerbose(LogWindows, "using user override '%v' for Windows SDK", overrideDir)
+		base.LogVeryVerbose(LogWindows, "using user override '%v' for Windows SDK", overrideDir)
 		return getWindowsSDK_User(overrideDir).Need(bi)
 	}
 
 	if win10, err := getWindowsSDK_10().Need(bi); err == nil {
-		LogVeryVerbose(LogWindows, "using Windows SDK 10")
+		base.LogVeryVerbose(LogWindows, "using Windows SDK 10")
 		return win10, nil
 	}
 
 	if win81, err := getWindowsSDK_8_1().Need(bi); err == nil {
-		LogVeryVerbose(LogWindows, "using Windows SDK 8.1")
+		base.LogVeryVerbose(LogWindows, "using Windows SDK 8.1")
 		return win81, nil
 	} else {
 		return nil, err

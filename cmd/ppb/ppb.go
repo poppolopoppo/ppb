@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/poppolopoppo/ppb"
-	"github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
 )
 
 /***************************************
@@ -11,5 +11,5 @@ import (
 
 func main() {
 	err := ppb.LaunchCommand("ppb")
-	utils.LogPanicIfFailed(ppb.LogPPB, err)
+	base.LogPanicIfFailed(ppb.LogPPB, err)
 }

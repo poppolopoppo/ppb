@@ -4,18 +4,17 @@ import (
 	"io"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
 )
 
 type CppFile struct {
 	ifdef string
-	*StructuredFile
+	*base.StructuredFile
 }
 
 func NewCppFile(dst io.Writer, minify bool) *CppFile {
 	return &CppFile{
-		StructuredFile: NewStructuredFile(dst, STRUCTUREDFILE_DEFAULT_TAB, minify),
+		StructuredFile: base.NewStructuredFile(dst, base.STRUCTUREDFILE_DEFAULT_TAB, minify),
 	}
 }
 

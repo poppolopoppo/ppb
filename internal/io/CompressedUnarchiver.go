@@ -2,45 +2,46 @@ package io
 
 import (
 	"archive/tar"
+	"fmt"
 	"os"
 
 	"github.com/klauspost/compress/zip"
 	"github.com/mholt/archiver/v3"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
-var LogCompressedArchive = NewLogCategory("CompressedArchive")
+var LogCompressedArchive = base.NewLogCategory("CompressedArchive")
 
 type CompressedArchiveFromDownload struct {
 	Download   *Downloader
-	ExtractDir Directory
+	ExtractDir utils.Directory
 }
 
 func (x CompressedArchiveFromDownload) Equals(other CompressedArchiveFromDownload) bool {
 	return (x.Download == other.Download && x.ExtractDir.Equals(other.ExtractDir))
 }
 
-func BuildCompressedUnarchiver(src Filename, dst Directory, acceptList StringSet, staticDeps ...BuildAliasable) BuildFactoryTyped[*CompressedUnarchiver] {
-	return MakeBuildFactory(func(bi BuildInitializer) (CompressedUnarchiver, error) {
+func BuildCompressedUnarchiver(src utils.Filename, dst utils.Directory, acceptList base.StringSet, staticDeps ...utils.BuildAlias) utils.BuildFactoryTyped[*CompressedUnarchiver] {
+	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (CompressedUnarchiver, error) {
 		err := CreateDirectory(bi, dst)
 		return CompressedUnarchiver{
 				Source:      src,
 				Destination: dst,
 				AcceptList:  acceptList,
-			}, AnyError(
+			}, base.AnyError(
 				err,
-				bi.NeedFile(src),
-				bi.NeedBuildable(staticDeps...))
+				bi.NeedFiles(src),
+				bi.DependsOn(staticDeps...))
 	})
 }
-func BuildCompressedArchiveExtractorFromDownload(prms CompressedArchiveFromDownload, acceptList StringSet) BuildFactoryTyped[*CompressedUnarchiver] {
+func BuildCompressedArchiveExtractorFromDownload(prms CompressedArchiveFromDownload, acceptList base.StringSet) utils.BuildFactoryTyped[*CompressedUnarchiver] {
 	return BuildCompressedUnarchiver(
 		prms.Download.Destination,
 		prms.ExtractDir,
 		acceptList,
-		prms.Download)
+		prms.Download.Alias())
 }
 
 /***************************************
@@ -48,20 +49,20 @@ func BuildCompressedArchiveExtractorFromDownload(prms CompressedArchiveFromDownl
  ***************************************/
 
 type CompressedUnarchiver struct {
-	Source         Filename
-	Destination    Directory
-	AcceptList     StringSet
-	ExtractedFiles FileSet
+	Source         utils.Filename
+	Destination    utils.Directory
+	AcceptList     base.StringSet
+	ExtractedFiles utils.FileSet
 }
 
-func (x *CompressedUnarchiver) Alias() BuildAlias {
-	return MakeBuildAlias("Unarchiver", x.Destination.String())
+func (x *CompressedUnarchiver) Alias() utils.BuildAlias {
+	return utils.MakeBuildAlias("Unarchiver", x.Destination.String())
 }
-func (x *CompressedUnarchiver) Build(bc BuildContext) error {
+func (x *CompressedUnarchiver) Build(bc utils.BuildContext) error {
 	x.ExtractedFiles.Clear()
 
-	globRe := MakeGlobRegexp(x.AcceptList.Slice()...)
-	exportFilter := func(s string) (Filename, bool) {
+	globRe := utils.MakeGlobRegexp(x.AcceptList.Slice()...)
+	exportFilter := func(s string) (utils.Filename, bool) {
 		dst := x.Destination.AbsoluteFile(s)
 		match := true
 		if globRe != nil {
@@ -89,14 +90,13 @@ func (x *CompressedUnarchiver) Build(bc BuildContext) error {
 		case zip.FileHeader:
 			relativePath = header.Name
 		default:
-			UnexpectedValuePanic(src.Header, header)
+			base.UnexpectedValuePanic(src.Header, header)
 		}
 
 		if destination, extract := exportFilter(relativePath); extract {
-			LogDebug(LogCompressedArchive, "%v: extracting %q file", x.Source, relativePath)
-			return UFS.CreateFile(destination, func(dst *os.File) error {
-				_, err := dst.ReadFrom(src)
-				return err
+			base.LogDebug(LogCompressedArchive, "%v: extracting %q file", x.Source, relativePath)
+			return utils.UFS.CreateFile(destination, func(dst *os.File) error {
+				return base.CopyWithProgress(src.Name(), src.Size(), dst, src)
 			})
 		}
 
@@ -104,7 +104,12 @@ func (x *CompressedUnarchiver) Build(bc BuildContext) error {
 	}); err != nil {
 		return err
 	}
-	AssertMessage(func() bool { return len(x.ExtractedFiles) > 0 }, "%v: did not extract any files!", x.Source)
+	base.AssertErr(func() error {
+		if len(x.ExtractedFiles) > 0 {
+			return nil
+		}
+		return fmt.Errorf("%v: did not extract any files", x.Source)
+	})
 
 	for _, f := range x.ExtractedFiles {
 		if err := bc.OutputFile(f); err != nil {
@@ -113,10 +118,10 @@ func (x *CompressedUnarchiver) Build(bc BuildContext) error {
 	}
 
 	// avoid re-extracting after each rebuild
-	bc.Timestamp(UFS.MTime(x.Source))
+	bc.Annotate(utils.AnnocateBuildTimestamp(utils.UFS.MTime(x.Source)))
 	return nil
 }
-func (x *CompressedUnarchiver) Serialize(ar Archive) {
+func (x *CompressedUnarchiver) Serialize(ar base.Archive) {
 	ar.Serializable(&x.Source)
 	ar.Serializable(&x.Destination)
 	ar.Serializable(&x.AcceptList)

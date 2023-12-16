@@ -4,6 +4,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/poppolopoppo/ppb/internal/base"
 	"github.com/poppolopoppo/ppb/internal/hal"
 	"github.com/poppolopoppo/ppb/utils"
 )
@@ -11,8 +12,8 @@ import (
 func WithCommandEnv(prefix string, caller utils.Filename, scope func(*utils.CommandEnvT) error) error {
 	startedAt := time.Now()
 
-	defer utils.StartTrace()()
-	defer utils.PurgePinnedLogs()
+	defer base.StartTrace()()
+	defer base.PurgePinnedLogs()
 
 	utils.UFS.Caller = caller
 
@@ -26,8 +27,8 @@ func WithCommandEnv(prefix string, caller utils.Filename, scope func(*utils.Comm
 	err := scope(env)
 
 	if err != nil {
-		utils.LogForwardln("")
-		utils.LogError(utils.LogCommand, "%v", err)
+		base.LogForwardln("")
+		base.LogError(utils.LogCommand, "%v", err)
 	}
 	return err
 }

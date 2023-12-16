@@ -5,9 +5,10 @@ import (
 	"path"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
+	"github.com/poppolopoppo/ppb/internal/base"
 
-	. "github.com/poppolopoppo/ppb/internal/io"
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
+
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
@@ -17,7 +18,7 @@ type Module interface {
 	GetNamespace() *NamespaceRules
 	ExpandModule(env *CompileEnv) ModuleRules
 	Buildable
-	Serializable
+	base.Serializable
 	fmt.Stringer
 }
 
@@ -25,9 +26,9 @@ type Module interface {
  * Module Arche Type
  ***************************************/
 
-var AllArchetypes SharedMapT[string, ModuleArchetype]
+var AllArchetypes base.SharedMapT[string, ModuleArchetype]
 
-type ModuleArchetype func(*ModuleRules)
+type ModuleArchetype func(*ModuleRules) error
 
 func RegisterArchetype(archtype string, fn ModuleArchetype) ModuleArchetype {
 	archtype = strings.ToUpper(archtype)
@@ -44,7 +45,7 @@ type ModuleAlias struct {
 	ModuleName string
 }
 
-type ModuleAliases = SetT[ModuleAlias]
+type ModuleAliases = base.SetT[ModuleAlias]
 
 func NewModuleAlias(namespace Namespace, moduleName string) ModuleAlias {
 	return ModuleAlias{
@@ -56,9 +57,12 @@ func (x ModuleAlias) Valid() bool {
 	return x.NamespaceAlias.Valid() && len(x.ModuleName) > 0
 }
 func (x ModuleAlias) Alias() BuildAlias {
-	return MakeBuildAlias("Rules", "Module", x.String())
+	return MakeBuildAlias("Rules", "Module", x.NamespaceName, x.ModuleName)
 }
-func (x *ModuleAlias) Serialize(ar Archive) {
+func (x ModuleAlias) String() string {
+	return path.Join(x.NamespaceAlias.String(), x.ModuleName)
+}
+func (x *ModuleAlias) Serialize(ar base.Archive) {
 	ar.Serializable(&x.NamespaceAlias)
 	ar.String(&x.ModuleName)
 }
@@ -71,9 +75,6 @@ func (x ModuleAlias) Compare(o ModuleAlias) int {
 		return namespaceCmp
 	}
 }
-func (x ModuleAlias) String() string {
-	return path.Join(x.NamespaceAlias.String(), x.ModuleName)
-}
 func (x *ModuleAlias) Set(in string) (err error) {
 	if parts := SplitPath(in); len(parts) > 1 {
 		x.ModuleName = parts[len(parts)-1]
@@ -82,10 +83,20 @@ func (x *ModuleAlias) Set(in string) (err error) {
 	return fmt.Errorf("malformed ModuleAlias: '%s'", in)
 }
 func (x ModuleAlias) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *ModuleAlias) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
+}
+func (x *ModuleAlias) AutoComplete(in base.AutoComplete) {
+	modules, err := NeedAllModuleAliases(CommandEnv.BuildGraph().GlobalContext())
+	if err == nil {
+		for _, it := range modules {
+			in.Add(it.String(), it.Alias().String())
+		}
+	} else {
+		CommandPanic(err)
+	}
 }
 
 /***************************************
@@ -94,8 +105,8 @@ func (x *ModuleAlias) UnmarshalText(data []byte) error {
 
 type ModuleSource struct {
 	SourceDirs    DirSet
-	SourceGlobs   StringSet
-	ExcludedGlobs StringSet
+	SourceGlobs   base.StringSet
+	ExcludedGlobs base.StringSet
 	SourceFiles   FileSet
 	ExcludedFiles FileSet
 	IsolatedFiles FileSet
@@ -123,7 +134,7 @@ func (x *ModuleSource) Prepend(o ModuleSource) {
 	x.ExtraFiles.Prepend(o.ExtraFiles...)
 	x.ExtraDirs.Prepend(o.ExtraDirs...)
 }
-func (x *ModuleSource) Serialize(ar Archive) {
+func (x *ModuleSource) Serialize(ar base.Archive) {
 	ar.Serializable(&x.SourceDirs)
 	ar.Serializable(&x.SourceGlobs)
 	ar.Serializable(&x.ExcludedGlobs)
@@ -137,8 +148,8 @@ func (x *ModuleSource) GetFileSet(bc BuildContext) (FileSet, error) {
 	result := FileSet{}
 
 	for _, source := range x.SourceDirs {
-		if files, err := GlobDirectory(bc, source, x.SourceGlobs, x.ExcludedGlobs, x.ExcludedFiles); err == nil {
-			result.Append(files...)
+		if files, err := internal_io.GlobDirectory(bc, source, x.SourceGlobs, x.ExcludedGlobs, x.ExcludedFiles); err == nil {
+			result.AppendUniq(files...)
 		} else {
 			return FileSet{}, err
 		}
@@ -163,8 +174,8 @@ type ModuleRules struct {
 
 	CppRules
 
-	PrecompiledHeader *Filename
-	PrecompiledSource *Filename
+	PrecompiledHeader Filename
+	PrecompiledSource Filename
 
 	PublicDependencies  ModuleAliases
 	PrivateDependencies ModuleAliases
@@ -190,7 +201,7 @@ func (rules *ModuleRules) GetNamespace() *NamespaceRules {
 	if namespace, err := rules.GetBuildNamespace(); err == nil {
 		return namespace.GetNamespace()
 	} else {
-		LogPanicErr(LogCompile, err)
+		base.LogPanicErr(LogCompile, err)
 		return nil
 	}
 }
@@ -220,7 +231,7 @@ func (rules *ModuleRules) GetFacet() *Facet {
 func (rules *ModuleRules) expandTagsRec(env *CompileEnv, dst *ModuleRules) {
 	for tags, tagged := range rules.PerTags {
 		if selectedTags := env.Tags.Intersect(tags); !selectedTags.Empty() {
-			LogVeryVerbose(LogCompile, "expand module %q with rules tagged [%v]", dst.ModuleAlias, selectedTags)
+			base.LogVeryVerbose(LogCompile, "expand module %q with rules tagged [%v]", dst.ModuleAlias, selectedTags)
 			dst.Prepend(&tagged)
 			tagged.expandTagsRec(env, dst)
 		}
@@ -257,9 +268,9 @@ func (rules *ModuleRules) Decorate(env *CompileEnv, unit *Unit) error {
 		unit.IncludePaths.Append(privateDir)
 	}
 
-	generatedVis := MakeVisibilityMask()
+	var generatedVis base.EnumSet[VisibilityType, *VisibilityType]
 	for _, gen := range rules.Generators {
-		generatedVis.Append(gen.GetGenerator().Visibility)
+		generatedVis.Add(gen.GetGenerator().Visibility)
 	}
 	if generatedVis.Has(PUBLIC) {
 		generatedPublicDir := unit.GeneratedDir.Folder("Public")
@@ -274,7 +285,7 @@ func (rules *ModuleRules) Decorate(env *CompileEnv, unit *Unit) error {
 	return nil
 }
 
-func (rules *ModuleRules) Serialize(ar Archive) {
+func (rules *ModuleRules) Serialize(ar base.Archive) {
 	ar.Serializable(&rules.ModuleAlias)
 
 	ar.Serializable(&rules.ModuleDir)
@@ -282,12 +293,12 @@ func (rules *ModuleRules) Serialize(ar Archive) {
 
 	ar.Serializable(&rules.CppRules)
 
-	SerializeExternal(ar, &rules.PrecompiledHeader)
-	SerializeExternal(ar, &rules.PrecompiledSource)
+	ar.Serializable(&rules.PrecompiledHeader)
+	ar.Serializable(&rules.PrecompiledSource)
 
-	SerializeSlice(ar, rules.PublicDependencies.Ref())
-	SerializeSlice(ar, rules.PrivateDependencies.Ref())
-	SerializeSlice(ar, rules.RuntimeDependencies.Ref())
+	base.SerializeSlice(ar, rules.PublicDependencies.Ref())
+	base.SerializeSlice(ar, rules.PrivateDependencies.Ref())
+	base.SerializeSlice(ar, rules.RuntimeDependencies.Ref())
 
 	ar.Serializable(&rules.Customs)
 	ar.Serializable(&rules.Generators)
@@ -295,7 +306,7 @@ func (rules *ModuleRules) Serialize(ar Archive) {
 	ar.Serializable(&rules.Facet)
 	ar.Serializable(&rules.Source)
 
-	SerializeMap(ar, &rules.PerTags)
+	base.SerializeMap(ar, &rules.PerTags)
 }
 
 func (rules *ModuleRules) Generate(vis VisibilityType, name string, gen Generator) {
@@ -313,10 +324,10 @@ func (x *ModuleRules) Append(other *ModuleRules) {
 
 	x.Source.Append(other.Source)
 
-	if x.PrecompiledHeader == nil {
+	if !x.PrecompiledHeader.Valid() {
 		x.PrecompiledHeader = other.PrecompiledHeader
 	}
-	if x.PrecompiledSource == nil {
+	if !x.PrecompiledSource.Valid() {
 		x.PrecompiledSource = other.PrecompiledSource
 	}
 
@@ -336,10 +347,10 @@ func (x *ModuleRules) Prepend(other *ModuleRules) {
 
 	x.Source.Prepend(other.Source)
 
-	if other.PrecompiledHeader != nil {
+	if other.PrecompiledHeader.Valid() {
 		x.PrecompiledHeader = other.PrecompiledHeader
 	}
-	if other.PrecompiledSource != nil {
+	if other.PrecompiledSource.Valid() {
 		x.PrecompiledSource = other.PrecompiledSource
 	}
 
@@ -385,30 +396,21 @@ func FindBuildModule(module ModuleAlias) (Module, error) {
 }
 
 func NeedBuildModules(bc BuildContext, moduleAliases ...ModuleAlias) (modules []Module, err error) {
-	if err = bc.DependsOn(Map(func(ma ModuleAlias) BuildAlias {
+	if err = bc.DependsOn(base.Map(func(ma ModuleAlias) BuildAlias {
 		return MakeBuildAlias("Model", ma.String())
 	}, moduleAliases...)...); err != nil {
 		return
 	}
 
 	modules = make([]Module, len(moduleAliases))
+
 	for i, moduleAlias := range moduleAliases {
-		if err = bc.DependsOn(); err != nil {
+		var buildable Buildable
+		if buildable, err = bc.NeedBuildable(moduleAlias); err != nil {
 			return
 		}
 
-		var module Module
-		if module, err = FindBuildModule(moduleAlias); err != nil {
-			return
-		}
-
-		modules[i] = module
-	}
-
-	if err = bc.DependsOn(Map(func(m Module) BuildAlias {
-		return m.GetModule().Alias()
-	}, modules...)...); err != nil {
-		return
+		modules[i] = buildable.(Module)
 	}
 
 	return
@@ -437,14 +439,11 @@ func NeedAllModuleAliases(bc BuildContext) (moduleAliases []ModuleAlias, err err
 }
 
 func ForeachNamespaceModuleAlias(bc BuildContext, namespaceAlias NamespaceAlias, each func(ModuleAlias) error) error {
-	namespace, err := FindGlobalBuildable[Namespace](namespaceAlias.Alias())
+	buildable, err := bc.NeedBuildable(namespaceAlias)
 	if err != nil {
 		return err
 	}
-
-	if err := bc.NeedBuildable(namespace); err != nil {
-		return err
-	}
+	namespace := buildable.(Namespace)
 
 	for _, moduleAlias := range namespace.GetNamespace().NamespaceModules {
 		if err := each(moduleAlias); err != nil {
@@ -453,7 +452,11 @@ func ForeachNamespaceModuleAlias(bc BuildContext, namespaceAlias NamespaceAlias,
 	}
 
 	namespaceChildren := namespace.GetNamespace().NamespaceChildren
-	if err = bc.DependsOn(Map(func(na NamespaceAlias) BuildAlias {
+	if len(namespaceChildren) == 0 {
+		return nil
+	}
+
+	if err = bc.DependsOn(base.Map(func(na NamespaceAlias) BuildAlias {
 		return MakeBuildAlias("Model", na.String())
 	}, namespaceChildren...)...); err != nil {
 		return err

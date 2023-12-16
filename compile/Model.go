@@ -6,17 +6,21 @@ import (
 	"path"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
-var LogModel = NewLogCategory("Model")
+var LogModel = base.NewLogCategory("Model")
 
 const PCH_DEFAULT_HEADER = "stdafx.h"
 const PCH_DEFAULT_SOURCE = "stdafx.cpp"
 
-func BuildRootNamespaceModel() BuildFactoryTyped[*NamespaceModel] {
-	return BuildNamespaceModel(CommandEnv.RootFile(), "")
+func BuildRootNamespaceModel() utils.BuildFactoryTyped[*NamespaceModel] {
+	return buildNamespaceModelEx(utils.CommandEnv.RootFile(), "", true)
+}
+
+func GetRootNamespaceName() string {
+	return strings.TrimSuffix(utils.CommandEnv.RootFile().Basename, NAMESPACEMODEL_EXT)
 }
 
 /***************************************
@@ -26,19 +30,23 @@ func BuildRootNamespaceModel() BuildFactoryTyped[*NamespaceModel] {
 const NAMESPACEMODEL_EXT = "-namespace.json"
 
 type NamespaceModel struct {
-	Children StringSet
-	Modules  StringSet
+	Children base.StringSet
+	Modules  base.StringSet
+
+	RootNamespace bool
 
 	ExtensionModel
 }
 
-func BuildNamespaceModel(source Filename, namespace string) BuildFactoryTyped[*NamespaceModel] {
-	return MakeBuildFactory(func(bi BuildInitializer) (NamespaceModel, error) {
-		extensionModel, err := buildExtensionModel(bi, source,
-			strings.TrimSuffix(source.Basename, NAMESPACEMODEL_EXT),
-			namespace)
+func BuildNamespaceModel(source utils.Filename, namespace string) utils.BuildFactoryTyped[*NamespaceModel] {
+	return buildNamespaceModelEx(source, namespace, false)
+}
+func buildNamespaceModelEx(source utils.Filename, namespace string, rootNamespace bool) utils.BuildFactoryTyped[*NamespaceModel] {
+	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (NamespaceModel, error) {
+		extensionModel, err := buildExtensionModel(bi, source, namespace, NAMESPACEMODEL_EXT)
 		return NamespaceModel{
 			ExtensionModel: extensionModel,
+			RootNamespace:  rootNamespace,
 		}, err
 	})
 }
@@ -48,17 +56,18 @@ func (x *NamespaceModel) GetNamespaceAlias() NamespaceAlias {
 		NamespaceName: x.GetAbsoluteName(),
 	}
 }
-func (x *NamespaceModel) Build(bc BuildContext) error {
+func (x *NamespaceModel) Build(bc utils.BuildContext) error {
 	*x = NamespaceModel{
 		ExtensionModel: ExtensionModel{
 			Name:      x.Name,
 			Source:    x.Source,
 			Namespace: x.Namespace,
 		},
+		RootNamespace: x.RootNamespace,
 	}
 
-	if err := UFS.OpenBuffered(x.Source, func(r io.Reader) error {
-		return JsonDeserialize(x, r)
+	if err := utils.UFS.OpenBuffered(x.Source, func(r io.Reader) error {
+		return base.JsonDeserialize(x, r)
 	}); err != nil {
 		return err
 	}
@@ -82,7 +91,7 @@ func (x *NamespaceModel) Build(bc BuildContext) error {
 	}
 
 	absoluteName := x.GetAbsoluteName()
-	if x.Source == CommandEnv.RootFile() {
+	if x.RootNamespace {
 		absoluteName = ""
 	}
 
@@ -104,14 +113,15 @@ func (x *NamespaceModel) Build(bc BuildContext) error {
 		}
 	}
 
-	_, err := bc.OutputFactory(WrapBuildFactory(func(bi BuildInitializer) (*NamespaceRules, error) {
+	_, err := bc.OutputFactory(utils.WrapBuildFactory(func(bi utils.BuildInitializer) (*NamespaceRules, error) {
 		return rules, nil
-	}), OptionBuildForce)
+	}), utils.OptionBuildForce)
 	return err
 }
-func (x *NamespaceModel) Serialize(ar Archive) {
+func (x *NamespaceModel) Serialize(ar base.Archive) {
 	ar.Serializable(&x.Children)
 	ar.Serializable(&x.Modules)
+	ar.Bool(&x.RootNamespace)
 	ar.Serializable(&x.ExtensionModel)
 }
 func (x *NamespaceModel) Append(o *NamespaceModel) {
@@ -134,18 +144,18 @@ const MODULEMODEL_EXT = "-module.json"
 type ModuleModel struct {
 	ModuleType ModuleType
 
-	SourceDirs    StringSet
-	SourceGlobs   StringSet
-	ExcludedGlobs StringSet
-	SourceFiles   StringSet
-	ExcludedFiles StringSet
-	ForceIncludes StringSet
-	IsolatedFiles StringSet
-	ExtraFiles    StringSet
-	ExtraDirs     StringSet
+	SourceDirs    base.StringSet
+	SourceGlobs   base.StringSet
+	ExcludedGlobs base.StringSet
+	SourceFiles   base.StringSet
+	ExcludedFiles base.StringSet
+	ForceIncludes base.StringSet
+	IsolatedFiles base.StringSet
+	ExtraFiles    base.StringSet
+	ExtraDirs     base.StringSet
 
-	PrecompiledHeader StringVar
-	PrecompiledSource StringVar
+	PrecompiledHeader utils.StringVar
+	PrecompiledSource utils.StringVar
 
 	PrivateDependencies ModuleAliases
 	PublicDependencies  ModuleAliases
@@ -155,11 +165,9 @@ type ModuleModel struct {
 	ExtensionModel
 }
 
-func BuildModuleModel(source Filename, namespace string) BuildFactoryTyped[*ModuleModel] {
-	return MakeBuildFactory(func(bi BuildInitializer) (ModuleModel, error) {
-		extensionModel, err := buildExtensionModel(bi, source,
-			strings.TrimSuffix(source.Basename, MODULEMODEL_EXT),
-			namespace)
+func BuildModuleModel(source utils.Filename, namespace string) utils.BuildFactoryTyped[*ModuleModel] {
+	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (ModuleModel, error) {
+		extensionModel, err := buildExtensionModel(bi, source, namespace, MODULEMODEL_EXT)
 		return ModuleModel{
 			ExtensionModel: extensionModel,
 		}, err
@@ -172,7 +180,7 @@ func (x *ModuleModel) GetModuleAlias() ModuleAlias {
 		ModuleName:     x.Name,
 	}
 }
-func (x *ModuleModel) Build(bc BuildContext) error {
+func (x *ModuleModel) Build(bc utils.BuildContext) error {
 	*x = ModuleModel{
 		ExtensionModel: ExtensionModel{
 			Name:      x.Name,
@@ -181,8 +189,8 @@ func (x *ModuleModel) Build(bc BuildContext) error {
 		},
 	}
 
-	if err := UFS.OpenBuffered(x.Source, func(r io.Reader) error {
-		return JsonDeserialize(x, r)
+	if err := utils.UFS.OpenBuffered(x.Source, func(r io.Reader) error {
+		return base.JsonDeserialize(x, r)
 	}); err != nil {
 		return err
 	}
@@ -205,37 +213,43 @@ func (x *ModuleModel) Build(bc BuildContext) error {
 		return err
 	}
 
-	x.applyArchetypes(&rules, moduleAlias)
+	if err := x.applyArchetypes(&rules, moduleAlias); err != nil {
+		return err
+	}
 
-	rules.ForceIncludes.Append(x.ForceIncludes.ToFileSet(moduleDir)...)
+	rules.ForceIncludes.Append(utils.MakeFileSet(moduleDir, x.ForceIncludes...)...)
 	rules.Source.ExtraFiles.AppendUniq(x.Source)
 
 	if !x.PrecompiledHeader.IsInheritable() {
 		f := moduleDir.AbsoluteFile(x.PrecompiledHeader.Get()).Normalize()
-		rules.PrecompiledHeader = &f
+		rules.PrecompiledHeader = f
 	} else if f := moduleDir.File(PCH_DEFAULT_HEADER); f.Exists() {
-		rules.PrecompiledHeader = &f
+		rules.PrecompiledHeader = f
 	}
 	if !x.PrecompiledSource.IsInheritable() {
 		f := moduleDir.AbsoluteFile(x.PrecompiledSource.Get()).Normalize()
-		rules.PrecompiledSource = &f
+		rules.PrecompiledSource = f
 	} else if f := moduleDir.File(PCH_DEFAULT_SOURCE); f.Exists() {
-		rules.PrecompiledSource = &f
+		rules.PrecompiledSource = f
 	}
 
-	_, err = bc.OutputFactory(WrapBuildFactory(func(bi BuildInitializer) (*ModuleRules, error) {
-		dependencyAliases := make([]BuildAlias, 0, len(x.PrivateDependencies)+len(x.PublicDependencies)+len(x.RuntimeDependencies))
+	_, err = bc.OutputFactory(utils.WrapBuildFactory(func(bi utils.BuildInitializer) (*ModuleRules, error) {
+		dependencyAliases := make(utils.BuildAliases, 0, len(x.PrivateDependencies)+len(x.PublicDependencies)+len(x.RuntimeDependencies))
+
 		for _, moduleAlias := range x.PrivateDependencies {
-			dependencyAliases = append(dependencyAliases, MakeBuildAlias("Model", moduleAlias.NamespaceName, moduleAlias.ModuleName))
+			dependencyAliases.Append(utils.MakeBuildAlias("Model", moduleAlias.NamespaceName, moduleAlias.ModuleName))
 		}
+
 		for _, moduleAlias := range x.PublicDependencies {
-			dependencyAliases = append(dependencyAliases, MakeBuildAlias("Model", moduleAlias.NamespaceName, moduleAlias.ModuleName))
+			dependencyAliases.Append(utils.MakeBuildAlias("Model", moduleAlias.NamespaceName, moduleAlias.ModuleName))
 		}
+
 		for _, moduleAlias := range x.RuntimeDependencies {
-			dependencyAliases = append(dependencyAliases, MakeBuildAlias("Model", moduleAlias.NamespaceName, moduleAlias.ModuleName))
+			dependencyAliases.Append(utils.MakeBuildAlias("Model", moduleAlias.NamespaceName, moduleAlias.ModuleName))
 		}
+
 		return &rules, bi.DependsOn(dependencyAliases...)
-	}), OptionBuildForce)
+	}), utils.OptionBuildForce)
 	return err
 }
 func (x *ModuleModel) createModuleRules(moduleAlias ModuleAlias) (ModuleRules, error) {
@@ -250,12 +264,12 @@ func (x *ModuleModel) createModuleRules(moduleAlias ModuleAlias) (ModuleRules, e
 		Source: ModuleSource{
 			SourceGlobs:   x.SourceGlobs,
 			ExcludedGlobs: x.ExcludedGlobs,
-			SourceDirs:    x.SourceDirs.ToDirSet(moduleDir).Normalize(),
-			SourceFiles:   x.SourceFiles.ToFileSet(moduleDir).Normalize(),
-			ExcludedFiles: x.ExcludedFiles.ToFileSet(moduleDir).Normalize(),
-			IsolatedFiles: x.IsolatedFiles.ToFileSet(moduleDir).Normalize(),
-			ExtraFiles:    x.ExtraFiles.ToFileSet(moduleDir).Normalize(),
-			ExtraDirs:     x.ExtraDirs.ToDirSet(moduleDir).Normalize(),
+			SourceDirs:    utils.MakeDirSet(moduleDir, x.SourceDirs...).Normalize(),
+			SourceFiles:   utils.MakeFileSet(moduleDir, x.SourceFiles...).Normalize(),
+			ExcludedFiles: utils.MakeFileSet(moduleDir, x.ExcludedFiles...).Normalize(),
+			IsolatedFiles: utils.MakeFileSet(moduleDir, x.IsolatedFiles...).Normalize(),
+			ExtraFiles:    utils.MakeFileSet(moduleDir, x.ExtraFiles...).Normalize(),
+			ExtraDirs:     utils.MakeDirSet(moduleDir, x.ExtraDirs...).Normalize(),
 		},
 		PrivateDependencies: x.PrivateDependencies,
 		PublicDependencies:  x.PublicDependencies,
@@ -276,7 +290,7 @@ func (x *ModuleModel) createModuleRules(moduleAlias ModuleAlias) (ModuleRules, e
 
 	return rules, nil
 }
-func (x *ModuleModel) Serialize(ar Archive) {
+func (x *ModuleModel) Serialize(ar base.Archive) {
 	ar.Serializable(&x.ModuleType)
 
 	ar.Serializable(&x.SourceDirs)
@@ -292,15 +306,15 @@ func (x *ModuleModel) Serialize(ar Archive) {
 	ar.Serializable(&x.PrecompiledHeader)
 	ar.Serializable(&x.PrecompiledSource)
 
-	SerializeSlice(ar, x.PrivateDependencies.Ref())
-	SerializeSlice(ar, x.PublicDependencies.Ref())
-	SerializeSlice(ar, x.RuntimeDependencies.Ref())
+	base.SerializeSlice(ar, x.PrivateDependencies.Ref())
+	base.SerializeSlice(ar, x.PublicDependencies.Ref())
+	base.SerializeSlice(ar, x.RuntimeDependencies.Ref())
 
 	ar.Serializable(&x.CppRules)
 	ar.Serializable(&x.ExtensionModel)
 }
 func (x *ModuleModel) Append(o *ModuleModel) {
-	Inherit(&x.ModuleType, o.ModuleType)
+	base.Inherit(&x.ModuleType, o.ModuleType)
 
 	x.SourceDirs.Append(o.SourceDirs...)
 	x.SourceGlobs.Append(o.SourceGlobs...)
@@ -323,7 +337,7 @@ func (x *ModuleModel) Append(o *ModuleModel) {
 	x.ExtensionModel.Append(&o.ExtensionModel)
 }
 func (x *ModuleModel) Prepend(o *ModuleModel) {
-	Overwrite(&x.ModuleType, o.ModuleType)
+	base.Overwrite(&x.ModuleType, o.ModuleType)
 
 	x.SourceDirs.Prepend(o.SourceDirs...)
 	x.SourceGlobs.Prepend(o.SourceGlobs...)
@@ -352,22 +366,23 @@ func (x *ModuleModel) Prepend(o *ModuleModel) {
 
 type ExtensionModel struct {
 	// following fields are deduced and not serialized
-	Name      string   `json:"-"`
-	Source    Filename `json:"-"`
-	Namespace string   `json:"-"`
+	Name      string         `json:"-"`
+	Source    utils.Filename `json:"-"`
+	Namespace string         `json:"-"`
 
-	Archetypes      StringSet
-	AllowedPlaforms SetT[PlatformAlias]
-	HAL             map[HostId]ModuleModel
+	Archetypes      base.StringSet
+	AllowedPlaforms base.SetT[PlatformAlias]
+	HAL             map[base.HostId]ModuleModel
 	TAG             map[TagFlags]ModuleModel
 
 	Facet
 }
 
-func buildExtensionModel(bi BuildInitializer, source Filename, name string, namespace string) (ExtensionModel, error) {
+func buildExtensionModel(bi utils.BuildInitializer, source utils.Filename, namespace string, extname string) (ExtensionModel, error) {
 	source = source.Normalize()
+	name := strings.TrimSuffix(source.Basename, extname)
 
-	if err := bi.NeedFile(source); err != nil {
+	if err := bi.NeedFiles(source); err != nil {
 		return ExtensionModel{}, err
 	}
 
@@ -378,8 +393,8 @@ func buildExtensionModel(bi BuildInitializer, source Filename, name string, name
 	}, nil
 }
 
-func (x *ExtensionModel) Alias() BuildAlias {
-	return MakeBuildAlias("Model", x.Namespace, x.Name)
+func (x *ExtensionModel) Alias() utils.BuildAlias {
+	return utils.MakeBuildAlias("Model", x.Namespace, x.Name)
 }
 func (x *ExtensionModel) GetAbsoluteName() string {
 	if len(x.Namespace) > 0 {
@@ -390,7 +405,7 @@ func (x *ExtensionModel) GetAbsoluteName() string {
 }
 func (x *ExtensionModel) GetNamespaceModel() (*NamespaceModel, error) {
 	if len(x.Namespace) > 0 {
-		return FindGlobalBuildable[*NamespaceModel](MakeBuildAlias("Model", x.Namespace))
+		return utils.FindGlobalBuildable[*NamespaceModel](utils.MakeBuildAlias("Model", x.Namespace))
 	} else {
 		return nil, nil
 	}
@@ -441,24 +456,24 @@ func (x *ExtensionModel) Prepend(o *ExtensionModel) {
 
 	x.Facet.Prepend(&o.Facet)
 }
-func (x *ExtensionModel) Serialize(ar Archive) {
+func (x *ExtensionModel) Serialize(ar base.Archive) {
 	ar.String(&x.Name)
 	ar.Serializable(&x.Source)
 	ar.String(&x.Namespace)
 	ar.Serializable(&x.Archetypes)
-	SerializeSlice(ar, x.AllowedPlaforms.Ref())
-	SerializeMap(ar, &x.HAL)
-	SerializeMap(ar, &x.TAG)
+	base.SerializeSlice(ar, x.AllowedPlaforms.Ref())
+	base.SerializeMap(ar, &x.HAL)
+	base.SerializeMap(ar, &x.TAG)
 	ar.Serializable(&x.Facet)
 }
 func (x *ExtensionModel) DeepCopy(src *ExtensionModel) {
 	x.Name = src.Name
 	x.Source = src.Source
 	x.Namespace = src.Namespace
-	x.Archetypes = NewStringSet(src.Archetypes...)
-	x.AllowedPlaforms = NewSet(src.AllowedPlaforms...)
-	x.HAL = CopyMap(src.HAL)
-	x.TAG = CopyMap(src.TAG)
+	x.Archetypes = base.NewStringSet(src.Archetypes...)
+	x.AllowedPlaforms = base.NewSet(src.AllowedPlaforms.Slice()...)
+	x.HAL = base.CopyMap(src.HAL)
+	x.TAG = base.CopyMap(src.TAG)
 	x.Facet.DeepCopy(&src.Facet)
 }
 
@@ -466,32 +481,35 @@ func (src *ExtensionModel) hasAllowedPlatforms(name fmt.Stringer) bool {
 	if len(src.AllowedPlaforms) > 0 {
 		localPlatform := GetLocalHostPlatformAlias()
 		if src.AllowedPlaforms.Contains(localPlatform) {
-			LogTrace(LogModel, "%v: not allowed on <%v> platform", name, localPlatform)
+			base.LogTrace(LogModel, "%v: not allowed on <%v> platform", name, localPlatform)
 			return false
 		}
 	}
 	return true
 }
-func (src *ExtensionModel) applyArchetypes(rules *ModuleRules, name ModuleAlias) {
-	src.Archetypes.Range(func(id string) {
+func (src *ExtensionModel) applyArchetypes(rules *ModuleRules, name ModuleAlias) error {
+	return src.Archetypes.Range(func(id string) error {
 		id = strings.ToUpper(id)
 		if decorator, ok := AllArchetypes.Get(id); ok {
-			LogTrace(LogModel, "%v: inherit module archtype <%v>", name, id)
-			decorator(rules)
+			base.LogTrace(LogModel, "%v: inherit module archtype <%v>", name, id)
+			if err := decorator(rules); err != nil {
+				return err
+			}
 		} else {
-			LogFatal("%v: invalid module archtype <%v>", name, id)
+			return fmt.Errorf("%v: invalid module archtype <%v>", name, id)
 		}
+		return nil
 	})
 }
 func (src *ExtensionModel) applyHAL(model *ModuleModel, name ModuleAlias) {
-	hostId := CurrentHost().Id
+	hostId := base.CurrentHost().Id
 	for id, other := range src.HAL {
-		var hal HostId
+		var hal base.HostId
 		if err := hal.Set(id.String()); err == nil && hal == hostId {
-			LogTrace(LogModel, "%v: inherit platform facet [%v]", name, id)
+			base.LogTrace(LogModel, "%v: inherit platform facet [%v]", name, id)
 			model.Prepend(&other)
 		} else if err != nil {
-			LogError(LogModel, "%v: invalid platform id [%v], %v", name, id, err)
+			base.LogError(LogModel, "%v: invalid platform id [%v], %v", name, id, err)
 		}
 	}
 }

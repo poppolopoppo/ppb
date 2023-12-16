@@ -5,165 +5,110 @@ import (
 	"io"
 
 	compile "github.com/poppolopoppo/ppb/compile"
-
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
-func completeJsonExport[INPUT any, T any](cmd *CommandEnvT, args *CompletionArgs, factory func(INPUT) (T, error), inputs ...INPUT) error {
-	matching := []T{}
-
-	completion := make(map[string]T, len(inputs))
-	for _, a := range inputs {
-		it, err := factory(a)
-		if err != nil {
-			return err
-		}
-
-		completion[MakeString(a)] = it
-	}
-
-	mapCompletion(args, func(s string) {
-		matching = append(matching, completion[s])
-	}, completion)
-
-	return openCompletion(args, func(w io.Writer) (err error) {
-		WithoutLog(func() {
-			_, err = fmt.Fprintln(w, PrettyPrint(matching))
-		})
-		return err
+func completeJsonExport[T base.Comparable[T], P completionArgsTraits[T], OUTPUT any](cmd *utils.CommandEnvT, args *CompletionArgs[T, P], factory func(T) (OUTPUT, error), inputs ...T) error {
+	return openCompletion(args, func(w io.Writer) error {
+		filterCompletion(args, func(it T) error {
+			if output, err := factory(it); err == nil {
+				_, err = fmt.Fprint(w, base.PrettyPrint(output))
+				return err
+			} else {
+				return err
+			}
+		}, inputs...)
+		return nil
 	})
 }
 
-var ExportConfig = NewCommand(
+var ExportConfig = newCompletionCommand[compile.ConfigurationAlias, *compile.ConfigurationAlias](
 	"Export",
 	"export-config",
 	"export configuration to json",
-	OptionCommandCompletionArgs(),
-	OptionCommandRun(func(cc CommandContext) error {
-		return completeJsonExport(CommandEnv, GetCompletionArgs(), func(name string) (compile.Configuration, error) {
-			alias := compile.NewConfigurationAlias(name)
-
-			result := compile.GetBuildConfig(alias).Build(CommandEnv.BuildGraph())
+	func(cc utils.CommandContext, ca *CompletionArgs[compile.ConfigurationAlias, *compile.ConfigurationAlias]) error {
+		return completeJsonExport(utils.CommandEnv, ca, func(alias compile.ConfigurationAlias) (compile.Configuration, error) {
+			result := compile.GetBuildConfig(alias).Build(utils.CommandEnv.BuildGraph())
 
 			if err := result.Failure(); err == nil {
 				return result.Success(), nil
 			} else {
 				return nil, err
 			}
-		}, compile.AllConfigurations.Keys()...)
-	}))
+		}, compile.GetAllConfigurationAliases()...)
+	})
 
-var ExportPlatform = NewCommand(
+var ExportPlatform = newCompletionCommand[compile.PlatformAlias, *compile.PlatformAlias](
 	"Export",
 	"export-platform",
 	"export platform to json",
-	OptionCommandCompletionArgs(),
-	OptionCommandRun(func(cc CommandContext) error {
-		return completeJsonExport(CommandEnv, GetCompletionArgs(), func(name string) (compile.Platform, error) {
-			alias := compile.NewPlatformAlias(name)
-			result := compile.GetBuildPlatform(alias).Build(CommandEnv.BuildGraph())
+	func(cc utils.CommandContext, ca *CompletionArgs[compile.PlatformAlias, *compile.PlatformAlias]) error {
+		return completeJsonExport(utils.CommandEnv, ca, func(alias compile.PlatformAlias) (compile.Platform, error) {
+			result := compile.GetBuildPlatform(alias).Build(utils.CommandEnv.BuildGraph())
 
 			if err := result.Failure(); err == nil {
 				return result.Success(), nil
 			} else {
 				return nil, err
 			}
-		}, compile.AllPlatforms.Keys()...)
-	}))
+		}, compile.GetAllPlatformAliases()...)
+	})
 
-var ExportModule = NewCommand(
+var ExportModule = newCompletionCommand[compile.ModuleAlias, *compile.ModuleAlias](
 	"Export",
 	"export-module",
 	"export parsed module to json",
-	OptionCommandCompletionArgs(),
-	OptionCommandRun(func(cc CommandContext) error {
-		modules, err := compile.NeedAllBuildModules(CommandEnv.BuildGraph().GlobalContext())
+	func(cc utils.CommandContext, ca *CompletionArgs[compile.ModuleAlias, *compile.ModuleAlias]) error {
+		bc := utils.CommandEnv.BuildGraph().GlobalContext()
+		moduleAliases, err := compile.NeedAllModuleAliases(bc)
 		if err != nil {
 			return err
 		}
 
-		return completeJsonExport(CommandEnv, GetCompletionArgs(), func(module compile.Module) (compile.Module, error) {
-			return module, nil
-		}, modules...)
-	}))
+		return completeJsonExport(utils.CommandEnv, ca, func(moduleAlias compile.ModuleAlias) (compile.Module, error) {
+			return compile.FindBuildModule(moduleAlias)
+		}, moduleAliases...)
+	})
 
-var ExportNamespace = NewCommand(
+var ExportNamespace = newCompletionCommand[compile.NamespaceAlias, *compile.NamespaceAlias](
 	"Export",
 	"export-namespace",
 	"export parsed namespace to json",
-	OptionCommandCompletionArgs(),
-	OptionCommandRun(func(cc CommandContext) error {
-		modules, err := compile.NeedAllBuildModules(CommandEnv.BuildGraph().GlobalContext())
+	func(cc utils.CommandContext, ca *CompletionArgs[compile.NamespaceAlias, *compile.NamespaceAlias]) error {
+		bc := utils.CommandEnv.BuildGraph().GlobalContext()
+		namespaceAliases, err := compile.NeedAllBuildNamespaceAliases(bc)
 		if err != nil {
 			return err
 		}
 
-		namespaceAliases := NewSet[compile.NamespaceAlias]()
-		for _, module := range modules {
-			namespaceAliases.AppendUniq(module.GetModule().ModuleAlias.NamespaceAlias)
-		}
-
-		return completeJsonExport(CommandEnv, GetCompletionArgs(), func(na compile.NamespaceAlias) (compile.Namespace, error) {
+		return completeJsonExport(utils.CommandEnv, ca, func(na compile.NamespaceAlias) (compile.Namespace, error) {
 			return compile.FindBuildNamespace(na)
 		}, namespaceAliases...)
-	}))
+	})
 
-var ExportNode = NewCommand(
+var ExportNode = newCompletionCommand[utils.BuildAlias, *utils.BuildAlias](
 	"Export",
 	"export-node",
 	"export build node to json",
-	OptionCommandCompletionArgs(),
-	OptionCommandRun(func(cc CommandContext) error {
-		args := GetCompletionArgs()
+	func(cc utils.CommandContext, ca *CompletionArgs[utils.BuildAlias, *utils.BuildAlias]) error {
+		bg := utils.CommandEnv.BuildGraph()
+		return completeJsonExport(utils.CommandEnv, ca, func(ba utils.BuildAlias) (utils.BuildNode, error) {
+			return bg.Expect(ba)
+		}, utils.CommandEnv.BuildGraph().Aliases()...)
+	})
 
-		aliases := CommandEnv.BuildGraph().Aliases()
-		completion := make(map[string]BuildAlias, len(aliases))
-		for _, a := range aliases {
-			completion[a.String()] = a
-		}
-
-		results := make(map[BuildAlias]BuildNode, 8)
-		mapCompletion(args, func(s string) {
-			alias := completion[s]
-			results[alias] = CommandEnv.BuildGraph().Find(alias)
-		}, completion)
-
-		return openCompletion(args, func(w io.Writer) (err error) {
-			WithoutLog(func() {
-				_, err = fmt.Fprintln(w, PrettyPrint(results))
-			})
-			return err
-		})
-	}))
-
-var ExportUnit = NewCommand(
+var ExportUnit = newCompletionCommand[compile.TargetAlias, *compile.TargetAlias](
 	"Export",
 	"export-unit",
 	"export translated unit to json",
-	OptionCommandCompletionArgs(),
-	OptionCommandRun(func(cc CommandContext) error {
-		units, err := compile.NeedAllBuildUnits(CommandEnv.BuildGraph().GlobalContext())
+	func(cc utils.CommandContext, ca *CompletionArgs[compile.TargetAlias, *compile.TargetAlias]) error {
+		unitAliases, err := compile.NeedAllUnitAliases(utils.CommandEnv.BuildGraph().GlobalContext())
 		if err != nil {
 			return err
 		}
 
-		completion := make(map[string]*compile.Unit)
-		for _, u := range units {
-			completion[u.String()] = u
-		}
-
-		args := GetCompletionArgs()
-
-		matching := compile.Units{}
-		mapCompletion(args, func(s string) {
-			matching.Append(completion[s])
-		}, completion)
-
-		return openCompletion(args, func(w io.Writer) (err error) {
-			WithoutLog(func() {
-				_, err = fmt.Fprintln(w, PrettyPrint(matching))
-			})
-			return err
-		})
-	}))
+		return completeJsonExport(utils.CommandEnv, ca, func(ta compile.TargetAlias) (utils.Buildable, error) {
+			return compile.FindBuildUnit(ta)
+		}, unitAliases...)
+	})
