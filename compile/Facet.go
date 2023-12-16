@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
 type Facetable interface {
@@ -27,23 +27,23 @@ type VariableDefinitions []VariableDefinition
  ***************************************/
 
 type Facet struct {
-	Defines StringSet
+	Defines base.StringSet
 
-	ForceIncludes      FileSet
-	IncludePaths       DirSet
-	ExternIncludePaths DirSet
-	SystemIncludePaths DirSet
+	ForceIncludes      utils.FileSet
+	IncludePaths       utils.DirSet
+	ExternIncludePaths utils.DirSet
+	SystemIncludePaths utils.DirSet
 
-	AnalysisOptions          StringSet
-	PreprocessorOptions      StringSet
-	CompilerOptions          StringSet
-	PrecompiledHeaderOptions StringSet
+	AnalysisOptions          base.StringSet
+	PreprocessorOptions      base.StringSet
+	CompilerOptions          base.StringSet
+	PrecompiledHeaderOptions base.StringSet
 
-	Libraries    FileSet
-	LibraryPaths DirSet
+	Libraries    utils.FileSet
+	LibraryPaths utils.DirSet
 
-	LibrarianOptions StringSet
-	LinkerOptions    StringSet
+	LibrarianOptions base.StringSet
+	LinkerOptions    base.StringSet
 
 	Tags    TagFlags
 	Exports VariableDefinitions
@@ -52,7 +52,7 @@ type Facet struct {
 func (facet *Facet) GetFacet() *Facet {
 	return facet
 }
-func (facet *Facet) Serialize(ar Archive) {
+func (facet *Facet) Serialize(ar base.Archive) {
 	ar.Serializable(&facet.Defines)
 
 	ar.Serializable(&facet.ForceIncludes)
@@ -77,39 +77,39 @@ func (facet *Facet) Serialize(ar Archive) {
 
 func NewFacet() Facet {
 	return Facet{
-		Defines:                  StringSet{},
-		ForceIncludes:            FileSet{},
-		IncludePaths:             DirSet{},
-		ExternIncludePaths:       DirSet{},
-		SystemIncludePaths:       DirSet{},
-		AnalysisOptions:          StringSet{},
-		PreprocessorOptions:      StringSet{},
-		CompilerOptions:          StringSet{},
-		PrecompiledHeaderOptions: StringSet{},
-		Libraries:                FileSet{},
-		LibraryPaths:             DirSet{},
-		LibrarianOptions:         StringSet{},
-		LinkerOptions:            StringSet{},
+		Defines:                  base.StringSet{},
+		ForceIncludes:            utils.FileSet{},
+		IncludePaths:             utils.DirSet{},
+		ExternIncludePaths:       utils.DirSet{},
+		SystemIncludePaths:       utils.DirSet{},
+		AnalysisOptions:          base.StringSet{},
+		PreprocessorOptions:      base.StringSet{},
+		CompilerOptions:          base.StringSet{},
+		PrecompiledHeaderOptions: base.StringSet{},
+		Libraries:                utils.FileSet{},
+		LibraryPaths:             utils.DirSet{},
+		LibrarianOptions:         base.StringSet{},
+		LinkerOptions:            base.StringSet{},
 		Tags:                     TagFlags(0),
 		Exports:                  VariableDefinitions{},
 	}
 }
 func (x *Facet) DeepCopy(src *Facet) {
-	x.Defines = NewStringSet(src.Defines...)
-	x.ForceIncludes = NewFileSet(src.ForceIncludes...)
-	x.IncludePaths = NewDirSet(src.IncludePaths...)
-	x.ExternIncludePaths = NewDirSet(src.ExternIncludePaths...)
-	x.SystemIncludePaths = NewDirSet(src.SystemIncludePaths...)
-	x.AnalysisOptions = NewStringSet(src.AnalysisOptions...)
-	x.PreprocessorOptions = NewStringSet(src.PreprocessorOptions...)
-	x.CompilerOptions = NewStringSet(src.CompilerOptions...)
-	x.PrecompiledHeaderOptions = NewStringSet(src.PrecompiledHeaderOptions...)
-	x.Libraries = NewFileSet(src.Libraries...)
-	x.LibraryPaths = NewDirSet(src.LibraryPaths...)
-	x.LibrarianOptions = NewStringSet(src.LibrarianOptions...)
-	x.LinkerOptions = NewStringSet(src.LinkerOptions...)
+	x.Defines = base.NewStringSet(src.Defines...)
+	x.ForceIncludes = utils.NewFileSet(src.ForceIncludes...)
+	x.IncludePaths = utils.NewDirSet(src.IncludePaths...)
+	x.ExternIncludePaths = utils.NewDirSet(src.ExternIncludePaths...)
+	x.SystemIncludePaths = utils.NewDirSet(src.SystemIncludePaths...)
+	x.AnalysisOptions = base.NewStringSet(src.AnalysisOptions...)
+	x.PreprocessorOptions = base.NewStringSet(src.PreprocessorOptions...)
+	x.CompilerOptions = base.NewStringSet(src.CompilerOptions...)
+	x.PrecompiledHeaderOptions = base.NewStringSet(src.PrecompiledHeaderOptions...)
+	x.Libraries = utils.NewFileSet(src.Libraries...)
+	x.LibraryPaths = utils.NewDirSet(src.LibraryPaths...)
+	x.LibrarianOptions = base.NewStringSet(src.LibrarianOptions...)
+	x.LinkerOptions = base.NewStringSet(src.LinkerOptions...)
 	x.Tags = src.Tags
-	x.Exports = CopySlice(src.Exports...)
+	x.Exports = base.CopySlice(src.Exports...)
 }
 
 func (facet *Facet) Tagged(tag TagType) bool {
@@ -198,31 +198,31 @@ func (facet *Facet) RemoveCompilationFlag(flags ...string) {
 
 func (facet *Facet) PerformSubstitutions() {
 	if subst := facet.Exports.Prepare(); len(subst) > 0 {
-		facet.Defines = Map(subst.ExpandString, facet.Defines...)
-		facet.ForceIncludes = Map(subst.ExpandFilename, facet.ForceIncludes...)
-		facet.IncludePaths = Map(subst.ExpandDirectory, facet.IncludePaths...)
-		facet.ExternIncludePaths = Map(subst.ExpandDirectory, facet.ExternIncludePaths...)
-		facet.SystemIncludePaths = Map(subst.ExpandDirectory, facet.SystemIncludePaths...)
-		facet.AnalysisOptions = Map(subst.ExpandString, facet.AnalysisOptions...)
-		facet.PreprocessorOptions = Map(subst.ExpandString, facet.PreprocessorOptions...)
-		facet.CompilerOptions = Map(subst.ExpandString, facet.CompilerOptions...)
-		facet.PrecompiledHeaderOptions = Map(subst.ExpandString, facet.PrecompiledHeaderOptions...)
-		facet.Libraries = Map(subst.ExpandFilename, facet.Libraries...)
-		facet.LibraryPaths = Map(subst.ExpandDirectory, facet.LibraryPaths...)
-		facet.LibrarianOptions = Map(subst.ExpandString, facet.LibrarianOptions...)
-		facet.LinkerOptions = Map(subst.ExpandString, facet.LinkerOptions...)
+		facet.Defines = base.Map(subst.ExpandString, facet.Defines...)
+		facet.ForceIncludes = base.Map(subst.ExpandFilename, facet.ForceIncludes...)
+		facet.IncludePaths = base.Map(subst.ExpandDirectory, facet.IncludePaths...)
+		facet.ExternIncludePaths = base.Map(subst.ExpandDirectory, facet.ExternIncludePaths...)
+		facet.SystemIncludePaths = base.Map(subst.ExpandDirectory, facet.SystemIncludePaths...)
+		facet.AnalysisOptions = base.Map(subst.ExpandString, facet.AnalysisOptions...)
+		facet.PreprocessorOptions = base.Map(subst.ExpandString, facet.PreprocessorOptions...)
+		facet.CompilerOptions = base.Map(subst.ExpandString, facet.CompilerOptions...)
+		facet.PrecompiledHeaderOptions = base.Map(subst.ExpandString, facet.PrecompiledHeaderOptions...)
+		facet.Libraries = base.Map(subst.ExpandFilename, facet.Libraries...)
+		facet.LibraryPaths = base.Map(subst.ExpandDirectory, facet.LibraryPaths...)
+		facet.LibrarianOptions = base.Map(subst.ExpandString, facet.LibrarianOptions...)
+		facet.LinkerOptions = base.Map(subst.ExpandString, facet.LinkerOptions...)
 	}
 }
 
 func (facet *Facet) String() string {
-	return PrettyPrint(facet)
+	return base.PrettyPrint(facet)
 }
 
 /***************************************
  * Variable Substitutions
  ***************************************/
 
-var getVariableSubstitutionsRegexp = Memoize(func() *regexp.Regexp {
+var getVariableSubstitutionsRegexp = base.Memoize(func() *regexp.Regexp {
 	return regexp.MustCompile(`\{\{\.([^}]+)\}\}`)
 })
 
@@ -250,9 +250,9 @@ func (vars VariableSubstitutions) ExpandString(str string) string {
 	}
 	return str
 }
-func (vars VariableSubstitutions) ExpandDirectory(dir Directory) (result Directory) {
+func (vars VariableSubstitutions) ExpandDirectory(dir utils.Directory) (result utils.Directory) {
 	if strings.ContainsAny(dir.String(), "{{.") {
-		dir = MakeDirectory(getVariableSubstitutionsRegexp().ReplaceAllStringFunc(dir.String(), func(varname string) string {
+		dir = utils.MakeDirectory(getVariableSubstitutionsRegexp().ReplaceAllStringFunc(dir.String(), func(varname string) string {
 			if value, ok := vars[varname]; ok {
 				return value
 			}
@@ -261,8 +261,8 @@ func (vars VariableSubstitutions) ExpandDirectory(dir Directory) (result Directo
 	}
 	return dir
 }
-func (vars VariableSubstitutions) ExpandFilename(it Filename) Filename {
-	return Filename{
+func (vars VariableSubstitutions) ExpandFilename(it utils.Filename) utils.Filename {
+	return utils.Filename{
 		Dirname:  vars.ExpandDirectory(it.Dirname),
 		Basename: vars.ExpandString(it.Basename),
 	}
@@ -288,7 +288,7 @@ func (vars VariableDefinitions) Get(from string) string {
 	if i, ok := vars.IndexOf(from); ok {
 		return vars[i].Value
 	} else {
-		LogPanic(LogCompile, "variable-substitutions: could not find [[:%s:]] in %v", from, vars)
+		base.LogPanic(LogCompile, "variable-substitutions: could not find [[:%s:]] in %v", from, vars)
 		return ""
 	}
 }
@@ -312,8 +312,8 @@ func (vars *VariableDefinitions) Prepend(other VariableDefinitions) {
 		vars.Add(it.Name, it.Value)
 	}
 }
-func (vars *VariableDefinitions) Serialize(ar Archive) {
-	SerializeSlice(ar, (*[]VariableDefinition)(vars))
+func (vars *VariableDefinitions) Serialize(ar base.Archive) {
+	base.SerializeSlice(ar, (*[]VariableDefinition)(vars))
 }
 
 /***************************************
@@ -334,12 +334,12 @@ func (def *VariableDefinition) Set(in string) error {
 	return nil
 }
 func (x VariableDefinition) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *VariableDefinition) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (def *VariableDefinition) Serialize(ar Archive) {
+func (def *VariableDefinition) Serialize(ar base.Archive) {
 	ar.String(&def.Name)
 	ar.String(&def.Value)
 }

@@ -3,17 +3,17 @@ package utils
 import (
 	"fmt"
 	"io"
-	"os"
-	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/poppolopoppo/ppb/internal/base"
 )
 
-var Commands = SharedMapT[string, func() *commandItem]{}
-var ParsableFlags = SharedMapT[string, CommandParsableFlags]{}
-var GlobalParsableFlags = commandItem{}
+var LogCommand = base.NewLogCategory("Command")
 
-var LogCommand = NewLogCategory("Command")
+var AllCommands = base.SharedMapT[string, func() *commandItem]{}
+
+var GlobalParsableFlags commandItem
 
 /***************************************
  * CommandName
@@ -23,9 +23,13 @@ type CommandName struct {
 	StringVar
 }
 
-func (x CommandName) AutoComplete(in AutoComplete) {
-	for _, ci := range Commands.Values() {
-		in.Add(ci().Details().Name)
+func (x CommandName) Compare(o CommandName) int {
+	return x.StringVar.Compare(o.StringVar)
+}
+func (x CommandName) AutoComplete(in base.AutoComplete) {
+	for _, ci := range AllCommands.Values() {
+		cmd := ci()
+		in.Add(cmd.Details().Name, cmd.Description)
 	}
 }
 
@@ -36,6 +40,7 @@ func (x CommandName) AutoComplete(in AutoComplete) {
 type CommandLine interface {
 	PeekArg(int) (string, bool)
 	ConsumeArg(int) (string, error)
+	fmt.Stringer
 	PersistentData
 }
 
@@ -46,6 +51,9 @@ type CommandLinable interface {
 func splitArgsIFN(args []string, each func([]string) error) error {
 	first := 0
 	for last := 0; last < len(args); last++ {
+		if strings.TrimSpace(args[last]) == `--` {
+			break // '--' disables all command-line switches
+		}
 		if strings.TrimSpace(args[last]) == `-and` {
 			if first < last {
 				if err := each(args[first:last]); err != nil {
@@ -65,8 +73,8 @@ func splitArgsIFN(args []string, each func([]string) error) error {
 
 func NewCommandLine(persistent PersistentData, args []string) (result []CommandLine) {
 	splitArgsIFN(args, func(split []string) error {
-		LogTrace(LogCommand, "process arguments -> %v", MakeStringer(func() string {
-			return strings.Join(Map(func(a string) string {
+		base.LogTrace(LogCommand, "process arguments -> %v", base.MakeStringer(func() string {
+			return strings.Join(base.Map(func(a string) string {
 				return fmt.Sprintf("%q", a)
 			}, split...), ", ")
 		}))
@@ -84,6 +92,10 @@ func NewCommandLine(persistent PersistentData, args []string) (result []CommandL
 type commandLine struct {
 	args []string
 	PersistentData
+}
+
+func (x *commandLine) String() string {
+	return strings.Join(x.args, " ")
 }
 
 func (x *commandLine) PeekArg(i int) (string, bool) {
@@ -110,10 +122,10 @@ type CommandContext interface {
 }
 
 type CommandEvents struct {
-	OnPrepare AnyEvent
-	OnRun     AnyEvent
-	OnClean   AnyEvent
-	OnPanic   PublicEvent[error]
+	OnPrepare base.AnyEvent
+	OnRun     base.AnyEvent
+	OnClean   base.AnyEvent
+	OnPanic   base.PublicEvent[error]
 }
 
 type commandEventError struct {
@@ -160,7 +172,7 @@ func (x *CommandEvents) Parse(cl CommandLine) (err error) {
 
 	var cmd CommandItem
 	if cmd, err = FindCommand(name); err == nil {
-		AssertNotIn(cmd, nil)
+		base.AssertNotIn(cmd, nil)
 
 		if err = cmd.Parse(cl); err == nil {
 			x.Add(cmd.(*commandItem))
@@ -170,23 +182,29 @@ func (x *CommandEvents) Parse(cl CommandLine) (err error) {
 	return
 }
 func (x *CommandEvents) Add(it *commandItem) {
-	if it.prepare != nil {
-		x.OnPrepare.Add(AnyDelegate(func() error {
-			return makeCommandEventErrorIFN(it, "prepare", it.prepare(it))
+	if it.prepare.Bound() {
+		x.OnPrepare.Add(base.AnyDelegate(func() error {
+			base.LogTrace(LogCommand, "prepare command %q", it)
+			return makeCommandEventErrorIFN(it, "prepare", it.prepare.Invoke(it))
 		}))
 	}
-	if it.run != nil {
-		x.OnRun.Add(AnyDelegate(func() error {
-			return makeCommandEventErrorIFN(it, "run", it.run(it))
+	if it.run.Bound() {
+		x.OnRun.Add(base.AnyDelegate(func() error {
+			base.LogTrace(LogCommand, "run command %q", it)
+			return makeCommandEventErrorIFN(it, "run", it.run.Invoke(it))
 		}))
 	}
-	if it.clean != nil {
-		x.OnClean.Add(AnyDelegate(func() error {
-			return makeCommandEventErrorIFN(it, "clean", it.clean(it))
+	if it.clean.Bound() {
+		x.OnClean.Add(base.AnyDelegate(func() error {
+			base.LogTrace(LogCommand, "clean command %q", it)
+			return makeCommandEventErrorIFN(it, "clean", it.clean.Invoke(it))
 		}))
 	}
-	if it.panic != nil {
-		x.OnPanic.Add(it.panic)
+	if it.panic.Bound() {
+		x.OnPanic.Add(func(err error) error {
+			base.LogTrace(LogCommand, "panic command %q: %v", it, err)
+			return it.panic.Invoke(err)
+		})
 	}
 }
 
@@ -216,7 +234,7 @@ func (x CommandArgumentFlag) String() string {
 	case COMMANDARG_VARIADIC:
 		return "VARIADIC"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -231,19 +249,19 @@ func (x *CommandArgumentFlag) Set(in string) error {
 	case COMMANDARG_VARIADIC.String():
 		*x = COMMANDARG_VARIADIC
 	default:
-		return MakeUnexpectedValueError(x, x)
+		return base.MakeUnexpectedValueError(x, x)
 	}
 	return nil
 }
 
-type CommandArgumentFlags = EnumSet[CommandArgumentFlag, *CommandArgumentFlag]
+type CommandArgumentFlags = base.EnumSet[CommandArgumentFlag, *CommandArgumentFlag]
 
 type CommandArgument interface {
 	HasFlag(CommandArgumentFlag) bool
 	Parse(CommandLine) error
 	Format() string
-	Help(*StructuredFile)
-	AutoCompletable
+	Help(*base.StructuredFile)
+	base.AutoCompletable
 }
 
 /***************************************
@@ -256,15 +274,21 @@ type commandBasicArgument struct {
 	Flags       CommandArgumentFlags
 }
 
+func (x *commandBasicArgument) Name() string {
+	if len(x.Long) > 0 {
+		return x.Long
+	}
+	return x.Short
+}
 func (x *commandBasicArgument) HasFlag(flag CommandArgumentFlag) bool {
 	return x.Flags.Has(flag)
 }
-func (x *commandBasicArgument) AutoComplete(in AutoComplete) {
+func (x *commandBasicArgument) AutoComplete(in base.AutoComplete) {
 	if len(x.Short) > 0 {
-		in.Add(x.Short)
+		in.Add(x.Short, x.Description)
 	}
 	if len(x.Long) > 0 {
-		in.Add(x.Long)
+		in.Add(x.Long, x.Description)
 	}
 }
 func (x *commandBasicArgument) Parse(CommandLine) error {
@@ -274,14 +298,14 @@ func (x *commandBasicArgument) Parse(CommandLine) error {
 func (x *commandBasicArgument) Format() string {
 	format := x.Short
 	if len(x.Short) == 0 {
-		Assert(func() bool { return len(x.Long) > 0 })
+		base.Assert(func() bool { return len(x.Long) > 0 })
 		format = x.Long
 	} else if len(x.Long) > 0 {
 		format = fmt.Sprint(format, "|", x.Long)
 	}
 
 	if x.Flags.Has(COMMANDARG_OPTIONAL) {
-		format = fmt.Sprint(ANSI_FAINT, "[", format, "]")
+		format = fmt.Sprint(base.ANSI_FAINT, "[", format, "]")
 		if x.Flags.Has(COMMANDARG_VARIADIC) {
 			format = fmt.Sprint(format, "*")
 		}
@@ -291,19 +315,19 @@ func (x *commandBasicArgument) Format() string {
 			format = fmt.Sprint(format, "+")
 		}
 	}
-	format = fmt.Sprint(ANSI_ITALIC, ANSI_FG0_YELLOW, format, ANSI_RESET)
+	format = fmt.Sprint(base.ANSI_ITALIC, base.ANSI_FG0_YELLOW, format, base.ANSI_RESET)
 	return format
 }
-func (x *commandBasicArgument) Help(w *StructuredFile) {
+func (x *commandBasicArgument) Help(w *base.StructuredFile) {
 	w.Print("%s", x.Format())
 
-	if enableInteractiveShell {
+	if base.EnableInteractiveShell() {
 		w.Align(60)
-		w.Println("%v%v%s%v", ANSI_FG1_BLACK, ANSI_FAINT, x.Flags, ANSI_RESET)
+		w.Println("%v%v%s%v", base.ANSI_FG1_BLACK, base.ANSI_FAINT, x.Flags, base.ANSI_RESET)
 	}
 
 	w.ScopeIndent(func() {
-		w.Println("%v%s%v", ANSI_FG0_BLUE, x.Description, ANSI_RESET)
+		w.Println("%v%s%v", base.ANSI_FG0_BLUE, x.Description, base.ANSI_RESET)
 	})
 }
 
@@ -320,11 +344,15 @@ type commandConsumeOneArgument[T any, P interface {
 	commandBasicArgument
 }
 
-func (x *commandConsumeOneArgument[T, P]) AutoComplete(in AutoComplete) {
-	in.Any(x.Value)
+func (x *commandConsumeOneArgument[T, P]) AutoComplete(in base.AutoComplete) {
+	if err := in.Any(P(x.Value)); err == nil {
+		base.LogTrace(base.LogAutoComplete, "consume one %q", x.Name())
+	} else {
+		base.LogWarningVerbose(base.LogAutoComplete, "consume one %q: %v", x.Name(), err)
+	}
 }
 func (x *commandConsumeOneArgument[T, P]) Parse(cl CommandLine) error {
-	Assert(func() bool { return !(x.HasFlag(COMMANDARG_PERSISTENT) || x.HasFlag(COMMANDARG_VARIADIC)) })
+	base.Assert(func() bool { return !(x.HasFlag(COMMANDARG_PERSISTENT) || x.HasFlag(COMMANDARG_VARIADIC)) })
 
 	*x.Value = x.Default
 
@@ -349,7 +377,7 @@ func OptionCommandConsumeArg[T any, P interface {
 		commandBasicArgument: commandBasicArgument{
 			Long:        name,
 			Description: description,
-			Flags:       MakeEnumSet(append(flags, COMMANDARG_CONSUME)...),
+			Flags:       base.MakeEnumSet(append(flags, COMMANDARG_CONSUME)...),
 		},
 	})
 }
@@ -363,12 +391,16 @@ type commandConsumeManyArguments[T any, P interface {
 	commandBasicArgument
 }
 
-func (x *commandConsumeManyArguments[T, P]) AutoComplete(in AutoComplete) {
+func (x *commandConsumeManyArguments[T, P]) AutoComplete(in base.AutoComplete) {
 	var defaultScalar T
-	in.Any(P(&defaultScalar))
+	if err := in.Any(P(&defaultScalar)); err == nil {
+		base.LogTrace(base.LogAutoComplete, "consume many %q", x.Name())
+	} else {
+		base.LogWarningVerbose(base.LogAutoComplete, "consume many %q: %v", x.Name(), err)
+	}
 }
 func (x *commandConsumeManyArguments[T, P]) Parse(cl CommandLine) (err error) {
-	Assert(func() bool { return !x.HasFlag(COMMANDARG_PERSISTENT) })
+	base.Assert(func() bool { return !x.HasFlag(COMMANDARG_PERSISTENT) })
 
 	*x.Value = []T{}
 
@@ -404,7 +436,7 @@ func OptionCommandConsumeMany[T any, P interface {
 		commandBasicArgument: commandBasicArgument{
 			Long:        name,
 			Description: description,
-			Flags:       MakeEnumSet(append(flags, COMMANDARG_CONSUME, COMMANDARG_VARIADIC)...),
+			Flags:       base.MakeEnumSet(append(flags, COMMANDARG_CONSUME, COMMANDARG_VARIADIC)...),
 		},
 	})
 }
@@ -435,21 +467,11 @@ type commandParsableArgument struct {
 	commandBasicArgument
 }
 
-func getCommandParsableFlagsName(value CommandParsableFlags) string {
-	rt := reflect.TypeOf(value)
-	if rt.Kind() == reflect.Pointer {
-		rt = rt.Elem()
-	}
-	return rt.Name()
-}
-
 func NewCommandParsableFlags[T any, P interface {
 	*T
 	CommandParsableFlags
 }](flags *T) func() P {
 	parsable := P(flags)
-	ParsableFlags.Add(getCommandParsableFlagsName(parsable), parsable)
-	RegisterSerializable(&CommandParsableBuilder[T, P]{})
 	return func() P {
 		return parsable
 	}
@@ -458,20 +480,32 @@ func NewCommandParsableFlags[T any, P interface {
 func NewGlobalCommandParsableFlags[T any, P interface {
 	*T
 	CommandParsableFlags
-}](description string, flags *T) func() P {
+}](description string, flags *T, options ...CommandOptionFunc) func() P {
 	parsable := P(flags)
-	GlobalParsableFlags.Options(
-		OptionCommandParsableFlags(
-			getCommandParsableFlagsName(parsable),
-			description,
-			parsable))
+	options = append(options, OptionCommandParsableFlags(
+		base.GetTypename(parsable),
+		description,
+		parsable))
+	GlobalParsableFlags.Options(options...)
 	return NewCommandParsableFlags[T, P](flags)
 }
 
-func (x *commandParsableArgument) AutoComplete(in AutoComplete) {
+func (x *commandParsableArgument) AutoComplete(in base.AutoComplete) {
 	for _, v := range x.Variables {
-		prefixed := NewPrefixedAutoComplete(v.Switch+"=", in)
-		prefixed.Any(v.Value)
+		if boolean, ok := v.Value.(*BoolVar); ok {
+			boolean.AutoCompleteFlag(in, v.Switch, v.Usage)
+		} else {
+			prefixed := base.NewPrefixedAutoComplete(
+				v.Switch+"=",
+				v.Usage,
+				in)
+			if err := prefixed.Any(v.Value); err == nil {
+				base.LogTrace(base.LogAutoComplete, "parsable \"%s/%s\"", x.Name(), v.Name)
+			} else {
+				base.LogWarningVerbose(base.LogAutoComplete, "parsable \"%s/%s\": %v", x.Name(), v.Name, err)
+				in.Add(fmt.Sprint(v.Switch, `=`, v.Value.String()), v.Usage)
+			}
+		}
 	}
 }
 func (x *commandParsableArgument) Parse(cl CommandLine) (err error) {
@@ -484,12 +518,17 @@ func (x *commandParsableArgument) Parse(cl CommandLine) (err error) {
 	for _, v := range x.Variables {
 		for i := 0; ; {
 			if arg, ok := cl.PeekArg(i); ok {
+				if arg == "--" {
+					// special case: using "--" will ignore option parsing for the rest of the command-line
+					break
+				}
+
 				var anon interface{} = v.Value
 				var clb CommandLinable
 				if clb, ok = anon.(CommandLinable); ok {
 					ok, err = clb.CommandLine(v.Name, arg)
 				} else {
-					ok, err = InheritableCommandLine(v.Name, arg, v.Value)
+					ok, err = base.InheritableCommandLine(v.Name, arg, v.Value)
 				}
 
 				if ok || err != nil {
@@ -519,41 +558,67 @@ func (x *commandParsableArgument) Parse(cl CommandLine) (err error) {
 
 	return
 }
-func (x *commandParsableArgument) Help(w *StructuredFile) {
+func (x *commandParsableArgument) Help(w *base.StructuredFile) {
 	x.commandBasicArgument.Help(w)
 	w.Println("")
 	w.ScopeIndent(func() {
+		autocomplete := base.NewAutoComplete("", 8)
+
 		for _, v := range x.Variables {
-			colorFG, colorBG := ANSI_FG0_CYAN, ANSI_BG0_CYAN
+			colorFG, colorBG := base.ANSI_FG0_CYAN, base.ANSI_BG0_CYAN
 			if v.Flags.Has(COMMANDARG_PERSISTENT) {
-				colorFG, colorBG = ANSI_FG0_MAGENTA, ANSI_BG0_RED
+				colorFG, colorBG = base.ANSI_FG1_MAGENTA, base.ANSI_BG0_RED
 			}
 
 			printCommandBullet(w, colorBG)
-			w.Print("%v%v-%s%v", ANSI_ITALIC, colorFG, v.Name, ANSI_RESET)
+			w.Print("%v%v-%s%v", base.ANSI_ITALIC, colorFG, v.Name, base.ANSI_RESET)
 
 			w.Align(60)
 			if v.Flags.Has(COMMANDARG_PERSISTENT) {
 				CommandEnv.persistent.LoadData(x.Long, v.Name, v.Value)
 			} else {
-				w.Print("%v", ANSI_FAINT)
+				w.Print("%v", base.ANSI_FAINT)
 			}
 
 			switch v.Value.(type) {
 			case *StringVar, *Filename, *Directory:
-				colorFG = ANSI_FG0_YELLOW
+				colorFG = base.ANSI_FG1_YELLOW
 			case *IntVar, *BigIntVar:
-				colorFG = ANSI_FG0_CYAN
+				colorFG = base.ANSI_FG1_CYAN
 			case *BoolVar:
-				colorFG = ANSI_FG0_GREEN
+				colorFG = base.ANSI_FG1_GREEN
 			default:
-				colorFG = ANSI_FG0_BLUE
+				colorFG = base.ANSI_FG1_BLUE
 			}
 
-			w.Println("%v%v%s%v", ANSI_FRAME, colorFG, v.Value, ANSI_RESET)
+			autocomplete.ClearResults()
+			if err := autocomplete.Any(v.Value); err == nil {
+				sb := strings.Builder{}
+
+				sb.WriteString(base.ANSI_FRAME.String())
+				sb.WriteString(colorFG.String())
+				sb.WriteString(v.Value.String())
+				sb.WriteString(base.ANSI_RESET.String())
+
+				sb.WriteString(colorFG.String())
+				sb.WriteString(base.ANSI_FAINT.String())
+				sb.WriteString(" \t(")
+				for i, it := range autocomplete.Results() {
+					if i > 0 {
+						sb.WriteRune('|')
+					}
+					sb.WriteString(it.Text)
+				}
+				sb.WriteRune(')')
+				sb.WriteString(base.ANSI_RESET.String())
+
+				w.Println(sb.String())
+			} else {
+				w.Println("%v%v%s%v", base.ANSI_FRAME, colorFG, v.Value, base.ANSI_RESET)
+			}
 
 			w.ScopeIndent(func() {
-				w.Print("%v%v%s%v", ANSI_FG0_WHITE, ANSI_FAINT, v.Usage, ANSI_RESET)
+				w.Print("%v%v%s%v", base.ANSI_FG0_WHITE, base.ANSI_FAINT, v.Usage, base.ANSI_RESET)
 			})
 		}
 	})
@@ -563,22 +628,22 @@ func newCommandParsableFlags(name, description string, value CommandParsableFlag
 	arg := &commandParsableArgument{
 		Value: value,
 		commandBasicArgument: commandBasicArgument{
-			Long:        getCommandParsableFlagsName(value),
+			Long:        name,
 			Description: description,
-			Flags:       MakeEnumSet(append(flags, COMMANDARG_OPTIONAL, COMMANDARG_VARIADIC)...),
+			Flags:       base.MakeEnumSet(append(flags, COMMANDARG_OPTIONAL, COMMANDARG_VARIADIC)...),
 		},
 	}
 
 	VisitParsableFlags(arg.Value, func(name, usage string, value PersistentVar, persistent bool) {
-		Assert(func() bool { return len(name) > 0 })
-		Assert(func() bool { return len(usage) > 0 })
+		base.Assert(func() bool { return len(name) > 0 })
+		base.Assert(func() bool { return len(usage) > 0 })
 
 		v := commandPersistentVar{
 			Name:   name,
 			Usage:  usage,
 			Switch: fmt.Sprint("-", name),
 			Value:  value,
-			Flags:  MakeEnumSet(COMMANDARG_OPTIONAL),
+			Flags:  base.MakeEnumSet(COMMANDARG_OPTIONAL),
 		}
 
 		if persistent {
@@ -596,9 +661,9 @@ func OptionCommandParsableFlags(name, description string, value CommandParsableF
 	return OptionCommandArg(arg)
 }
 
-func OptionCommandParsableAccessor[T CommandParsableFlags](name, description string, service func() T, flags ...CommandArgumentFlag) CommandOptionFunc {
+func OptionCommandParsableAccessor[T CommandParsableFlags](name, description string, getter func() T, flags ...CommandArgumentFlag) CommandOptionFunc {
 	return func(ci *commandItem) {
-		value := service()
+		value := getter()
 		arg := newCommandParsableFlags(name, description, value, flags...)
 		ci.arguments = append(ci.arguments, arg)
 	}
@@ -620,12 +685,6 @@ func (x CommandParsableBuilder[T, P]) Alias() BuildAlias {
 	return MakeBuildAlias("Command", "Flags", x.Name)
 }
 func (x *CommandParsableBuilder[T, P]) Build(BuildContext) error {
-	if flags, ok := ParsableFlags.Get(x.Name); ok {
-		x.Flags = *flags.(P)
-	} else {
-		return fmt.Errorf("could not find command parsable flags %q", x.Name)
-	}
-
 	VisitParsableFlags(P(&x.Flags), func(name, usage string, value PersistentVar, persistent bool) {
 		if persistent {
 			CommandEnv.persistent.LoadData(x.Name, name, value)
@@ -633,7 +692,7 @@ func (x *CommandParsableBuilder[T, P]) Build(BuildContext) error {
 	})
 	return nil
 }
-func (x *CommandParsableBuilder[T, P]) Serialize(ar Archive) {
+func (x *CommandParsableBuilder[T, P]) Serialize(ar base.Archive) {
 	ar.String(&x.Name)
 	SerializeParsableFlags(ar, P(&x.Flags))
 }
@@ -654,7 +713,7 @@ func VisitParsableFlags(parsable CommandParsableFlags,
 	parsable.Flags(commandParsableFunctor{onPersistent: onPersistent})
 }
 
-func SerializeParsableFlags(ar Archive, parsable CommandParsableFlags) {
+func SerializeParsableFlags(ar base.Archive, parsable CommandParsableFlags) {
 	VisitParsableFlags(parsable, func(name, usage string, value PersistentVar, persistent bool) {
 		if persistent {
 			ar.Serializable(value)
@@ -662,14 +721,15 @@ func SerializeParsableFlags(ar Archive, parsable CommandParsableFlags) {
 	})
 }
 
-func GetBuildableFlags[T any, P interface {
+func NewCommandParsableFactory[T any, P interface {
 	*T
 	CommandParsableFlags
-}](flags *T) BuildFactoryTyped[*CommandParsableBuilder[T, P]] {
+}](name string, flags T) BuildFactoryTyped[*CommandParsableBuilder[T, P]] {
+	base.RegisterSerializable(&CommandParsableBuilder[T, P]{})
 	return MakeBuildFactory(func(bi BuildInitializer) (CommandParsableBuilder[T, P], error) {
 		return CommandParsableBuilder[T, P]{
-			Name:  getCommandParsableFlagsName(P(flags)),
-			Flags: *flags,
+			Name:  name,
+			Flags: flags,
 		}, nil
 	})
 }
@@ -684,6 +744,10 @@ type CommandDetails struct {
 	Notes          string
 }
 
+func (x CommandDetails) GetCommandName() (result CommandName) {
+	result.Assign(x.Name)
+	return
+}
 func (x CommandDetails) IsNaked() bool {
 	return len(x.Name) == 0
 }
@@ -694,8 +758,8 @@ type CommandItem interface {
 	Options(...CommandOptionFunc)
 	Parse(CommandLine) error
 	Usage() string
-	Help(*StructuredFile)
-	AutoCompletable
+	Help(*base.StructuredFile)
+	base.AutoCompletable
 	fmt.Stringer
 }
 
@@ -704,10 +768,10 @@ type commandItem struct {
 
 	arguments []CommandArgument
 
-	prepare EventDelegate[CommandContext]
-	run     EventDelegate[CommandContext]
-	clean   EventDelegate[CommandContext]
-	panic   EventDelegate[error]
+	prepare base.PublicEvent[CommandContext]
+	run     base.PublicEvent[CommandContext]
+	clean   base.PublicEvent[CommandContext]
+	panic   base.PublicEvent[error]
 }
 
 func (x *commandItem) Details() CommandDetails      { return x.CommandDetails }
@@ -719,7 +783,8 @@ func (x *commandItem) Options(options ...CommandOptionFunc) {
 		opt(x)
 	}
 }
-func (x *commandItem) AutoComplete(in AutoComplete) {
+func (x *commandItem) AutoComplete(in base.AutoComplete) {
+	base.LogTrace(base.LogAutoComplete, "autocomplete command %q with %d arguments", x.Name, len(x.arguments))
 	for _, a := range x.Arguments() {
 		a.AutoComplete(in)
 	}
@@ -741,7 +806,7 @@ func (x *commandItem) Parse(cl CommandLine) error {
 		for i := 0; ; {
 			if arg, ok := cl.PeekArg(i); ok {
 				if len(arg) > 0 && arg[0] == '-' {
-					cl.ConsumeArg(i) // consume the arg: it will ignored consumable/positional arguments
+					cl.ConsumeArg(i) // consume the arg: it will be ignored by consumable/positional arguments
 					if arg == "--" {
 						// special case: using "--" will ignore option parsing for the rest of the command-line
 						break
@@ -756,7 +821,7 @@ func (x *commandItem) Parse(cl CommandLine) error {
 		}
 		if len(unknownFlags) > 0 {
 			// report a warning about unknown flag: dont' die on thie
-			LogWarning(LogCommand, "unknown command flags: %q", strings.Join(unknownFlags, ", "))
+			base.LogWarning(LogCommand, "unknown command flags: %q", strings.Join(unknownFlags, ", "))
 		}
 	}
 
@@ -789,10 +854,10 @@ func (x *commandItem) Parse(cl CommandLine) error {
 	return nil
 }
 func (x *commandItem) Usage() (format string) {
-	if enableInteractiveShell {
+	if base.EnableInteractiveShell() {
 		format = fmt.Sprint(
-			ANSI_BG0_MAGENTA, "*", ANSI_RESET, " ",
-			ANSI_UNDERLINE, ANSI_OVERLINE, ANSI_FG1_GREEN, x.Name, ANSI_RESET)
+			base.ANSI_BG0_MAGENTA, "*", base.ANSI_RESET, " ",
+			base.ANSI_UNDERLINE, base.ANSI_OVERLINE, base.ANSI_FG1_GREEN, x.Name, base.ANSI_RESET)
 	} else {
 		format = x.Name
 	}
@@ -802,9 +867,9 @@ func (x *commandItem) Usage() (format string) {
 	}
 	return format
 }
-func (x *commandItem) Help(w *StructuredFile) {
+func (x *commandItem) Help(w *base.StructuredFile) {
 	if w.Minify() {
-		w.Println(" %s%-20s%s %s", ANSI_FG1_GREEN, x.Name, ANSI_RESET, x.Description)
+		w.Println(" %s%-20s%s %s", base.ANSI_FG1_GREEN, x.Name, base.ANSI_RESET, x.Description)
 	} else {
 		w.Println("%s", x.Usage())
 		w.ScopeIndent(func() {
@@ -818,7 +883,7 @@ func (x *commandItem) Help(w *StructuredFile) {
 
 			w.ScopeIndent(func() {
 				for _, a := range x.arguments {
-					printCommandBullet(w, ANSI_BG0_YELLOW)
+					printCommandBullet(w, base.ANSI_BG0_YELLOW)
 					a.Help(w)
 					w.LineBreak()
 					w.Println("")
@@ -828,7 +893,7 @@ func (x *commandItem) Help(w *StructuredFile) {
 	}
 }
 
-func printCommandBullet(w *StructuredFile, color AnsiCode) {
+func printCommandBullet(w *base.StructuredFile, color base.AnsiCode) {
 	// w.Print("%v*%v ", color, ANSI_RESET)
 }
 
@@ -843,36 +908,24 @@ func OptionCommandArg(arg CommandArgument) CommandOptionFunc {
 		ci.arguments = append(ci.arguments, arg)
 	}
 }
-func OptionCommandPrepare(e EventDelegate[CommandContext]) CommandOptionFunc {
+func OptionCommandPrepare(e base.EventDelegate[CommandContext]) CommandOptionFunc {
 	return func(ci *commandItem) {
-		ci.prepare = func(cc CommandContext) error {
-			LogTrace(LogCommand, "prepare %q command", ci)
-			return e(cc)
-		}
+		ci.prepare.Add(e)
 	}
 }
-func OptionCommandRun(e EventDelegate[CommandContext]) CommandOptionFunc {
+func OptionCommandRun(e base.EventDelegate[CommandContext]) CommandOptionFunc {
 	return func(ci *commandItem) {
-		ci.run = func(cc CommandContext) error {
-			LogTrace(LogCommand, "run %q command", ci)
-			return e(cc)
-		}
+		ci.run.Add(e)
 	}
 }
-func OptionCommandClean(e EventDelegate[CommandContext]) CommandOptionFunc {
+func OptionCommandClean(e base.EventDelegate[CommandContext]) CommandOptionFunc {
 	return func(ci *commandItem) {
-		ci.clean = func(cc CommandContext) error {
-			LogTrace(LogCommand, "clean %q command", ci)
-			return e(cc)
-		}
+		ci.clean.Add(e)
 	}
 }
-func OptionCommandPanic(e EventDelegate[error]) CommandOptionFunc {
+func OptionCommandPanic(e base.EventDelegate[error]) CommandOptionFunc {
 	return func(ci *commandItem) {
-		ci.panic = func(err error) error {
-			LogTrace(LogCommand, "panic %q command", ci)
-			return e(err)
-		}
+		ci.panic.Add(e)
 	}
 }
 func OptionCommandNotes(format string, args ...interface{}) CommandOptionFunc {
@@ -890,7 +943,7 @@ func NewCommand(
 	category, name, description string,
 	options ...CommandOptionFunc,
 ) func() CommandItem {
-	result := Memoize(func() *commandItem {
+	result := base.Memoize(func() *commandItem {
 		result := &commandItem{
 			CommandDetails: CommandDetails{
 				Category:    category,
@@ -902,12 +955,12 @@ func NewCommand(
 		return result
 	})
 	key := strings.ToUpper(name)
-	Commands.FindOrAdd(key, result)
+	AllCommands.FindOrAdd(key, result)
 	return func() CommandItem {
-		if factory, ok := Commands.Get(key); ok {
+		if factory, ok := AllCommands.Get(key); ok {
 			return factory()
 		} else {
-			LogPanic(LogCommand, "command %q not found", name)
+			base.LogPanic(LogCommand, "command %q not found", name)
 			return nil
 		}
 	}
@@ -960,9 +1013,9 @@ func NewCommandable[T any, P interface {
  ***************************************/
 
 func GetAllCommands() []CommandItem {
-	cmds := Map(func(it func() *commandItem) *commandItem {
+	cmds := base.Map(func(it func() *commandItem) *commandItem {
 		return it()
-	}, Commands.Values()...)
+	}, AllCommands.Values()...)
 	sort.Slice(cmds, func(i, j int) bool {
 		if c := strings.Compare(cmds[i].Category, cmds[j].Category); c == 0 {
 			return strings.Compare(cmds[i].Name, cmds[j].Name) < 0
@@ -970,11 +1023,19 @@ func GetAllCommands() []CommandItem {
 			return c < 0
 		}
 	})
-	return Map(func(it *commandItem) CommandItem { return it }, cmds...)
+	return base.Map(func(it *commandItem) CommandItem { return it }, cmds...)
+}
+func GetAllCommandNames() []CommandName {
+	keys := AllCommands.Keys()
+	sort.Strings(keys)
+	return base.Map(func(it string) (result CommandName) {
+		result.Assign(it)
+		return
+	}, keys...)
 }
 
 func FindCommand(name string) (CommandItem, error) {
-	if cmd, found := Commands.Get(strings.ToUpper(name)); found {
+	if cmd, found := AllCommands.Get(strings.ToUpper(name)); found {
 		return cmd(), nil
 	} else {
 		return nil, fmt.Errorf("unknown command %q", name)
@@ -982,10 +1043,10 @@ func FindCommand(name string) (CommandItem, error) {
 }
 
 func PrintCommandHelp(w io.Writer, detailed bool) {
-	restoreLogLevel := gLogger.SetLevelMaximum(LOG_VERBOSE)
-	defer gLogger.SetLevel(restoreLogLevel)
+	restoreLogLevel := base.GetLogger().SetLevelMaximum(base.LOG_VERBOSE)
+	defer base.GetLogger().SetLevel(restoreLogLevel)
 
-	f := NewStructuredFile(w, "  ", !detailed)
+	f := base.NewStructuredFile(w, "  ", !detailed)
 
 	f.Print(`
 %v  v.%v  [%v]
@@ -993,14 +1054,14 @@ build-system for PoPpOlOpPoPo Engine
 
   %vcompiled on %v%v`,
 		PROCESS_INFO.Path, PROCESS_INFO.Version, GetProcessSeed().ShortString(),
-		ANSI_FG1_BLACK, PROCESS_INFO.Timestamp.Local(), ANSI_RESET)
+		base.ANSI_FG1_BLACK, PROCESS_INFO.Timestamp.Local(), base.ANSI_RESET)
 
 	header := func(title string) {
-		f.Print("%v%v", ANSI_FG1_MAGENTA, ANSI_FAINT)
+		f.Print("%v%v", base.ANSI_FG1_MAGENTA, base.ANSI_FAINT)
 		f.Pad(59, "-")
 		f.Print(" %s ", title)
 		f.Pad(80, "-")
-		f.Println("%v", ANSI_RESET)
+		f.Println("%v", base.ANSI_RESET)
 	}
 
 	f.Println("")
@@ -1035,8 +1096,8 @@ build-system for PoPpOlOpPoPo Engine
 
 		header("Global")
 		f.ScopeIndent(func() {
-			f.Println("")
 			for _, a := range GlobalParsableFlags.arguments {
+				f.Println("")
 				a.Help(f)
 			}
 		})
@@ -1049,12 +1110,13 @@ build-system for PoPpOlOpPoPo Engine
  * RunCommands
  ***************************************/
 
-func PrepareCommands(cls []CommandLine) error {
+func PrepareCommands(cls []CommandLine, events *CommandEvents) error {
 	for _, cl := range cls {
 		if err := GlobalParsableFlags.Parse(cl); err != nil {
 			return err
 		}
 	}
+	events.Add(&GlobalParsableFlags)
 	return nil
 }
 
@@ -1066,7 +1128,7 @@ func ParseCommand(cl CommandLine, events *CommandEvents) (err error) {
 
 	var cmd CommandItem
 	if cmd, err = FindCommand(name); err == nil {
-		AssertNotIn(cmd, nil)
+		base.AssertNotIn(cmd, nil)
 
 		if err = cmd.Parse(cl); err == nil {
 			events.Add(cmd.(*commandItem))
@@ -1091,14 +1153,14 @@ func (x *HelpCommand) Init(cc CommandContext) error {
 func (x *HelpCommand) Run(cc CommandContext) (err error) {
 	var cmd CommandItem
 	if !x.Command.IsInheritable() {
-		cmd, err = FindCommand(x.Command.Get())
+		cmd, _ = FindCommand(x.Command.Get())
 	}
 
-	var w io.Writer = os.Stdout
+	var w io.Writer = base.GetLogger()
 	if cmd == nil {
-		PrintCommandHelp(w, IsLogLevelActive(LOG_VERBOSE))
+		PrintCommandHelp(w, base.IsLogLevelActive(base.LOG_VERBOSE))
 	} else {
-		f := NewStructuredFile(w, "  ", false)
+		f := base.NewStructuredFile(w, "  ", false)
 
 		f.Println("")
 		f.ScopeIndent(func() {
@@ -1116,31 +1178,87 @@ var CommandHelp = NewCommandable("Misc", "help", "print help about command usage
  ***************************************/
 
 type AutoCompleteCommand struct {
-	Command CommandName
-	Input   StringVar
+	Command     CommandName
+	Inputs      []StringVar
+	CompleteArg BoolVar
+	MaxResults  IntVar
 }
 
+func (x *AutoCompleteCommand) Flags(cfv CommandFlagsVisitor) {
+	cfv.Variable("CompleteArg", "specify that we want to complete a new argument, not command name (even no arguments were given)", &x.CompleteArg)
+	cfv.Variable("MaxResults", "override maximum number of auto-complete results which can be outputed [Default="+x.MaxResults.String()+"]", &x.MaxResults)
+}
 func (x *AutoCompleteCommand) Init(cc CommandContext) error {
 	cc.Options(
-		OptionCommandConsumeArg("command_name", "selected command for auto-completion", &x.Command),
-		OptionCommandConsumeArg("input_text", "text query for command-line auto-completion", &x.Input),
+		OptionCommandParsableFlags("AutoCompleteCommand", "control autp-completion evaluation", x),
+		OptionCommandConsumeArg("command_name", "selected command for auto-completion", &x.Command, COMMANDARG_OPTIONAL),
+		OptionCommandConsumeMany("input_text", "text query for command-line auto-completion", &x.Inputs, COMMANDARG_OPTIONAL),
 	)
 	return nil
 }
 func (x *AutoCompleteCommand) Run(cc CommandContext) error {
-	cmd, err := FindCommand(x.Command.Get())
-	if err != nil {
-		return err
+	var autocomplete base.BasicAutoComplete
+
+	command := x.Command.Get()
+	inputs := base.StringSet(base.Stringize(base.RemoveUnless(func(is StringVar) bool {
+		return is != "--"
+	}, x.Inputs...)...))
+
+	for i := len(inputs); i > 0; i-- {
+		if inputs[i-1] == `-and` {
+			if i < len(inputs) {
+				command = inputs[i]
+				inputs = inputs[i+1:]
+			} else {
+				command = ``
+				inputs = inputs[i:]
+			}
+			break
+		}
 	}
 
-	autocomplete := NewAutoComplete(x.Input.Get())
-	autocomplete.Append(&GlobalParsableFlags)
-	autocomplete.Append(cmd)
+	if len(inputs) == 0 && (len(command) == 0 || !x.CompleteArg.Get()) {
+		// auto-complete command name
+		autocomplete = base.NewAutoComplete(command, x.MaxResults.Get())
+		autocomplete.Append(x.Command /* only for autocomplete */)
 
-	for _, o := range autocomplete.Results(20) {
-		LogForward(o)
+	} else {
+		// auto-complete command arguments or flags
+		cmd, err := FindCommand(command)
+		if err != nil {
+			return err
+		}
+
+		input := ""
+		if len(inputs) > 0 && !x.CompleteArg.Get() {
+			input = inputs[len(inputs)-1]
+		}
+
+		autocomplete = base.NewAutoComplete(input, x.MaxResults.Get())
+		autocomplete.Append(&GlobalParsableFlags)
+		autocomplete.Append(cmd)
+		autocomplete.Add("-and", "concatenate 2 commands to execute multiple tasks in the same run")
 	}
+
+	base.LogDebug(LogCommand, "auto-complete arguments [%v](%v), complete argument = %v", x.Command, strings.Join(inputs, ", "), x.CompleteArg)
+	base.LogVeryVerbose(LogCommand, "auto-complete %q on command-line", autocomplete.Input())
+
+	if base.EnableInteractiveShell() {
+		for _, match := range autocomplete.Results() {
+			highlighted := autocomplete.Highlight(match.Text, func(r rune) string {
+				return fmt.Sprint(base.ANSI_UNDERLINE, base.ANSI_FG1_GREEN, string(r), base.ANSI_RESET)
+			})
+			base.LogForwardf("%s\t%v%s%v", highlighted, base.ANSI_FG0_CYAN, match.Description, base.ANSI_RESET)
+		}
+	} else {
+		for _, match := range autocomplete.Results() {
+			base.LogForwardln(match.Text, "\t", match.Description)
+		}
+	}
+
 	return nil
 }
 
-var CommandAutoComplete = NewCommandable("Misc", "autocomplete", "run auto-completion", &AutoCompleteCommand{})
+var CommandAutoComplete = NewCommandable("Misc", "autocomplete", "run auto-completion", &AutoCompleteCommand{
+	MaxResults: 15,
+})

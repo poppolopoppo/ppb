@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/poppolopoppo/ppb/internal/base"
+
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
@@ -26,13 +28,13 @@ func (x *PlatformAlias) Alias() BuildAlias {
 	return MakeBuildAlias("Rules", "Platform", x.String())
 }
 func (x *PlatformAlias) String() string {
-	Assert(func() bool { return x.Valid() })
+	base.Assert(func() bool { return x.Valid() })
 	return x.PlatformName
 }
-func (x *PlatformAlias) Serialize(ar Archive) {
+func (x *PlatformAlias) Serialize(ar base.Archive) {
 	ar.String(&x.PlatformName)
 }
-func (x *PlatformAlias) Compare(o PlatformAlias) int {
+func (x PlatformAlias) Compare(o PlatformAlias) int {
 	return strings.Compare(x.PlatformName, o.PlatformName)
 }
 func (x *PlatformAlias) Set(in string) (err error) {
@@ -40,14 +42,15 @@ func (x *PlatformAlias) Set(in string) (err error) {
 	return nil
 }
 func (x *PlatformAlias) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *PlatformAlias) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *PlatformAlias) AutoComplete(in AutoComplete) {
-	AllPlatforms.Range(func(s string, p Platform) {
-		in.Add(p.String())
+func (x *PlatformAlias) AutoComplete(in base.AutoComplete) {
+	AllPlatforms.Range(func(s string, p Platform) error {
+		in.Add(p.String(), p.GetPlatform().Alias().String())
+		return nil
 	})
 }
 
@@ -55,7 +58,7 @@ func (x *PlatformAlias) AutoComplete(in AutoComplete) {
  * Plaform Rules
  ***************************************/
 
-var AllPlatforms SharedMapT[string, Platform]
+var AllPlatforms base.SharedMapT[string, Platform]
 
 type Platform interface {
 	GetCompiler() BuildFactoryTyped[Compiler]
@@ -82,7 +85,7 @@ func (rules *PlatformRules) GetFacet() *Facet {
 func (rules *PlatformRules) GetPlatform() *PlatformRules {
 	return rules
 }
-func (rules *PlatformRules) Serialize(ar Archive) {
+func (rules *PlatformRules) Serialize(ar base.Archive) {
 	ar.Serializable(&rules.PlatformAlias)
 
 	ar.String(&rules.Os)
@@ -129,6 +132,15 @@ func (x *PlatformRules) Build(bc BuildContext) error {
 	return nil
 }
 
+func GetAllPlatformAliases() (result []PlatformAlias) {
+	platforms := AllPlatforms.Values()
+	result = make([]PlatformAlias, len(platforms))
+	for i, it := range platforms {
+		result[i] = it.GetPlatform().PlatformAlias
+	}
+	return
+}
+
 func GetBuildPlatform(platformAlias PlatformAlias) BuildFactoryTyped[Platform] {
 	return WrapBuildFactory(func(bi BuildInitializer) (Platform, error) {
 		if plaform, ok := AllPlatforms.Get(platformAlias.String()); ok {
@@ -149,14 +161,14 @@ func ForeachBuildPlatform(each func(BuildFactoryTyped[Platform]) error) error {
 	return nil
 }
 
-var GetLocalHostPlatformAlias = Memoize(func() PlatformAlias {
+var GetLocalHostPlatformAlias = base.Memoize(func() PlatformAlias {
 	arch := CurrentArch()
 	for _, platform := range AllPlatforms.Values() {
 		if platform.GetPlatform().Arch == arch {
 			return platform.GetPlatform().PlatformAlias
 		}
 	}
-	UnreachableCode()
+	base.UnreachableCode()
 	return PlatformAlias{}
 })
 
@@ -165,16 +177,20 @@ func GeLocalHostBuildPlatform() BuildFactoryTyped[Platform] {
 }
 
 func FindPlatform(in string) (result Platform, err error) {
+	if platform, ok := AllPlatforms.Get(in); ok {
+		return platform, nil
+	}
+
 	query := strings.ToLower(in)
-	names := AllPlatforms.Keys()
-	autocomplete := NewAutoComplete(in)
-	for _, name := range names {
-		autocomplete.Add(name)
-		if strings.ToLower(name) == query {
-			result, _ = AllPlatforms.Get(name)
-			return
+	autocomplete := base.NewAutoComplete(in, 3)
+
+	for _, key := range AllPlatforms.Keys() {
+		platform, _ := AllPlatforms.Get(key)
+		autocomplete.Add(key, platform.GetPlatform().Alias().String())
+		if strings.ToLower(key) == query {
+			return platform, nil
 		}
 	}
-	err = fmt.Errorf("unknown plaform %q, did you mean %q?", in, autocomplete.Results(1)[0])
-	return
+
+	return nil, fmt.Errorf("unknown platform %q, did you mean %v?", in, autocomplete.Results())
 }

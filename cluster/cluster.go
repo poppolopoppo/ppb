@@ -7,20 +7,22 @@ import (
 	"strconv"
 	"time"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
-var LogCluster = NewLogCategory("Cluster")
+var LogCluster = base.NewLogCategory("Cluster")
 
 func InitCluster() {
-	RegisterSerializable(&MessagePing{})
-	RegisterSerializable(&MessagePong{})
-	RegisterSerializable(&MessageTaskDispatch{})
-	RegisterSerializable(&MessageTaskStart{})
-	RegisterSerializable(&MessageTaskFileAccess{})
-	RegisterSerializable(&MessageTaskOutput{})
-	RegisterSerializable(&MessageTaskStop{})
+	base.LogTrace(LogCluster, "build/cluster.Init()")
+
+	base.RegisterSerializable(&MessagePing{})
+	base.RegisterSerializable(&MessagePong{})
+	base.RegisterSerializable(&MessageTaskDispatch{})
+	base.RegisterSerializable(&MessageTaskStart{})
+	base.RegisterSerializable(&MessageTaskFileAccess{})
+	base.RegisterSerializable(&MessageTaskOutput{})
+	base.RegisterSerializable(&MessageTaskStop{})
 }
 
 /***************************************
@@ -68,17 +70,17 @@ func (x *Cluster) Discover() (int, error) {
  ***************************************/
 
 type ClusterFlags struct {
-	BrokeragePath Directory
-	MaxPeers      IntVar
-	IfIndex       IntVar
-	RetryCount    IntVar
-	Timeout       IntVar
-	TunnelPort    IntVar
-	WebdavPort    IntVar
+	BrokeragePath utils.Directory
+	MaxPeers      utils.IntVar
+	IfIndex       utils.IntVar
+	RetryCount    utils.IntVar
+	Timeout       utils.IntVar
+	TunnelPort    utils.IntVar
+	WebdavPort    utils.IntVar
 }
 
-var GetClusterFlags = NewCommandParsableFlags(&ClusterFlags{
-	BrokeragePath: UFS.Transient.Folder("Brokerage"),
+var GetClusterFlags = utils.NewCommandParsableFlags(&ClusterFlags{
+	BrokeragePath: utils.UFS.Transient.Folder("Brokerage"),
 	MaxPeers:      32,
 	IfIndex:       0,
 	RetryCount:    5,
@@ -97,7 +99,7 @@ func (x *ClusterFlags) GetWebdavPort() string {
 	return strconv.Itoa(x.WebdavPort.Get())
 }
 
-func (x *ClusterFlags) Flags(cfv CommandFlagsVisitor) {
+func (x *ClusterFlags) Flags(cfv utils.CommandFlagsVisitor) {
 	cfv.Persistent("BrokeragePath", "set peer discovery brokerage path", &x.BrokeragePath)
 	cfv.Persistent("MaxPeers", "set maximum number of connected peers allowed", &x.MaxPeers)
 	cfv.Persistent("NetInterface", "set index of network interface for the cluster", &x.IfIndex)
@@ -117,7 +119,7 @@ type StreamWriteFunc = func(io.Writer, []byte) (int, error)
 type ClusterOptions struct {
 	Context context.Context
 
-	Compression CompressionOptions
+	Compression base.CompressionOptions
 
 	NetInterface net.Interface
 	NetAddr      net.IPNet
@@ -138,12 +140,13 @@ func NewClusterOptions(options ...ClusterOption) (result ClusterOptions) {
 	result.Context = context.Background()
 
 	// setup compression for peer communication (zstd is more efficient for small network packets)
-	result.Compression = NewCompressionOptions(
-		CompressionOptionFormat(COMPRESSION_FORMAT_ZSTD),
-		CompressionOptionLevel(COMPRESSION_LEVEL_BALANCED),
+	result.Compression = base.NewCompressionOptions(
+		base.CompressionOptionFormat(base.COMPRESSION_FORMAT_ZSTD),
+		base.CompressionOptionLevel(base.COMPRESSION_LEVEL_BALANCED),
 		// zstd is more efficient with small paylaods when using a pre-trained dictionary
 		// https://github.com/facebook/zstd#dictionary-compression-how-to
-		CompressionOptionDictionaryFile(UFS.Internal.Folder("zstd").File("ppb-message-dict.zstd")))
+		// #TODO: refactor API to avoid circular dependency between base & utils
+		/*base.CompressionOptionDictionaryFile(utils.UFS.Internal.Folder("zstd").File("ppb-message-dict.zstd"))*/)
 
 	// used for stats recording
 	result.StreamRead = func(r io.Reader, b []byte) (int, error) {
@@ -157,19 +160,19 @@ func NewClusterOptions(options ...ClusterOption) (result ClusterOptions) {
 
 	// select default network interface
 	if result.ClusterFlags.IfIndex.IsInheritable() {
-		if iface, addr, err := GetFirstNetInterface(); err == nil {
+		if iface, addr, err := base.GetFirstNetInterface(); err == nil {
 			result.NetInterface = iface
 			result.NetAddr = addr
 
 			// save results to avoid scanning for future runs
-			result.ClusterFlags.IfIndex = InheritableInt(iface.Index)
+			result.ClusterFlags.IfIndex = base.InheritableInt(iface.Index)
 		} else {
-			LogPanicErr(LogCluster, err)
+			base.LogPanicErr(LogCluster, err)
 		}
 
 	} else {
 		interfaces, err := net.Interfaces()
-		LogPanicIfFailed(LogCluster, err)
+		base.LogPanicIfFailed(LogCluster, err)
 
 		// retrieve selected network interface by index
 		for _, iface := range interfaces {
@@ -199,7 +202,7 @@ func NewClusterOptions(options ...ClusterOption) (result ClusterOptions) {
 	return
 }
 
-func ClusterOptionBrokeragePath(path Directory) ClusterOption {
+func ClusterOptionBrokeragePath(path utils.Directory) ClusterOption {
 	return func(co *ClusterOptions) {
 		co.BrokeragePath = path
 	}
@@ -209,7 +212,7 @@ func ClusterOptionContext(ctx context.Context) ClusterOption {
 		co.Context = ctx
 	}
 }
-func ClusterOptionCompression(comp CompressionOptions) ClusterOption {
+func ClusterOptionCompression(comp base.CompressionOptions) ClusterOption {
 	return func(co *ClusterOptions) {
 		co.Compression = comp
 	}

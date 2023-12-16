@@ -7,8 +7,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	//lint:ignore ST1001 ignore dot imports warning
+	"github.com/poppolopoppo/ppb/internal/base"
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
 
+	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
 
@@ -29,7 +31,7 @@ type Client struct {
 	Webdav *WebdavServer
 	*WorkerFlags
 
-	async     Future[int]
+	async     base.Future[int]
 	cancel    context.CancelFunc
 	context   context.Context
 	waitGroup sync.WaitGroup
@@ -62,7 +64,7 @@ func (x *Client) Start() (context.CancelFunc, error) {
 	}
 
 	localCancel := x.cancel
-	x.async = MakeFuture[int](func() (int, error) {
+	x.async = base.MakeFuture[int](func() (int, error) {
 		ticker := time.NewTicker(x.Cluster.GetTimeoutDuration() / 3)
 		defer func() {
 			localCancel()
@@ -76,13 +78,13 @@ func (x *Client) Start() (context.CancelFunc, error) {
 				return -1, x.context.Err()
 
 			case <-ticker.C:
-				if _, err := x.UpdateResources(x.context, x.WorkerFlags, &x.Hardware, int32(GetGlobalThreadPool().GetWorkload())); err != nil {
-					LogError(LogCluster, "local peer update failed: %v", err)
+				if _, err := x.UpdateResources(x.context, x.WorkerFlags, &x.Hardware, int32(base.GetGlobalThreadPool().GetWorkload())); err != nil {
+					base.LogError(LogCluster, "local peer update failed: %v", err)
 					return -2, err
 				}
 
 				if _, err := x.Cluster.Discover(); err != nil {
-					LogError(LogCluster, "client discovery failed: %v", err)
+					base.LogError(LogCluster, "client discovery failed: %v", err)
 					return -3, err
 				}
 			}
@@ -134,13 +136,13 @@ func (x *Client) MountFile(f Filename) (bool, Filename) {
 		return false, f
 	}
 }
-func (x *Client) GetMountedPaths(po *ProcessOptions) {
+func (x *Client) GetMountedPaths(po *internal_io.ProcessOptions) {
 	for _, part := range x.Webdav.partitions {
-		OptionProcessMountPath(part.Mountpoint, part.GetEndpoint(x.Webdav))(po)
+		internal_io.OptionProcessMountPath(part.Mountpoint, part.GetEndpoint(x.Webdav))(po)
 	}
 }
 
-func (x *Client) DispatchTask(executable Filename, arguments StringSet, options *ProcessOptions) (*PeerDiscovered, bool, error) {
+func (x *Client) DispatchTask(executable Filename, arguments base.StringSet, options *internal_io.ProcessOptions) (*PeerDiscovered, bool, error) {
 	timeoutSpan := x.Cluster.GetTimeoutDuration()
 	timeoutCtx, timeoutCancel := context.WithTimeout(x.context, timeoutSpan)
 	defer timeoutCancel()
@@ -157,7 +159,7 @@ func (x *Client) DispatchTask(executable Filename, arguments StringSet, options 
 
 		tunnel, err := x.connectToPeer(timeoutCtx, peer)
 		if err != nil {
-			LogError(LogCluster, "failed to connect to remote peer %v (RETRY=%d)",
+			base.LogError(LogCluster, "failed to connect to remote peer %v (RETRY=%d)",
 				net.JoinHostPort(peer.FQDN, peer.PeerPort), r+1)
 			continue
 		}
@@ -176,7 +178,7 @@ func (x *Client) DispatchTask(executable Filename, arguments StringSet, options 
 
 	return nil, false, nil // no worker available
 }
-func (x *Client) AsyncDispatchTask(executable Filename, arguments StringSet, options *ProcessOptions) (*PeerDiscovered, Future[int]) {
+func (x *Client) AsyncDispatchTask(executable Filename, arguments base.StringSet, options *internal_io.ProcessOptions) (*PeerDiscovered, base.Future[int]) {
 	timeoutSpan := x.Cluster.GetTimeoutDuration()
 	timeoutCtx, timeoutCancel := context.WithTimeout(x.context, timeoutSpan)
 	defer timeoutCancel()
@@ -193,14 +195,14 @@ func (x *Client) AsyncDispatchTask(executable Filename, arguments StringSet, opt
 
 		tunnel, err := x.connectToPeer(timeoutCtx, peer)
 		if err != nil {
-			LogError(LogCluster, "failed to connect to remote peer %v (RETRY=%d)",
+			base.LogError(LogCluster, "failed to connect to remote peer %v (RETRY=%d)",
 				net.JoinHostPort(peer.FQDN, peer.PeerPort), r+1)
 			continue
 		}
 
 		x.waitGroup.Add(1)
 
-		return peer, MakeFuture(func() (int, error) {
+		return peer, base.MakeFuture(func() (int, error) {
 			defer func() {
 				tunnel.Close()
 				x.waitGroup.Done()
@@ -220,7 +222,7 @@ func (x *Client) AsyncDispatchTask(executable Filename, arguments StringSet, opt
 	return nil, nil // no worker available
 }
 
-func (x *Client) runTaskOnTunnelImmediate(tunnel *Tunnel, executable Filename, arguments StringSet, options *ProcessOptions) error {
+func (x *Client) runTaskOnTunnelImmediate(tunnel *Tunnel, executable Filename, arguments base.StringSet, options *internal_io.ProcessOptions) error {
 	x.waitGroup.Add(1)
 	defer func() {
 		tunnel.Close()
@@ -257,17 +259,17 @@ func (x *Client) runTaskOnTunnelImmediate(tunnel *Tunnel, executable Filename, a
 
 func (x *Client) connectToPeer(ctx context.Context, peer *PeerDiscovered) (*Tunnel, error) {
 	addr := peer.GetAddress()
-	LogInfo(LogCluster, "dialing remote worker %s", addr)
+	base.LogInfo(LogCluster, "dialing remote worker %s", addr)
 
 	tunnel, err := NewDialTunnel(x.Cluster, ctx, addr, x.Cluster.GetTimeoutDuration(),
-		CompressionOptionFormat(peer.Compression),
-		CompressionOptionLevel(x.Cluster.Compression.Level),
-		CompressionOptionDictionary(x.Cluster.Compression.Dictionary))
+		base.CompressionOptionFormat(peer.Compression),
+		base.CompressionOptionLevel(x.Cluster.Compression.Level),
+		base.CompressionOptionDictionary(x.Cluster.Compression.Dictionary))
 
 	if err != nil {
 		return nil, err
 	}
 
-	LogVerbose(LogCluster, "connected to remote worker %v (from %v):\n%v", addr, tunnel.conn.LocalAddr(), peer.Hardware)
+	base.LogVerbose(LogCluster, "connected to remote worker %v (from %v):\n%v", addr, tunnel.conn.LocalAddr(), peer.Hardware)
 	return tunnel, nil
 }

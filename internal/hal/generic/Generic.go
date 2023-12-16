@@ -1,33 +1,33 @@
 package generic
 
 import (
-	"github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
 )
 
-var LogGeneric = utils.NewLogCategory("Generic")
+var LogGeneric = base.NewLogCategory("Generic")
 
 func InitGenericHAL() {
 
 }
 
 func InitGenericCompile() {
-	utils.RegisterSerializable(&GnuSourceDependenciesAction{})
+	base.RegisterSerializable(&GnuSourceDependenciesAction{})
 
-	utils.RegisterSerializable(&GlslangHeaderGenerator{})
-	utils.RegisterSerializable(&GlslangGeneratedHeader{})
+	base.RegisterSerializable(&GlslangHeaderGenerator{})
+	base.RegisterSerializable(&GlslangGeneratedHeader{})
 
-	utils.RegisterSerializable(&SpirvToolsHeaderGenerator{})
-	utils.RegisterSerializable(&SpirvToolsGeneratedHeader{})
+	base.RegisterSerializable(&SpirvToolsHeaderGenerator{})
+	base.RegisterSerializable(&SpirvToolsGeneratedHeader{})
 
-	utils.RegisterSerializable(&VulkanHeaderGenerator{})
-	utils.RegisterSerializable(&VulkanGeneratedHeader{})
+	base.RegisterSerializable(&VulkanHeaderGenerator{})
+	base.RegisterSerializable(&VulkanGeneratedHeader{})
 
-	utils.RegisterSerializable(&VulkanSourceGenerator{})
-	utils.RegisterSerializable(&VulkanGeneratedSource{})
+	base.RegisterSerializable(&VulkanSourceGenerator{})
+	base.RegisterSerializable(&VulkanGeneratedSource{})
 
-	utils.RegisterSerializable(&VulkanHeaders{})
-	utils.RegisterSerializable(&VulkanBindings{})
-	utils.RegisterSerializable(&VulkanInterface{})
+	base.RegisterSerializable(&VulkanHeaders{})
+	base.RegisterSerializable(&VulkanBindings{})
+	base.RegisterSerializable(&VulkanInterface{})
 
-	utils.RegisterSerializable(&VkFunctionPointer{})
+	base.RegisterSerializable(&VkFunctionPointer{})
 }

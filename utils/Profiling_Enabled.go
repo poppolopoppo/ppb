@@ -9,12 +9,14 @@ import (
 	"strings"
 
 	"github.com/pkg/profile"
+
+	"github.com/poppolopoppo/ppb/internal/base"
 )
 
 const PROFILING_ENABLED = true
 
-var LogProfiling = NewLogCategory("Profiling")
-var ProfilingTag = MakeArchiveTag(MakeFourCC('P', 'R', 'O', 'F'))
+var LogProfiling = base.NewLogCategory("Profiling")
+var ProfilingTag = base.MakeArchiveTag(base.MakeFourCC('P', 'R', 'O', 'F'))
 
 /***************************************
  * Profiling Mode
@@ -68,7 +70,7 @@ func (x ProfilingMode) Mode() func(*profile.Profile) {
 	case PROFILING_TRACE:
 		return profile.TraceProfile
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
 		return nil
 	}
 }
@@ -96,7 +98,32 @@ func (x ProfilingMode) String() string {
 	case PROFILING_TRACE:
 		return "TRACE"
 	default:
-		UnexpectedValue(x)
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x ProfilingMode) Description() string {
+	switch x {
+	case PROFILING_BLOCK:
+		return "enables block (contention) profiling"
+	case PROFILING_CPU:
+		return "enables cpu profiling"
+	case PROFILING_GOROUTINE:
+		return "enables goroutine profiling"
+	case PROFILING_MEMORY:
+		return "enables memory profiling"
+	case PROFILING_MEMORYALLOC:
+		return "enables memory allocs profiling"
+	case PROFILING_MEMORYHEAP:
+		return "enables heap memory allocation profiling"
+	case PROFILING_MUTEX:
+		return "enables mutex profiling"
+	case PROFILING_THREADCREATION:
+		return "enables thread creation profiling"
+	case PROFILING_TRACE:
+		return "enables execution tracing"
+	default:
+		base.UnexpectedValue(x)
 		return ""
 	}
 }
@@ -121,24 +148,28 @@ func (x *ProfilingMode) Set(in string) (err error) {
 	case PROFILING_TRACE.String():
 		*x = PROFILING_TRACE
 	default:
-		err = MakeUnexpectedValueError(x, in)
+		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *ProfilingMode) Serialize(ar Archive) {
+func (x *ProfilingMode) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x ProfilingMode) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *ProfilingMode) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *ProfilingMode) AutoComplete(in AutoComplete) {
+func (x *ProfilingMode) AutoComplete(in base.AutoComplete) {
 	for _, it := range ProfilingModes() {
-		in.Add(it.String())
+		in.Add(it.String(), it.Description())
 	}
 }
+
+/***************************************
+ * Profiling flags
+ ***************************************/
 
 type ProfilingFlags struct {
 	Profiling ProfilingMode
@@ -149,11 +180,11 @@ var GetProflingFlags = NewGlobalCommandParsableFlags("profiling options", &Profi
 })
 
 func (flags *ProfilingFlags) Flags(cfv CommandFlagsVisitor) {
-	cfv.Variable("Profiling", "set profiling mode ["+JoinString(",", ProfilingModes()...)+"]", &flags.Profiling)
+	cfv.Variable("Profiling", "set profiling mode", &flags.Profiling)
 }
 
 /***************************************
- * Profiling
+ * Profiler
  ***************************************/
 
 var running_profiler interface {
@@ -162,9 +193,9 @@ var running_profiler interface {
 
 func StartProfiling() func() {
 	profiling := GetProflingFlags().Profiling
-	LogWarning(LogProfiling, "use %v profiling mode", profiling)
+	base.LogWarning(LogProfiling, "use %v profiling mode", profiling)
 	if profiling == PROFILING_CPU {
-		runtime.SetCPUProfileRate(1000) // default is 100
+		runtime.SetCPUProfileRate(300) // default is 100
 	}
 	running_profiler = profile.Start(
 		profiling.Mode(),
@@ -180,8 +211,8 @@ func PurgeProfiling() {
 			proc := exec.Command("sh", UFS.Scripts.File("flamegraph.sh").String())
 			proc.Dir = UFS.Root.String()
 			output, err := proc.Output()
-			LogForward(UnsafeStringFromBytes(output))
-			LogPanicIfFailed(LogProfiling, err)
+			base.LogForward(base.UnsafeStringFromBytes(output))
+			base.LogPanicIfFailed(LogProfiling, err)
 		}
 		running_profiler = nil
 	}

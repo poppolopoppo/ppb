@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/poppolopoppo/ppb/internal/base"
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
@@ -27,9 +28,13 @@ func (x *EnvironmentAlias) Valid() bool {
 	return x.PlatformAlias.Valid() && x.ConfigurationAlias.Valid()
 }
 func (x *EnvironmentAlias) Alias() BuildAlias {
-	return MakeBuildAlias("Rules", "Environment", x.String())
+	return MakeBuildAlias("Rules", "Environment", x.PlatformName, x.ConfigName)
 }
-func (x *EnvironmentAlias) Serialize(ar Archive) {
+func (x EnvironmentAlias) String() string {
+	base.Assert(func() bool { return x.Valid() })
+	return fmt.Sprintf("%v-%v", x.PlatformName, x.ConfigName)
+}
+func (x *EnvironmentAlias) Serialize(ar base.Archive) {
 	ar.Serializable(&x.PlatformAlias)
 	ar.Serializable(&x.ConfigurationAlias)
 }
@@ -53,19 +58,15 @@ func (x *EnvironmentAlias) Set(in string) error {
 		return err
 	}
 }
-func (x EnvironmentAlias) String() string {
-	Assert(func() bool { return x.Valid() })
-	return fmt.Sprintf("%v-%v", x.PlatformName, x.ConfigName)
-}
 func (x *EnvironmentAlias) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *EnvironmentAlias) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *EnvironmentAlias) AutoComplete(in AutoComplete) {
+func (x *EnvironmentAlias) AutoComplete(in base.AutoComplete) {
 	ForeachEnvironmentAlias(func(ea EnvironmentAlias) error {
-		in.Add(ea.String())
+		in.Add(ea.String(), ea.Alias().String())
 		return nil
 	})
 }
@@ -88,7 +89,7 @@ func (env *CompileEnv) Family() []string {
 func (env *CompileEnv) String() string {
 	return strings.Join(append([]string{env.CompilerAlias.CompilerName}, env.Family()...), "_")
 }
-func (env *CompileEnv) Serialize(ar Archive) {
+func (env *CompileEnv) Serialize(ar base.Archive) {
 	ar.Serializable(&env.EnvironmentAlias)
 	ar.Serializable(&env.Facet)
 	ar.Serializable(&env.CompilerAlias)
@@ -109,7 +110,7 @@ func (env *CompileEnv) GetPlatform() *PlatformRules {
 	if platform, err := env.GetBuildPlatform(); err == nil {
 		return platform.GetPlatform()
 	} else {
-		LogPanicErr(LogCompile, err)
+		base.LogPanicErr(LogCompile, err)
 		return nil
 	}
 }
@@ -117,7 +118,7 @@ func (env *CompileEnv) GetConfig() *ConfigRules {
 	if config, err := env.GetBuildConfig(); err == nil {
 		return config.GetConfig()
 	} else {
-		LogPanicErr(LogCompile, err)
+		base.LogPanicErr(LogCompile, err)
 		return nil
 	}
 }
@@ -125,7 +126,7 @@ func (env *CompileEnv) GetCompiler() *CompilerRules {
 	if compiler, err := env.GetBuildCompiler(); err == nil {
 		return compiler.GetCompiler()
 	} else {
-		LogPanicErr(LogCompile, err)
+		base.LogPanicErr(LogCompile, err)
 		return nil
 	}
 }
@@ -149,7 +150,7 @@ func (env *CompileEnv) GetCpp(module *ModuleRules) CppRules {
 		result.Inherit(&env.GetConfig().CppRules)
 	}
 	if compiler := env.GetCompiler(); compiler != nil {
-		Inherit(&result.CppStd, compiler.CppStd)
+		base.Inherit(&result.CppStd, compiler.CppStd)
 	}
 
 	return result
@@ -165,7 +166,7 @@ func (env *CompileEnv) GetPayloadType(module *ModuleRules, link LinkType) (resul
 		case LINK_DYNAMIC:
 			return PAYLOAD_SHAREDLIB
 		default:
-			UnexpectedValuePanic(module.ModuleType, link)
+			base.UnexpectedValuePanic(module.ModuleType, link)
 		}
 	case MODULE_LIBRARY:
 		switch link {
@@ -176,7 +177,7 @@ func (env *CompileEnv) GetPayloadType(module *ModuleRules, link LinkType) (resul
 		case LINK_DYNAMIC:
 			return PAYLOAD_SHAREDLIB
 		default:
-			UnexpectedValuePanic(module.ModuleType, link)
+			base.UnexpectedValuePanic(module.ModuleType, link)
 		}
 	case MODULE_PROGRAM:
 		switch link {
@@ -185,14 +186,14 @@ func (env *CompileEnv) GetPayloadType(module *ModuleRules, link LinkType) (resul
 		case LINK_STATIC:
 			return PAYLOAD_EXECUTABLE
 		case LINK_DYNAMIC:
-			LogPanic(LogCompile, "executable should have %s link, but found %s", LINK_STATIC, link)
+			base.LogPanic(LogCompile, "executable should have %s link, but found %s", LINK_STATIC, link)
 		default:
-			UnexpectedValuePanic(module.ModuleType, link)
+			base.UnexpectedValuePanic(module.ModuleType, link)
 		}
 	case MODULE_HEADERS:
 		return PAYLOAD_HEADERS
 	default:
-		UnexpectedValuePanic(module.ModuleType, module.ModuleType)
+		base.UnexpectedValuePanic(module.ModuleType, module.ModuleType)
 	}
 	return result
 }
@@ -212,8 +213,8 @@ func (env *CompileEnv) Alias() BuildAlias {
 	return env.EnvironmentAlias.Alias()
 }
 func (env *CompileEnv) Build(bc BuildContext) error {
-	if compile, err := GetBuildableFlags(GetCompileFlags()).Need(bc); err == nil {
-		env.CompileFlags = compile.Flags
+	if compileFlags, err := GetCompileFlags(bc); err == nil {
+		env.CompileFlags = *compileFlags
 	} else {
 		return err
 	}

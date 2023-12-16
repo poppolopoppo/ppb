@@ -15,8 +15,8 @@ import (
 	"github.com/shirou/gopsutil/disk"
 	"golang.org/x/net/webdav"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
 // #TODO: use TLS
@@ -25,19 +25,19 @@ import (
  * Webdav server
  ***************************************/
 
-var LogWebdav = NewLogCategory("Webdav")
+var LogWebdav = base.NewLogCategory("Webdav")
 
 type WebdavPartition struct {
-	Mountpoint Directory
+	Mountpoint utils.Directory
 	Handler    webdav.Handler
 }
 
 func newWebdavPartition(part disk.PartitionStat, logger func(r *http.Request, err error)) WebdavPartition {
-	mountPoint := MakeDirectory(fmt.Sprint(part.Mountpoint, string(OSPathSeparator)))
+	mountPoint := utils.MakeDirectory(fmt.Sprint(part.Mountpoint, string(utils.OSPathSeparator)))
 	return WebdavPartition{
 		Mountpoint: mountPoint,
 		Handler: webdav.Handler{
-			Prefix:     fmt.Sprintf("/dav/%s", SanitizeIdentifier(part.Mountpoint)),
+			Prefix:     fmt.Sprintf("/dav/%s", base.SanitizeIdentifier(part.Mountpoint)),
 			FileSystem: webdav.Dir(part.Mountpoint),
 			LockSystem: webdav.NewMemLS(),
 			Logger:     logger,
@@ -54,7 +54,7 @@ func (x *WebdavPartition) GetPattern() string {
 
 type WebdavServer struct {
 	addr    net.TCPAddr
-	async   Future[int]
+	async   base.Future[int]
 	context context.Context
 	server  http.Server
 
@@ -68,13 +68,13 @@ func NewWebdavServer(ctx context.Context) (result *WebdavServer) {
 	}
 
 	partitions, err := disk.PartitionsWithContext(ctx, false)
-	LogPanicIfFailed(LogWebdav, err)
+	base.LogPanicIfFailed(LogWebdav, err)
 
 	logger := func(r *http.Request, err error) {
 		if err != nil {
-			LogWarning(LogWebdav, "[%s] %q: %v", r.Method, r.URL, err)
+			base.LogWarning(LogWebdav, "[%s] %q: %v", r.Method, r.URL, err)
 		} else {
-			LogTrace(LogWebdav, "[%s] %q", r.Method, r.URL)
+			base.LogTrace(LogWebdav, "[%s] %q", r.Method, r.URL)
 		}
 	}
 
@@ -83,7 +83,7 @@ func NewWebdavServer(ctx context.Context) (result *WebdavServer) {
 	for i, part := range partitions {
 		result.partitions[i] = newWebdavPartition(part, logger)
 
-		LogVeryVerbose(LogWebdav, "mounting %q as %q",
+		base.LogVeryVerbose(LogWebdav, "mounting %q as %q",
 			result.partitions[i].Mountpoint,
 			result.partitions[i].Handler.Prefix)
 
@@ -95,7 +95,7 @@ func NewWebdavServer(ctx context.Context) (result *WebdavServer) {
 func (x *WebdavServer) GetScheme() string    { return "http" } // #TODO: https self-signed?
 func (x *WebdavServer) GetAddress() net.Addr { return &x.addr }
 func (x *WebdavServer) Start(ctx context.Context, host net.IP, port string) error {
-	AssertIn(x.async, nil)
+	base.AssertIn(x.async, nil)
 
 	timeout := GetClusterFlags().GetTimeoutDuration()
 
@@ -111,8 +111,8 @@ func (x *WebdavServer) Start(ctx context.Context, host net.IP, port string) erro
 		// TLSConfig:         generateServerTLSConfig(), // override certFile/keyFile parameters of ServeTLS() bellow
 	}
 
-	if DEBUG_ENABLED {
-		x.server.ErrorLog = log.New(LogForwardWriter{}, "webdav", 0)
+	if base.DEBUG_ENABLED {
+		x.server.ErrorLog = log.New(base.LogForwardWriter{}, "webdav", 0)
 	}
 
 	listener, err := net.Listen("tcp", x.server.Addr)
@@ -124,17 +124,17 @@ func (x *WebdavServer) Start(ctx context.Context, host net.IP, port string) erro
 	x.addr = *tcp
 	x.addr.IP = host
 
-	x.async = MakeAsyncFuture[int](func() (int, error) {
+	x.async = base.MakeAsyncFuture[int](func() (int, error) {
 		defer x.server.Close()
 		defer listener.Close()
 
-		LogVerbose(LogWebdav, "webdav server starts listening on %q", listener.Addr())
+		base.LogVerbose(LogWebdav, "webdav server starts listening on %q", listener.Addr())
 
 		for _, part := range x.partitions {
-			LogVerbose(LogWebdav, "mounted %q as %q", part.Mountpoint, part.GetEndpoint(x))
+			base.LogVerbose(LogWebdav, "mounted %q as %q", part.Mountpoint, part.GetEndpoint(x))
 		}
 
-		FlushLog()
+		base.FlushLog()
 
 		return 0, x.server.Serve(listener)
 		// return 0, x.server.ServeTLS(listener, "", "")
@@ -143,13 +143,16 @@ func (x *WebdavServer) Start(ctx context.Context, host net.IP, port string) erro
 	return nil
 }
 func (x *WebdavServer) Close() (err error) {
-	AssertNotIn(&x.async, nil)
+	base.AssertNotIn(&x.async, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	x.server.Shutdown(ctx)
+	serverErr := x.server.Shutdown(ctx)
 	err = x.async.Join().Failure()
+	if err == nil {
+		err = serverErr
+	}
 
 	x.addr = net.TCPAddr{}
 	x.async = nil

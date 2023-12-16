@@ -7,8 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	//lint:ignore ST1001 ignore dot imports warning
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/internal/base"
 
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/mem"
@@ -22,8 +21,8 @@ type PeerAvaibility struct {
 	AvailableThreads       atomic.Int32
 	AvailableVirtualMemory atomic.Uint64
 
-	averageCpu MovingAverage
-	averageMem MovingAverage
+	averageCpu base.MovingAverage
+	averageMem base.MovingAverage
 
 	lastUpdate time.Time
 	idleSince  time.Time
@@ -31,8 +30,8 @@ type PeerAvaibility struct {
 
 func newPeerAvaibility() PeerAvaibility {
 	return PeerAvaibility{
-		averageCpu: NewMovingAverage(0),
-		averageMem: NewMovingAverage(0),
+		averageCpu: base.NewMovingAverage(0),
+		averageMem: base.NewMovingAverage(0),
 		idleSince:  time.Now(),
 	}
 }
@@ -94,7 +93,7 @@ func (x *PeerAvaibility) UpdateResources(ctx context.Context, worker *WorkerFlag
 		}
 
 	default:
-		UnexpectedValuePanic(worker.Mode, worker.Mode)
+		base.UnexpectedValuePanic(worker.Mode, worker.Mode)
 	}
 
 	// clamp available threads with user given peer.MaxThreads
@@ -125,7 +124,7 @@ type PeerHardware struct {
 }
 
 func CurrentPeerHardware() (hw PeerHardware, err error) {
-	defer LogBenchmark(LogCluster, "CurrentPeerHardware").Close()
+	defer base.LogBenchmark(LogCluster, "CurrentPeerHardware").Close()
 
 	hw.Arch = runtime.GOARCH
 
@@ -160,9 +159,9 @@ func CurrentPeerHardware() (hw PeerHardware, err error) {
 	}
 
 	hw.VirtualMemory = vm.Total
-	LogVerbose(LogCluster, "local peer hardware: %v", &hw)
+	base.LogVerbose(LogCluster, "local peer hardware: %v", &hw)
 	return
 }
 func (x *PeerHardware) String() string {
-	return PrettyPrint(x)
+	return base.PrettyPrint(x)
 }

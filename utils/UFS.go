@@ -17,10 +17,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/poppolopoppo/ppb/internal/base"
+
 	"github.com/djherbis/times"
 )
 
-var LogUFS = NewLogCategory("UFS")
+var LogUFS = base.NewLogCategory("UFS")
 
 /***************************************
  * Path to string
@@ -54,11 +56,11 @@ func SanitizePath(pathname string, sep rune) string {
 	return sb.String()
 }
 func JoinPath(in string, args ...string) string {
-	Assert(func() bool { return len(in) > 0 })
+	base.Assert(func() bool { return len(in) > 0 })
 	sb := strings.Builder{}
 	capacity := len(in)
 	for _, it := range args {
-		Assert(func() bool { return len(it) > 0 })
+		base.Assert(func() bool { return len(it) > 0 })
 		capacity += len(it) + 1
 	}
 	sb.Grow(capacity)
@@ -100,6 +102,21 @@ func lastIndexOfPathSeparator(in string) (int, bool) {
 	return len(in), false
 }
 
+func MakeBasename(path string) string {
+	if index, found := lastIndexOfPathSeparator(path); found {
+		return path[index+1:]
+	} else {
+		return path
+	}
+}
+func MakeParentFolder(path string) string {
+	if index, found := lastIndexOfPathSeparator(path); found {
+		return path[0:index]
+	} else {
+		return ""
+	}
+}
+
 // #TODO: enable back local path, but at the moment it's quite annoying to use with msvc
 // #TODO: implement source indexing to resolve this issue
 const localPathEnabled = false
@@ -122,6 +139,21 @@ func MakeLocalFilename(f Filename) (relative string) {
 		return ForceLocalFilename(f)
 	}
 	return f.String()
+}
+
+func SafeNormalize[T interface {
+	Normalize() T
+	fmt.Stringer
+	comparable
+}](in T) T {
+	base.AssertErr(func() error {
+		if normalized := in.Normalize(); in == normalized {
+			return nil
+		} else {
+			return fmt.Errorf("entry %q was not normalized ! real path is %q", in, normalized)
+		}
+	})
+	return in
 }
 
 /***************************************
@@ -148,7 +180,7 @@ func (d Directory) Parent() Directory {
 	if i, ok := lastIndexOfPathSeparator(d.Path); ok {
 		return Directory{Path: d.Path[:i]}
 	} else {
-		UnexpectedValuePanic(d, d)
+		base.UnexpectedValuePanic(d, d)
 		return Directory{}
 	}
 }
@@ -156,7 +188,7 @@ func (d Directory) Split() (Directory, string) {
 	if i, ok := lastIndexOfPathSeparator(d.String()); ok {
 		return Directory{Path: d.Path[:i]}, d.String()[i+1:]
 	} else {
-		UnexpectedValuePanic(d, d)
+		base.UnexpectedValuePanic(d, d)
 		return Directory{}, ""
 	}
 }
@@ -173,15 +205,10 @@ func (d Directory) IsIn(o Directory) bool {
 }
 func (d Directory) IsParentOf(o Directory) bool {
 	n := len(d.Path)
-	if n > len(o.Path) {
-		return false
+	if n <= len(o.Path) {
+		return d.Path == o.Path[:n]
 	}
-	for i := range d.Path[:n] {
-		if d.Path[i] != o.Path[i] {
-			return false
-		}
-	}
-	return true
+	return false
 }
 func (d Directory) AbsoluteFolder(rel ...string) (result Directory) {
 	return Directory{Path: filepath.Clean(JoinPath(d.String(), rel...))}
@@ -202,7 +229,7 @@ func (d Directory) Normalize() (result Directory) {
 	return MakeDirectory(d.Path)
 }
 func (d Directory) Equals(o Directory) bool {
-	return d == o
+	return d.Path == o.Path
 }
 func (d Directory) Compare(o Directory) int {
 	return strings.Compare(d.Path, o.Path)
@@ -255,6 +282,12 @@ func (f Filename) ReplaceExt(ext string) Filename {
 		Basename: f.TrimExt() + ext,
 		Dirname:  f.Dirname,
 	}
+}
+func (f Filename) SafeRelative(to Directory) string {
+	if f.Valid() {
+		return f.Relative(to)
+	}
+	return ""
 }
 func (f Filename) Relative(to Directory) string {
 	if path, err := filepath.Rel(to.String(), f.Dirname.String()); err == nil {
@@ -341,8 +374,8 @@ func GetModificationTime(stat os.FileInfo) time.Time {
 
 type UFSCacheBin struct {
 	barrier        sync.RWMutex
-	FileCache      map[string]*FileInfo
-	DirectoryCache map[string]*DirectoryInfo
+	FileCache      map[Filename]*FileInfo
+	DirectoryCache map[Directory]*DirectoryInfo
 }
 
 type UFSCache struct {
@@ -354,14 +387,14 @@ func newUFSCache() *UFSCache {
 	for i := range result.bins {
 		result.bins[i] = UFSCacheBin{
 			barrier:        sync.RWMutex{},
-			FileCache:      map[string]*FileInfo{},
-			DirectoryCache: map[string]*DirectoryInfo{},
+			FileCache:      map[Filename]*FileInfo{},
+			DirectoryCache: map[Directory]*DirectoryInfo{},
 		}
 	}
 	return result
 }
-func (cache *UFSCache) getBin(x Serializable) *UFSCacheBin {
-	h := SerializeFingerpint(x, Fingerprint{})
+func (cache *UFSCache) getBin(x base.Serializable) *UFSCacheBin {
+	h := base.SerializeFingerpint(x, base.Fingerprint{})
 	return &cache.bins[h[0]]
 }
 
@@ -377,14 +410,12 @@ func invalidate_file_info(f Filename) {
 	cacheBin := ufsCache.getBin(&f)
 	cacheBin.barrier.Lock()
 	defer cacheBin.barrier.Unlock()
-	delete(cacheBin.FileCache, f.String())
+	delete(cacheBin.FileCache, f)
 }
 func MakeFileInfo(f Filename, optionalStat *os.FileInfo) (*FileInfo, error) {
-	path := f.String() //.Normalize().String()
-
 	cacheBin := ufsCache.getBin(&f)
 	cacheBin.barrier.RLock()
-	if cached, ok := cacheBin.FileCache[path]; ok {
+	if cached, ok := cacheBin.FileCache[f]; ok {
 		cacheBin.barrier.RUnlock()
 		return cached, nil
 	}
@@ -393,19 +424,19 @@ func MakeFileInfo(f Filename, optionalStat *os.FileInfo) (*FileInfo, error) {
 	cacheBin.barrier.Lock()
 	defer cacheBin.barrier.Unlock()
 
-	if cached, ok := cacheBin.FileCache[path]; !ok {
+	if cached, ok := cacheBin.FileCache[f]; !ok {
 		cached = nil
 		var err error
 		var stat os.FileInfo
 		if optionalStat != nil {
 			cached = &FileInfo{
-				AbsolutePath: path,
+				AbsolutePath: f.String(),
 				FileInfo:     *optionalStat,
 			}
 		} else if stat, err = os.Stat(f.String()); !os.IsNotExist(err) {
-			if !IsNil(stat) && !stat.IsDir() && stat.Mode().Type().IsRegular() {
+			if !base.IsNil(stat) && !stat.IsDir() && stat.Mode().Type().IsRegular() {
 				cached = &FileInfo{
-					AbsolutePath: path,
+					AbsolutePath: f.String(),
 					FileInfo:     stat,
 				}
 			} else {
@@ -416,7 +447,7 @@ func MakeFileInfo(f Filename, optionalStat *os.FileInfo) (*FileInfo, error) {
 				}
 			}
 		}
-		cacheBin.FileCache[path] = cached
+		cacheBin.FileCache[f] = cached
 		return cached, err
 	} else {
 		return cached, nil
@@ -427,14 +458,12 @@ func invalidate_directory_info(d Directory) {
 	cacheBin := ufsCache.getBin(&d)
 	cacheBin.barrier.Lock()
 	defer cacheBin.barrier.Unlock()
-	delete(cacheBin.DirectoryCache, d.String())
+	delete(cacheBin.DirectoryCache, d)
 }
 func MakeDirectoryInfo(d Directory, optionalStat *os.FileInfo) (*DirectoryInfo, error) {
-	path := d.String() //.Normalize().String()
-
 	cacheBin := ufsCache.getBin(&d)
 	cacheBin.barrier.RLock()
-	if cached, ok := cacheBin.DirectoryCache[path]; ok && cached != nil {
+	if cached, ok := cacheBin.DirectoryCache[d]; ok && cached != nil {
 		cacheBin.barrier.RUnlock()
 		return cached, nil
 	}
@@ -443,13 +472,13 @@ func MakeDirectoryInfo(d Directory, optionalStat *os.FileInfo) (*DirectoryInfo, 
 	cacheBin.barrier.Lock()
 	defer cacheBin.barrier.Unlock()
 
-	if cached, ok := cacheBin.DirectoryCache[path]; !ok || cached == nil {
+	if cached, ok := cacheBin.DirectoryCache[d]; !ok || cached == nil {
 		var stat os.FileInfo
 		var cached *DirectoryInfo
 		var err error
 		if optionalStat != nil {
 			cached = &DirectoryInfo{
-				AbsolutePath: path,
+				AbsolutePath: d.String(),
 				FileInfo:     *optionalStat,
 				Files:        nil,
 				Directories:  nil,
@@ -457,7 +486,7 @@ func MakeDirectoryInfo(d Directory, optionalStat *os.FileInfo) (*DirectoryInfo, 
 		} else if stat, err = os.Stat(d.String()); !os.IsNotExist(err) {
 			if stat.IsDir() {
 				cached = &DirectoryInfo{
-					AbsolutePath: path,
+					AbsolutePath: d.String(),
 					FileInfo:     stat,
 					Files:        nil,
 					Directories:  nil,
@@ -466,7 +495,7 @@ func MakeDirectoryInfo(d Directory, optionalStat *os.FileInfo) (*DirectoryInfo, 
 				err = WrongFileInfoError{"path does not point to a directory"}
 			}
 		}
-		cacheBin.DirectoryCache[path] = cached
+		cacheBin.DirectoryCache[d] = cached
 		return cached, err
 	} else {
 		return cached, nil
@@ -538,7 +567,7 @@ func (d Directory) Files() []Filename {
 	if info, err := enumerate_directory(d); err == nil {
 		return info.Files
 	} else {
-		LogError(LogUFS, "Directory.Files(): %v", err)
+		base.LogError(LogUFS, "Directory.Files(): %v", err)
 		return []Filename{}
 	}
 }
@@ -546,7 +575,7 @@ func (d Directory) Directories() []Directory {
 	if info, err := enumerate_directory(d); err == nil {
 		return info.Directories
 	} else {
-		LogError(LogUFS, "Directory.Directories(): %v", err)
+		base.LogError(LogUFS, "Directory.Directories(): %v", err)
 		return []Directory{}
 	}
 }
@@ -554,7 +583,7 @@ func (d Directory) MatchDirectories(each func(Directory) error, r *regexp.Regexp
 	if r == nil {
 		return nil
 	}
-	LogVeryVerbose(LogUFS, "match directories in '%v' for /%v/...", d, r)
+	base.LogVeryVerbose(LogUFS, "match directories in '%v' for /%v/...", d, r)
 	if info, err := enumerate_directory(d); err == nil {
 		for _, s := range info.Directories {
 			if r.MatchString(s.Basename()) {
@@ -572,7 +601,7 @@ func (d Directory) MatchFiles(each func(Filename) error, r *regexp.Regexp) error
 	if r == nil {
 		return nil
 	}
-	LogVeryVerbose(LogUFS, "match files in '%v' for /%v/...", d, r)
+	base.LogVeryVerbose(LogUFS, "match files in '%v' for /%v/...", d, r)
 	if info, err := enumerate_directory(d); err == nil {
 		for _, f := range info.Files {
 			if r.MatchString(f.Basename) {
@@ -590,7 +619,7 @@ func (d Directory) MatchFilesRec(each func(Filename) error, r *regexp.Regexp) er
 	if r == nil {
 		return nil
 	}
-	LogVeryVerbose(LogUFS, "match files rec in '%v' for /%v/...", d, r)
+	base.LogVeryVerbose(LogUFS, "match files rec in '%v' for /%v/...", d, r)
 	if info, err := enumerate_directory(d); err == nil {
 		for _, f := range info.Files {
 			if r.MatchString(f.Basename) {
@@ -610,7 +639,7 @@ func (d Directory) MatchFilesRec(each func(Filename) error, r *regexp.Regexp) er
 	}
 }
 func (d Directory) FindFileRec(r *regexp.Regexp) (Filename, error) {
-	LogVeryVerbose(LogUFS, "find file rec in '%v' for /%v/...", d, r)
+	base.LogVeryVerbose(LogUFS, "find file rec in '%v' for /%v/...", d, r)
 	if info, err := enumerate_directory(d); err == nil {
 		for _, f := range info.Files {
 			if r.MatchString(f.Basename) {
@@ -646,7 +675,7 @@ func (list DirSet) Slice() []Directory { return list }
 func (list DirSet) Swap(i, j int)      { list[i], list[j] = list[j], list[i] }
 
 func (list DirSet) IsUniq() bool {
-	return IsUniq(list...)
+	return base.IsUniq(list.Slice()...)
 }
 
 func (list *DirSet) Sort() {
@@ -656,14 +685,14 @@ func (list *DirSet) Sort() {
 }
 func (list *DirSet) Contains(it ...Directory) bool {
 	for _, x := range it {
-		if _, ok := IndexIf(x.Equals, (*list)...); !ok {
+		if _, ok := base.IndexIf(x.Equals, (*list)...); !ok {
 			return false
 		}
 	}
 	return true
 }
 func (list *DirSet) Append(it ...Directory) {
-	*list = AppendEquatable_CheckUniq(*list, it...)
+	*list = base.AppendEquatable_CheckUniq(*list, it...)
 }
 func (list *DirSet) AppendUniq(it ...Directory) {
 	for _, x := range it {
@@ -673,11 +702,11 @@ func (list *DirSet) AppendUniq(it ...Directory) {
 	}
 }
 func (list *DirSet) Prepend(it ...Directory) {
-	*list = PrependEquatable_CheckUniq(it, *list...)
+	*list = base.PrependEquatable_CheckUniq(it, *list...)
 }
 func (list *DirSet) Remove(it ...Directory) {
 	for _, x := range it {
-		*list = RemoveUnless(x.Equals, *list...)
+		*list = base.RemoveUnless(x.Equals, *list...)
 	}
 }
 func (list *DirSet) Clear() {
@@ -696,8 +725,8 @@ func (list DirSet) ConcatUniq(it ...Directory) (result DirSet) {
 	}
 	return result
 }
-func (list *DirSet) Serialize(ar Archive) {
-	SerializeSlice(ar, (*[]Directory)(list))
+func (list *DirSet) Serialize(ar base.Archive) {
+	base.SerializeSlice(ar, (*[]Directory)(list))
 }
 func (list DirSet) Equals(other DirSet) bool {
 	if len(list) != len(other) {
@@ -710,17 +739,18 @@ func (list DirSet) Equals(other DirSet) bool {
 	}
 	return true
 }
-func (list DirSet) StringSet() StringSet {
-	return MakeStringerSet(list...)
+func (list DirSet) StringSet() base.StringSet {
+	return base.MakeStringerSet(list.Slice()...)
 }
 func (list DirSet) Join(delim string) string {
-	return JoinString(delim, list...)
+
+	return base.JoinString(delim, list.Slice()...)
 }
-func (list DirSet) Local(path Directory) StringSet {
-	return (StringSet)(Map(MakeLocalDirectory, list...))
+func (list DirSet) Local(path Directory) base.StringSet {
+	return (base.StringSet)(base.Map(MakeLocalDirectory, list...))
 }
 func (list DirSet) Normalize() DirSet {
-	return ((DirSet)(Map(func(it Directory) Directory {
+	return ((DirSet)(base.Map(func(it Directory) Directory {
 		return it.Normalize()
 	}, list...)))
 }
@@ -736,6 +766,21 @@ func NewFileSet(x ...Filename) (result FileSet) {
 	copy(result, x)
 	return
 }
+func MergeFileSets(x ...FileSet) (result FileSet) {
+	capacity := 0
+	for _, it := range x {
+		capacity += it.Len()
+	}
+	result = make(FileSet, 0, capacity)
+	for i, it := range x {
+		if i == 0 {
+			result.Append(it...)
+		} else {
+			result.AppendUniq(it...)
+		}
+	}
+	return
+}
 
 func (list FileSet) Len() int           { return len(list) }
 func (list FileSet) At(i int) Filename  { return list[i] }
@@ -744,7 +789,7 @@ func (list FileSet) Slice() []Filename  { return list }
 func (list FileSet) Swap(i, j int)      { list[i], list[j] = list[j], list[i] }
 
 func (list FileSet) IsUniq() bool {
-	return IsUniq(list...)
+	return base.IsUniq(list.Slice()...)
 }
 
 func (list *FileSet) Sort() {
@@ -754,14 +799,14 @@ func (list *FileSet) Sort() {
 }
 func (list *FileSet) Contains(it ...Filename) bool {
 	for _, x := range it {
-		if _, ok := IndexIf(x.Equals, (*list)...); !ok {
+		if _, ok := base.IndexIf(x.Equals, (*list)...); !ok {
 			return false
 		}
 	}
 	return true
 }
 func (list *FileSet) Append(it ...Filename) {
-	*list = AppendEquatable_CheckUniq(*list, it...)
+	*list = base.AppendEquatable_CheckUniq(*list, it...)
 }
 func (list *FileSet) AppendUniq(it ...Filename) {
 	for _, x := range it {
@@ -771,11 +816,11 @@ func (list *FileSet) AppendUniq(it ...Filename) {
 	}
 }
 func (list *FileSet) Prepend(it ...Filename) {
-	*list = PrependEquatable_CheckUniq(it, *list...)
+	*list = base.PrependEquatable_CheckUniq(it, *list...)
 }
 func (list *FileSet) Remove(it ...Filename) {
 	for _, x := range it {
-		*list = RemoveUnless(x.Equals, *list...)
+		*list = base.RemoveUnless(x.Equals, *list...)
 	}
 }
 func (list *FileSet) Clear() {
@@ -799,13 +844,13 @@ func (list FileSet) TotalSize() (result int64) {
 		if info, err := x.Info(); info != nil {
 			result += info.Size()
 		} else {
-			LogError(LogUFS, "%v: %v", x, err)
+			base.LogError(LogUFS, "%v: %v", x, err)
 		}
 	}
 	return result
 }
-func (list *FileSet) Serialize(ar Archive) {
-	SerializeSlice(ar, (*[]Filename)(list))
+func (list *FileSet) Serialize(ar base.Archive) {
+	base.SerializeSlice(ar, (*[]Filename)(list))
 }
 func (list FileSet) Equals(other FileSet) bool {
 	if len(list) != len(other) {
@@ -818,17 +863,17 @@ func (list FileSet) Equals(other FileSet) bool {
 	}
 	return true
 }
-func (list FileSet) StringSet() StringSet {
-	return MakeStringerSet(list...)
+func (list FileSet) StringSet() base.StringSet {
+	return base.MakeStringerSet(list.Slice()...)
 }
 func (list FileSet) Join(delim string) string {
-	return JoinString(delim, list...)
+	return base.JoinString(delim, list.Slice()...)
 }
-func (list FileSet) Local(path Directory) StringSet {
-	return (StringSet)(Map(MakeLocalFilename, list...))
+func (list FileSet) Local(path Directory) base.StringSet {
+	return (base.StringSet)(base.Map(MakeLocalFilename, list...))
 }
 func (list FileSet) Normalize() FileSet {
-	return (FileSet)(Map(func(it Filename) Filename {
+	return (FileSet)(base.Map(func(it Filename) Filename {
 		return it.Normalize()
 	}, list...))
 }
@@ -838,17 +883,17 @@ func (list FileSet) Normalize() FileSet {
  ***************************************/
 
 func (x Filename) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *Filename) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
 
 func (x Directory) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+	return base.UnsafeBytesFromString(x.String()), nil
 }
 func (x *Directory) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
 
 /***************************************
@@ -887,9 +932,9 @@ func (ufs *UFSFrontEnd) Touch(dst Filename) error {
 	return ufs.SetMTime(dst, time.Now().Local())
 }
 func (ufs *UFSFrontEnd) SetMTime(dst Filename, mtime time.Time) error {
-	LogDebug(LogUFS, "chtimes %v", dst)
-	path := dst.String()
-	if err := os.Chtimes(path, mtime, mtime); err == nil {
+	base.LogDebug(LogUFS, "chtimes %v", dst)
+	localPath := dst.String()
+	if err := os.Chtimes(localPath, mtime, mtime); err == nil {
 		invalidate_file_info(dst)
 		return nil
 	} else {
@@ -898,27 +943,27 @@ func (ufs *UFSFrontEnd) SetMTime(dst Filename, mtime time.Time) error {
 }
 func (ufs *UFSFrontEnd) Remove(dst Filename) error {
 	if err := os.Remove(dst.String()); err != nil {
-		LogError(LogUFS, "%v", err)
+		base.LogError(LogUFS, "%v", err)
 		return err
 	}
 	return nil
 }
 func (ufs *UFSFrontEnd) Mkdir(dst Directory) {
 	if err := ufs.MkdirEx(dst); err != nil {
-		LogPanicErr(LogUFS, err)
+		base.LogPanicErr(LogUFS, err)
 	}
 }
 func (ufs *UFSFrontEnd) MkdirEx(dst Directory) error {
-	path := dst.String()
-	if st, err := os.Stat(path); st != nil && (err == nil || os.IsExist(err)) {
+	localPath := dst.String()
+	if st, err := os.Stat(localPath); st != nil && (err == nil || os.IsExist(err)) {
 		if !st.IsDir() {
-			LogDebug(LogUFS, "mkdir %v", dst)
+			base.LogDebug(LogUFS, "mkdir %v", dst)
 			return fmt.Errorf("ufs: %q already exist, but is not a directory", dst)
 		}
 	} else {
-		LogDebug(LogUFS, "mkdir %v", dst)
+		base.LogDebug(LogUFS, "mkdir %v", dst)
 		invalidate_directory_info(dst)
-		if err := os.MkdirAll(path, os.ModePerm); err != nil {
+		if err := os.MkdirAll(localPath, os.ModePerm); err != nil {
 			return fmt.Errorf("ufs: mkdir %q got error %v", dst, err)
 		}
 	}
@@ -927,7 +972,7 @@ func (ufs *UFSFrontEnd) MkdirEx(dst Directory) error {
 func (ufs *UFSFrontEnd) CreateWriter(dst Filename) (*os.File, error) {
 	invalidate_file_info(dst)
 	ufs.Mkdir(dst.Dirname)
-	LogDebug(LogUFS, "create '%v'", dst)
+	base.LogDebug(LogUFS, "create '%v'", dst)
 	return os.Create(dst.String())
 }
 func (ufs *UFSFrontEnd) CreateFile(dst Filename, write func(*os.File) error) error {
@@ -943,7 +988,7 @@ func (ufs *UFSFrontEnd) CreateFile(dst Filename, write func(*os.File) error) err
 			return err
 		}
 	}
-	LogWarning(LogUFS, "CreateFile: caught %v while trying to create %v", err, dst)
+	base.LogWarning(LogUFS, "CreateFile: caught %v while trying to create %v", err, dst)
 	return err
 }
 func (ufs *UFSFrontEnd) Create(dst Filename, write func(io.Writer) error) error {
@@ -979,7 +1024,7 @@ func (ufs *UFSFrontEnd) SafeCreate(dst Filename, write func(io.Writer) error) er
 
 		if err == nil {
 			if err = os.Rename(tmpFilename.String(), dst.String()); err != nil {
-				LogWarning(LogUFS, "SafeCreate: %v", err)
+				base.LogWarning(LogUFS, "SafeCreate: %v", err)
 			}
 		}
 		return err
@@ -1004,13 +1049,13 @@ func (ufs *UFSFrontEnd) MTime(src Filename) time.Time {
 	if info, err := src.Info(); err == nil {
 		return info.ModTime()
 	} else {
-		LogPanicErr(LogUFS, err)
+		base.LogPanicErr(LogUFS, err)
 		return time.Time{}
 	}
 }
 func (ufs *UFSFrontEnd) OpenFile(src Filename, read func(*os.File) error) error {
 	input, err := os.Open(src.String())
-	LogDebug(LogUFS, "open '%v'", src)
+	base.LogDebug(LogUFS, "open '%v'", src)
 
 	if err == nil {
 		defer func() {
@@ -1024,7 +1069,7 @@ func (ufs *UFSFrontEnd) OpenFile(src Filename, read func(*os.File) error) error 
 		}
 	}
 
-	LogWarning(LogUFS, "OpenFile: %v", err)
+	base.LogWarning(LogUFS, "OpenFile: %v", err)
 	return err
 }
 func (ufs *UFSFrontEnd) Open(src Filename, read func(io.Reader) error) error {
@@ -1063,12 +1108,12 @@ func (ufs *UFSFrontEnd) Read(src Filename, read func([]byte) error) error {
 		}
 
 		// check if the file is small enough to fit in a transient buffer
-		if info, err := src.Info(); info.Size() < LARGE_PAGE_CAPACITY {
-			LogPanicIfFailed(LogUFS, err)
+		if info, err := src.Info(); info.Size() < int64(base.TransientPage1MiB.Stride()) {
+			base.LogPanicIfFailed(LogUFS, err)
 
-			transient := TransientLargePage.Allocate()
-			defer TransientLargePage.Release(transient)
-			return useBuffer(transient)
+			transient := base.TransientPage1MiB.Allocate()
+			defer base.TransientPage1MiB.Release(transient)
+			return useBuffer(transient.Raw)
 
 		} else {
 			// for large files we revert to a dedicated allocation
@@ -1079,14 +1124,13 @@ func (ufs *UFSFrontEnd) Read(src Filename, read func([]byte) error) error {
 }
 func (ufs *UFSFrontEnd) ReadLines(src Filename, line func(string) error) error {
 	return ufs.Open(src, func(rd io.Reader) error {
-		LogDebug(LogUFS, "read lines '%v'", src)
+		base.LogDebug(LogUFS, "read lines '%v'", src)
 
-		const capacity = LARGE_PAGE_CAPACITY / 2
-		buf := TransientLargePage.Allocate()
-		defer TransientLargePage.Release(buf)
+		buf := base.TransientPage64KiB.Allocate()
+		defer base.TransientPage64KiB.Release(buf)
 
 		scanner := bufio.NewScanner(rd)
-		scanner.Buffer(buf, capacity)
+		scanner.Buffer(buf.Raw, len(buf.Raw)/2)
 
 		for scanner.Scan() {
 			if err := scanner.Err(); err == nil {
@@ -1102,15 +1146,15 @@ func (ufs *UFSFrontEnd) ReadLines(src Filename, line func(string) error) error {
 }
 func (ufs *UFSFrontEnd) Scan(src Filename, re *regexp.Regexp, match func([]string) error) error {
 	return ufs.Open(src, func(rd io.Reader) error {
-		LogDebug(LogUFS, "scan '%v' with regexp %v", src, re)
+		base.LogDebug(LogUFS, "scan '%v' with regexp %v", src, re)
 
-		const capacity = LARGE_PAGE_CAPACITY / 2
-		buf := TransientLargePage.Allocate()
-		defer TransientLargePage.Release(buf)
+		buf := base.TransientPage64KiB.Allocate()
+		defer base.TransientPage64KiB.Release(buf)
+		capacity := len(buf.Raw) / 2
 
 		scanner := bufio.NewScanner(rd)
-		scanner.Buffer(buf, capacity)
-		scanner.Split(SplitRegex(re, capacity))
+		scanner.Buffer(buf.Raw, capacity)
+		scanner.Split(base.SplitRegex(re, capacity))
 
 		for scanner.Scan() {
 			if err := scanner.Err(); err == nil {
@@ -1130,26 +1174,26 @@ func (ufs *UFSFrontEnd) Rename(src, dst Filename) error {
 	ufs.Mkdir(dst.Dirname)
 	invalidate_file_info(src)
 	invalidate_file_info(dst)
-	LogDebug(LogUFS, "rename file '%v' to '%v'", src, dst)
+	base.LogDebug(LogUFS, "rename file '%v' to '%v'", src, dst)
 	return os.Rename(src.String(), dst.String())
 }
 func (ufs *UFSFrontEnd) Copy(src, dst Filename) error {
 	ufs.Mkdir(dst.Dirname)
 	invalidate_file_info(dst)
-	LogDebug(LogUFS, "copy file '%v' to '%v'", src, dst)
+	base.LogDebug(LogUFS, "copy file '%v' to '%v'", src, dst)
 	return ufs.Open(src, func(r io.Reader) error {
 		info, err := src.Info()
 		if err != nil {
 			return err
 		}
 		return ufs.Create(dst, func(w io.Writer) error {
-			return CopyWithProgress(dst.Basename, info.Size(), w, r)
+			return base.CopyWithProgress(dst.Basename, info.Size(), w, r)
 		})
 	})
 }
 
 func (ufs *UFSFrontEnd) MountOutputDir(output Directory) error {
-	LogVerbose(LogUFS, "mount output directory %q", output)
+	base.LogVerbose(LogUFS, "mount output directory %q", output)
 	ufs.Output = output
 	ufs.Binaries = ufs.Output.Folder("Binaries")
 	ufs.Cache = ufs.Output.Folder("Cache")
@@ -1162,7 +1206,7 @@ func (ufs *UFSFrontEnd) MountOutputDir(output Directory) error {
 	return nil
 }
 func (ufs *UFSFrontEnd) MountRootDirectory(root Directory) error {
-	LogVerbose(LogUFS, "mount root directory %q", root)
+	base.LogVerbose(LogUFS, "mount root directory %q", root)
 	if err := os.Chdir(root.String()); err != nil {
 		return err
 	}
@@ -1198,29 +1242,29 @@ func (ufs *UFSFrontEnd) GetCallerFolder(skip int) (Directory, error) {
 
 func make_ufs_frontend() (ufs UFSFrontEnd) {
 	executable, err := os.Executable()
-	LogPanicIfFailed(LogUFS, err)
+	base.LogPanicIfFailed(LogUFS, err)
 
 	ufs.Executable = MakeFilename(executable)
 	if !ufs.Executable.Exists() {
 		ufs.Executable = ufs.Executable.ReplaceExt(".exe")
 	}
 	if !ufs.Executable.Exists() {
-		LogPanic(LogUFS, "executable path %q does not point to a valid file", ufs.Executable)
+		base.LogPanic(LogUFS, "executable path %q does not point to a valid file", ufs.Executable)
 	}
 
-	LogVeryVerbose(LogUFS, "mount executable file %q", ufs.Executable)
+	base.LogVeryVerbose(LogUFS, "mount executable file %q", ufs.Executable)
 
 	ufs.Internal, err = ufs.GetCallerFolder(0)
-	LogPanicIfFailed(LogUFS, err)
+	base.LogPanicIfFailed(LogUFS, err)
 
 	ufs.Internal = ufs.Internal.Parent().Folder("internal")
-	LogVeryVerbose(LogUFS, "mount internal directory %q", ufs.Internal)
+	base.LogVeryVerbose(LogUFS, "mount internal directory %q", ufs.Internal)
 
 	ufs.Root, err = ufs.GetWorkingDir()
-	LogPanicIfFailed(LogUFS, err)
+	base.LogPanicIfFailed(LogUFS, err)
 
 	err = ufs.MountRootDirectory(ufs.Root)
-	LogPanicIfFailed(LogUFS, err)
+	base.LogPanicIfFailed(LogUFS, err)
 
 	return ufs
 }
@@ -1246,58 +1290,26 @@ func MakeGlobRegexp(glob ...string) *regexp.Regexp {
 }
 
 /***************************************
- * UFS Bindings for Build Graph
+ * UFS serialization and transformation
  ***************************************/
 
-func (x *Filename) Alias() BuildAlias {
-	return BuildAlias(x.String())
-}
-func (x Filename) Digest() (BuildStamp, error) {
-	x.Invalidate()
-	if info, err := x.Info(); err == nil {
-		return MakeTimedBuildFingerprint(info.ModTime(), &x), nil
-	} else {
-		return BuildStamp{}, err
-	}
-}
-func (x Filename) Build(bc BuildContext) error {
-	x.Invalidate()
-	if info, err := x.Info(); err == nil {
-		bc.Annotate(SizeInBytes(info.Size()).String())
-		bc.Timestamp(info.ModTime())
-		return nil
-	} else {
-		return err
-	}
-}
-func (x *Filename) Serialize(ar Archive) {
+func (x *Filename) Serialize(ar base.Archive) {
 	ar.Serializable(&x.Dirname)
 	ar.String(&x.Basename)
 }
 
-func (x *Directory) Alias() BuildAlias {
-	return BuildAlias(x.String())
-}
-func (x Directory) Build(bc BuildContext) error {
-	x.Invalidate()
-	if info, err := x.Info(); err == nil {
-		bc.Timestamp(GetCreationTime(info))
-		return nil
-	} else {
-		return err
-	}
-}
-func (x *Directory) Serialize(ar Archive) {
+func (x *Directory) Serialize(ar base.Archive) {
 	ar.String(&x.Path)
 }
 
-func BuildFile(source Filename, staticDeps ...BuildAlias) BuildFactoryTyped[*Filename] {
-	return MakeBuildFactory(func(bi BuildInitializer) (Filename, error) {
-		return source.Normalize(), bi.DependsOn(staticDeps...)
-	})
+func MakeDirSet(root Directory, paths ...string) (result DirSet) {
+	return base.Map(func(x string) Directory {
+		return root.AbsoluteFolder(x).Normalize()
+	}, paths...)
 }
-func BuildDirectory(source Directory, staticDeps ...BuildAlias) BuildFactoryTyped[*Directory] {
-	return MakeBuildFactory(func(bi BuildInitializer) (Directory, error) {
-		return source.Normalize(), bi.DependsOn(staticDeps...)
-	})
+
+func MakeFileSet(root Directory, paths ...string) (result FileSet) {
+	return base.Map(func(x string) Filename {
+		return root.AbsoluteFile(x).Normalize()
+	}, paths...)
 }

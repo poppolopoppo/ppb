@@ -5,13 +5,15 @@ import (
 
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/compile"
+	"github.com/poppolopoppo/ppb/internal/base"
+
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
 
-var LogWindows = NewLogCategory("Windows")
+var LogWindows = base.NewLogCategory("Windows")
 
-var HalTag = MakeArchiveTag(MakeFourCC('W', 'I', 'N', 'X'))
+var HalTag = base.MakeArchiveTag(base.MakeFourCC('W', 'I', 'N', 'X'))
 
 func InitWindowsHAL() {
 	SetupWindowsAttachDebugger()
@@ -19,24 +21,28 @@ func InitWindowsHAL() {
 }
 
 func InitWindowsCompile() {
-	LogTrace(LogWindows, "build/hal/window.Init()")
+	base.LogTrace(LogWindows, "build/hal/window.Init()")
 
-	RegisterSerializable(&WindowsPlatform{})
-	RegisterSerializable(&MsvcCompiler{})
-	RegisterSerializable(&MsvcProductInstall{})
-	RegisterSerializable(&ResourceCompiler{})
-	RegisterSerializable(&WindowsSDKInstall{})
-	RegisterSerializable(&WindowsSDK{})
-	RegisterSerializable(&ClangCompiler{})
-	RegisterSerializable(&LlvmProductInstall{})
-	RegisterSerializable(&MsvcSourceDependenciesAction{})
+	base.RegisterSerializable(&WindowsPlatform{})
+	base.RegisterSerializable(&MsvcCompiler{})
+	base.RegisterSerializable(&MsvcProductInstall{})
+	base.RegisterSerializable(&ResourceCompiler{})
+	base.RegisterSerializable(&WindowsSDKInstall{})
+	base.RegisterSerializable(&WindowsSDK{})
+	base.RegisterSerializable(&ClangCompiler{})
+	base.RegisterSerializable(&LlvmProductInstall{})
+	base.RegisterSerializable(&MsvcSourceDependenciesAction{})
 
 	AllPlatforms.Add("Win32", getWindowsPlatform_X86())
 	AllPlatforms.Add("Win64", getWindowsPlatform_X64())
 
-	AllCompilers.Append(
-		COMPILER_CLANGCL.String(),
-		COMPILER_MSVC.String())
+	compilerTypes := []CompilerType{
+		COMPILER_CLANGCL,
+		COMPILER_MSVC,
+	}
+	AllCompilerNames.Append(
+		CompilerName{PersistentVar: &compilerTypes[0]},
+		CompilerName{PersistentVar: &compilerTypes[1]})
 }
 
 /***************************************
@@ -57,24 +63,24 @@ type WindowsFlags struct {
 	LlvmToolchain BoolVar
 }
 
-var GetWindowsFlags = NewCompilationFlags("windows_flags", "windows-specific compilation flags", &WindowsFlags{
-	Analyze:    INHERITABLE_FALSE,
+var GetWindowsFlags = NewCompilationFlags("WindowsCompilation", "windows-specific compilation flags", WindowsFlags{
+	Analyze:    base.INHERITABLE_FALSE,
 	Compiler:   COMPILER_MSVC,
-	Insider:    INHERITABLE_FALSE,
-	JustMyCode: INHERITABLE_FALSE,
+	Insider:    base.INHERITABLE_FALSE,
+	JustMyCode: base.INHERITABLE_FALSE,
 	MscVer:     MSC_VER_LATEST,
-	PerfSDK:    INHERITABLE_FALSE,
-	Permissive: INHERITABLE_FALSE,
+	PerfSDK:    base.INHERITABLE_FALSE,
+	Permissive: base.INHERITABLE_FALSE,
 	StackSize:  2000000,
-	StaticCRT:  INHERITABLE_FALSE,
+	StaticCRT:  base.INHERITABLE_FALSE,
 })
 
 func (flags *WindowsFlags) Flags(cfv CommandFlagsVisitor) {
 	cfv.Persistent("Analyze", "enable/disable MSCV analysis", &flags.Analyze)
-	cfv.Persistent("Compiler", "select windows compiler ["+JoinString(",", CompilerTypes()...)+"]", &flags.Compiler)
+	cfv.Persistent("Compiler", "select windows compiler", &flags.Compiler)
 	cfv.Persistent("Insider", "enable/disable support for pre-release toolchain", &flags.Insider)
 	cfv.Persistent("JustMyCode", "enable/disable MSCV just-my-code", &flags.JustMyCode)
-	cfv.Persistent("MscVer", "select MSVC toolchain version ["+JoinString(",", MsvcVersions()...)+"]", &flags.MscVer)
+	cfv.Persistent("MscVer", "select MSVC toolchain version", &flags.MscVer)
 	cfv.Persistent("PerfSDK", "enable/disable Visual Studio Performance SDK", &flags.PerfSDK)
 	cfv.Persistent("Permissive", "enable/disable MSCV permissive", &flags.Permissive)
 	cfv.Persistent("StackSize", "set default thread stack size in bytes", &flags.StackSize)
@@ -97,15 +103,15 @@ func (win *WindowsPlatform) Build(bc BuildContext) error {
 		return err
 	}
 
-	flags := GetWindowsFlags()
-	if _, err := GetBuildableFlags(flags).Need(bc); err != nil {
+	windowsFlags, err := GetWindowsFlags(bc)
+	if err != nil {
 		return err
 	}
 
-	win.CompilerType = flags.Compiler
+	win.CompilerType = windowsFlags.Compiler
 	return nil
 }
-func (win *WindowsPlatform) Serialize(ar Archive) {
+func (win *WindowsPlatform) Serialize(ar base.Archive) {
 	ar.Serializable(&win.PlatformRules)
 	ar.Serializable(&win.CompilerType)
 }
@@ -122,7 +128,7 @@ func (win *WindowsPlatform) GetCompiler() BuildFactoryTyped[Compiler] {
 			return clang_cl.(Compiler), err
 		})
 	default:
-		UnexpectedValue(win.CompilerType)
+		base.UnexpectedValue(win.CompilerType)
 		return nil
 	}
 }
@@ -166,7 +172,7 @@ func getWindowsHostPlatform() string {
 	case 64:
 		return "x64"
 	default:
-		UnexpectedValue(strconv.IntSize)
+		base.UnexpectedValue(strconv.IntSize)
 		return ""
 	}
 }
