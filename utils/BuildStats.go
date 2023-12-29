@@ -102,9 +102,7 @@ func newBuildEvents() (result buildEvents) {
 			return nil
 		})
 		result.onBuildGraphFinishedEvent.Add(func(bg BuildGraph) error {
-			err := pbar.Close()
-			pbar = nil
-			return err
+			return pbar.Close()
 		})
 	}
 	return
@@ -142,7 +140,7 @@ func (g *buildEvents) RemoveOnBuildGraphFinished(h base.DelegateHandle) bool {
 
 func (g *buildEvents) onBuildGraphStart_ThreadSafe(graph *buildGraph) {
 	g.gprahEventBarrier.Lock()
-	defer g.gprahEventBarrier.Lock()
+	defer g.gprahEventBarrier.Unlock()
 
 	if g.numRunningTasks == -1 {
 		defer atomic.StoreInt32(&g.numRunningTasks, 0)
@@ -151,7 +149,7 @@ func (g *buildEvents) onBuildGraphStart_ThreadSafe(graph *buildGraph) {
 }
 func (g *buildEvents) onBuildGraphFinished_ThreadSafe(graph *buildGraph) {
 	g.gprahEventBarrier.Lock()
-	defer g.gprahEventBarrier.Lock()
+	defer g.gprahEventBarrier.Unlock()
 
 	if g.numRunningTasks == 0 {
 		defer atomic.StoreInt32(&g.numRunningTasks, -1)
@@ -163,7 +161,7 @@ func (g *buildEvents) onBuildNodeStart_ThreadSafe(graph *buildGraph, node *build
 	base.LogDebug(LogBuildEvent, "%v -> %T: build start", node.BuildAlias, node.Buildable)
 
 	if atomic.LoadInt32(&g.numRunningTasks) == -1 {
-		g.onBuildGraphFinished_ThreadSafe(graph)
+		g.onBuildGraphStart_ThreadSafe(graph)
 	}
 
 	atomic.AddInt32(&g.numRunningTasks, 1)
