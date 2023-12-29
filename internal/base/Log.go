@@ -923,7 +923,7 @@ func (x *interactiveLogPin) format(dst LogWriter) {
 }
 
 func (x *interactiveLogPin) Log(msg string, args ...interface{}) {
-	x.header.Store(fmt.Sprintf(msg, append(args, " ")...))
+	x.header.Store(fmt.Sprintf(msg, args...) + " ")
 }
 func (x *interactiveLogPin) Close() error {
 	return gLogger.Close(x)

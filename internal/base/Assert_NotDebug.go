@@ -80,7 +80,7 @@ func (x *AtomicFuture[T]) Store(future Future[T]) {
 	x.Pointer.Store(future.(*async_future[T]))
 }
 
-func MakeFuture[T any](f func() (T, error), debug ...fmt.Stringer) Future[T] {
+func MakeFuture[T any](f func() (T, error)) Future[T] {
 	return make_async_future(f)
 }
 

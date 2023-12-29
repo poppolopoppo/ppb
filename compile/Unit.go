@@ -82,9 +82,20 @@ func (x *TargetAlias) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *TargetAlias) AutoComplete(in base.AutoComplete) {
-	for _, a := range FindBuildAliases(CommandEnv.BuildGraph(), "Unit") {
-		in.Add(strings.TrimPrefix(a.String(), "Unit://"), "")
-	}
+	moduleAliases, err := NeedAllModuleAliases(CommandEnv.BuildGraph().GlobalContext())
+	base.LogPanicIfFailed(base.LogAutoComplete, err)
+
+	err = ForeachEnvironmentAlias(func(ea EnvironmentAlias) error {
+		for _, ma := range moduleAliases {
+			targetAlias := TargetAlias{
+				EnvironmentAlias: ea,
+				ModuleAlias:      ma,
+			}
+			in.Add(targetAlias.String(), "")
+		}
+		return nil
+	})
+	base.LogPanicIfFailed(base.LogAutoComplete, err)
 }
 
 /***************************************

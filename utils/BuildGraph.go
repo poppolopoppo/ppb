@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -77,6 +76,11 @@ type BuildGraph interface {
 	OnBuildNodeFinished(base.EventDelegate[BuildNodeEvent]) base.DelegateHandle
 	OnBuildGraphFinished(base.EventDelegate[BuildGraph]) base.DelegateHandle
 
+	RemoveOnBuildGraphStart(base.DelegateHandle) bool
+	RemoveOnBuildNodeStart(base.DelegateHandle) bool
+	RemoveOnBuildNodeFinished(base.DelegateHandle) bool
+	RemoveOnBuildGraphFinished(base.DelegateHandle) bool
+
 	base.Equatable[BuildGraph]
 	base.Serializable
 }
@@ -84,18 +88,6 @@ type BuildGraph interface {
 /***************************************
  * Build Graph
  ***************************************/
-
-type buildEvents struct {
-	onBuildGraphStartEvent    base.ConcurrentEvent[BuildGraph]
-	onBuildGraphFinishedEvent base.ConcurrentEvent[BuildGraph]
-
-	onBuildNodeStartEvent    base.ConcurrentEvent[BuildNodeEvent]
-	onBuildNodeFinishedEvent base.ConcurrentEvent[BuildNodeEvent]
-
-	barrier         sync.Mutex
-	pbar            base.ProgressScope
-	numRunningTasks atomic.Int32
-}
 
 type buildGraph struct {
 	flags   *CommandFlags
@@ -110,10 +102,11 @@ type buildGraph struct {
 
 func NewBuildGraph(flags *CommandFlags, options ...BuildOptionFunc) BuildGraph {
 	result := &buildGraph{
-		flags:    flags,
-		nodes:    base.NewSharedStringMap[*buildNode](128),
-		options:  NewBuildOptions(options...),
-		revision: 0,
+		flags:       flags,
+		nodes:       base.NewSharedStringMap[*buildNode](1000),
+		options:     NewBuildOptions(options...),
+		revision:    0,
+		buildEvents: newBuildEvents(),
 	}
 	return result
 }
@@ -319,9 +312,7 @@ func (g *buildGraph) BuildMany(targets BuildAliases, options ...BuildOptionFunc)
 				}, targets...)...)
 
 			return
-		}, base.MakeStringer(func() string {
-			return fmt.Sprintf("buildmany: %s", strings.Join(base.Stringize(targets.Slice()...), ", "))
-		}))
+		})
 	}
 }
 

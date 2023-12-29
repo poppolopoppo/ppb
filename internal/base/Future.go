@@ -2,6 +2,7 @@ package base
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -11,6 +12,7 @@ import (
 var LogFuture = NewLogCategory("Future")
 
 type Future[T any] interface {
+	Done() chan struct{}
 	Join() Result[T]
 }
 
@@ -75,6 +77,11 @@ func make_sync_future[T any](f func() (T, error), debug ...fmt.Stringer) Future[
 }
 
 //lint:ignore U1000 ignore unused function
+func (future *sync_future[T]) Done() chan struct{} {
+	return nil
+}
+
+//lint:ignore U1000 ignore unused function
 func (future *sync_future[T]) Join() Result[T] {
 	future.barrier.Lock()
 	defer future.barrier.Unlock()
@@ -103,13 +110,32 @@ func (future *sync_future[T]) Join() Result[T] {
 
 //lint:ignore U1000 ignore unused function
 type async_future[T any] struct {
-	wait   chan any
-	once   sync.Once
+	done   chan struct{}
 	result result[T]
 }
 
+/*
+// recycle wait channels to avoid GC
+func async_future_new_wait() chan any {
+	return AnyChannels.Allocate()
+}
+func async_future_close_wait(w chan any) {
+}
+func async_future_release_wait(w *chan any) {
+	AnyChannels.Release(*w)
+	*w = nil
+}
+*/
+// each future owns its channel to allow better ParallelJoin_Async
+
+func MakeAsyncFuture[T any](f func() (T, error)) Future[T] {
+	return make_async_future[T](f)
+}
+func MakeGlobalWorkerFuture[T any](f func(ThreadContext) (T, error)) Future[T] {
+	return MakeWorkerFuture(GetGlobalThreadPool(), f)
+}
 func MakeWorkerFuture[T any](pool ThreadPool, f func(ThreadContext) (T, error)) Future[T] {
-	future := &async_future[T]{wait: AnyChannels.Allocate()}
+	future := &async_future[T]{done: make(chan struct{})}
 	pool.Queue(func(tc ThreadContext) {
 		future.invoke(func() (T, error) {
 			return f(tc)
@@ -117,38 +143,33 @@ func MakeWorkerFuture[T any](pool ThreadPool, f func(ThreadContext) (T, error)) 
 	})
 	return future
 }
-func MakeGlobalWorkerFuture[T any](f func(ThreadContext) (T, error)) Future[T] {
-	return MakeWorkerFuture(GetGlobalThreadPool(), f)
-}
-func MakeAsyncFuture[T any](f func() (T, error)) Future[T] {
-	return make_async_future[T](f)
-}
 
 //lint:ignore U1000 ignore unused function
 func make_async_future[T any](f func() (T, error)) Future[T] {
-	return (&async_future[T]{wait: AnyChannels.Allocate()}).run_in_background(f)
+	return (&async_future[T]{done: make(chan struct{})}).run_in_background(f)
+}
+
+//lint:ignore U1000 ignore unused function
+func (future *async_future[T]) invoke(f func() (T, error)) {
+	future.result.success, future.result.failure = f()
+	close(future.done)
+}
+
+//lint:ignore U1000 ignore unused function
+func (future *async_future[T]) Done() chan struct{} {
+	return future.done
+}
+
+//lint:ignore U1000 ignore unused function
+func (future *async_future[T]) Join() Result[T] {
+	<-future.done
+	return future.result
 }
 
 //lint:ignore U1000 ignore unused function
 func (future *async_future[T]) run_in_background(f func() (T, error)) *async_future[T] {
 	go future.invoke(f)
 	return future
-}
-
-//lint:ignore U1000 ignore unused function
-func (future *async_future[T]) invoke(f func() (T, error)) {
-	success, failure := f()
-	future.wait <- result[T]{success, failure}
-}
-
-//lint:ignore U1000 ignore unused function
-func (future *async_future[T]) Join() Result[T] {
-	future.once.Do(func() {
-		future.result = (<-future.wait).(result[T])
-		AnyChannels.Release(future.wait)
-		future.wait = nil
-	})
-	return future.result
 }
 
 /***************************************
@@ -185,6 +206,9 @@ type map_future[OUT, IN any] struct {
 func MapFuture[OUT, IN any](future Future[IN], transform func(IN) (OUT, error)) Future[OUT] {
 	return map_future[OUT, IN]{inner: future, transform: transform}
 }
+func (x map_future[OUT, IN]) Done() chan struct{} {
+	return x.inner.Done()
+}
 func (x map_future[OUT, IN]) Join() Result[OUT] {
 	return map_future_result[OUT, IN]{
 		inner:     x.inner.Join(),
@@ -196,10 +220,20 @@ func (x map_future[OUT, IN]) Join() Result[OUT] {
  * Future Literal
  ***************************************/
 
+// one closed channel shared along all future literals
+var future_literal_done = Memoize[chan struct{}](func() chan struct{} {
+	done := make(chan struct{})
+	close(done)
+	return done
+})
+
 type future_literal[T any] struct {
 	immediate result[T]
 }
 
+func (x future_literal[T]) Done() chan struct{} {
+	return future_literal_done() // always returns immediately without blocking
+}
 func (x future_literal[T]) Join() Result[T] {
 	return &x.immediate
 }
@@ -232,7 +266,9 @@ func MakeFutureError[T any](err error) Future[T] {
 func ParallelJoin_Sync[T any](each func(int, T) error, futures ...Future[T]) (lastError error) {
 	for i, future := range futures {
 		if value, err := future.Join().Get(); err == nil {
-			each(i, value)
+			if err = each(i, value); err != nil {
+				return err
+			}
 		} else {
 			lastError = err
 		}
@@ -240,9 +276,39 @@ func ParallelJoin_Sync[T any](each func(int, T) error, futures ...Future[T]) (la
 	return
 }
 
-const enableParallelJoin_Async = false // TODO: ParallelJoin_Async() is spawning too much goroutines, find a way to select mutilple futures?
+const enableParallelJoin_Async = true // TODO: ParallelJoin_Async() is spawning too much goroutines, find a way to select mutilple futures?
 
 func ParallelJoin_Async[T any](each func(int, T) error, futures ...Future[T]) error {
+	if len(futures) == 1 || !enableParallelJoin_Async {
+		return ParallelJoin_Sync(each, futures...)
+	}
+
+	cases := make([]reflect.SelectCase, len(futures))
+	for i, f := range futures {
+		cases[i] = reflect.SelectCase{
+			Dir:  reflect.SelectRecv,
+			Chan: reflect.ValueOf(f.Done()),
+		}
+	}
+
+	for range futures {
+		i, _, _ := reflect.Select(cases)
+
+		if value, err := futures[i].Join().Get(); err == nil {
+			if err = each(i, value); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+
+		cases[i].Chan = reflect.ValueOf(nil)
+	}
+
+	return nil
+}
+
+func ParallelJoin_Async_old[T any](each func(int, T) error, futures ...Future[T]) error {
 	if len(futures) == 1 || !enableParallelJoin_Async {
 		return ParallelJoin_Sync(each, futures...)
 	}

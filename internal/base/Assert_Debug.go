@@ -187,8 +187,8 @@ func (x *AtomicFuture[T]) Store(future Future[T]) {
 	x.Pointer.Store(future.(*sync_future[T]))
 }
 
-func MakeFuture[T any](f func() (T, error), debug ...fmt.Stringer) Future[T] {
-	return make_sync_future(f, debug...)
+func MakeFuture[T any](f func() (T, error)) Future[T] {
+	return make_sync_future(f)
 }
 
 func ParallelJoin[T any](each func(int, T) error, futures ...Future[T]) error {

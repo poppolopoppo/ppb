@@ -180,6 +180,10 @@ func (x *actionCache) makeActionKey(a *ActionRules, options ...BuildOptionFunc) 
 				base.AssertIn(fd.Source, a.Inputs[i])
 				base.Assert(fd.Digest.Valid)
 
+				if fd.Source != a.Inputs[i] {
+					base.Panicf("invalid digest dispatch [%d]: %q != %q", i, fd.Source, a.Inputs[i])
+				}
+
 				base.LogDebug(LogActionCache, "file digest for %q is %v", fd.Source, fd.Digest)
 				ar.Serializable(fd)
 				return nil
@@ -239,6 +243,10 @@ func NewActionCacheBulk(cachePath Directory, key ActionCacheKey, inputs FileSet,
 				base.AssertIn(fd.Source, inputs[i])
 				base.Assert(fd.Digest.Valid)
 
+				if fd.Source != inputs[i] {
+					base.Panicf("invalid digest dispatch [%d]: %q != %q", i, fd.Source, inputs[i])
+				}
+
 				bulk.Inputs[i] = *fd
 				ar.Serializable(&bulk.Inputs[i])
 				return nil
@@ -261,6 +269,10 @@ func (x *ActionCacheBulk) CacheHit(options ...BuildOptionFunc) bool {
 		func(i int, fd *internal_io.FileDigest) error {
 			base.AssertIn(fd.Source, x.Inputs[i].Source)
 			base.Assert(fd.Digest.Valid)
+
+			if fd.Source != x.Inputs[i].Source {
+				base.Panicf("invalid digest dispatch [%d]: %q != %q", i, fd.Source, x.Inputs[i].Source)
+			}
 
 			if fd.Digest == x.Inputs[i].Digest {
 				return nil

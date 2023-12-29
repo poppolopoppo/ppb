@@ -13,6 +13,7 @@ import (
 	//lint:ignore ST1001 ignore dot imports warning
 	"github.com/poppolopoppo/ppb/internal/base"
 	. "github.com/poppolopoppo/ppb/internal/io"
+
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 
@@ -336,13 +337,13 @@ func (msvc *MsvcCompiler) CreateAction(u *Unit, payload PayloadType, obj *Action
 	if editAndContinue := msvc.AllowEditAndContinue(u, payload); editAndContinue.Enabled() {
 		// #TODO: find another workaround for MSVC hot-reload, which doesn't respect file case... should make a post first for support I guess
 
-		base.LogVeryVerbose(LogAction, "force lower case for output because MSVC hotreload:\n\torig: %q\n\thack: %q")
 		toLower := func(files FileSet) FileSet {
 			for i, fname := range files {
 				files[i] = Filename{
 					Dirname:  fname.Dirname,
 					Basename: strings.ToLower(fname.Basename),
 				}
+				base.LogVeryVerbose(LogAction, "force lower case for output because MSVC hotreload:\n\torig: %q\n\thack: %q", fname, files[i])
 			}
 			return files
 		}

@@ -1,9 +1,10 @@
 package utils
 
 import (
-	"github.com/poppolopoppo/ppb/internal/base"
 	"os"
 	"os/signal"
+
+	"github.com/poppolopoppo/ppb/internal/base"
 )
 
 var LogUtils = base.NewLogCategory("Utils")
@@ -63,6 +64,8 @@ func setupCloseHandler() {
 		<-c
 
 		base.LogWarning(LogUtils, "\r- Ctrl+C pressed in Terminal")
+		base.JoinAllThreadPools()
+
 		CommandEnv.onExit.FireAndForget(CommandEnv)
 		base.GetLogger().Purge()
 		PurgeProfiling()

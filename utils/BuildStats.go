@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -70,6 +71,43 @@ func (x *BuildStats) resumeTimer() {
  * Build Events
  ***************************************/
 
+type buildEvents struct {
+	onBuildGraphStartEvent    base.ConcurrentEvent[BuildGraph]
+	onBuildGraphFinishedEvent base.ConcurrentEvent[BuildGraph]
+
+	onBuildNodeStartEvent    base.ConcurrentEvent[BuildNodeEvent]
+	onBuildNodeFinishedEvent base.ConcurrentEvent[BuildNodeEvent]
+
+	onBuildGraphStartOnce    sync.Once
+	onBuildGraphFinishedOnce sync.Once
+}
+
+func newBuildEvents() (result buildEvents) {
+	if base.EnableInteractiveShell() {
+		var pbar base.ProgressScope
+		result.onBuildGraphStartEvent.Add(func(bg BuildGraph) error {
+			pbar = base.LogSpinner("Build Graph ")
+			return nil
+		})
+		result.onBuildNodeStartEvent.Add(func(bne BuildNodeEvent) error {
+			pbar.Grow(1)
+			pbar.Log("Built %d / %d nodes", pbar.Progress(), pbar.Len())
+			return nil
+		})
+		result.onBuildNodeFinishedEvent.Add(func(bne BuildNodeEvent) error {
+			pbar.Inc()
+			pbar.Log("Built %d / %d nodes", pbar.Progress(), pbar.Len())
+			return nil
+		})
+		result.onBuildGraphFinishedEvent.Add(func(bg BuildGraph) error {
+			err := pbar.Close()
+			pbar = nil
+			return err
+		})
+	}
+	return
+}
+
 func (g *buildEvents) OnBuildGraphStart(e base.EventDelegate[BuildGraph]) base.DelegateHandle {
 	return g.onBuildGraphStartEvent.Add(e)
 }
@@ -83,67 +121,44 @@ func (g *buildEvents) OnBuildGraphFinished(e base.EventDelegate[BuildGraph]) bas
 	return g.onBuildGraphFinishedEvent.Add(e)
 }
 
-func (g *buildEvents) onBuildGraphStart_ThreadSafe() base.ProgressScope {
-	g.barrier.Lock()
-	defer g.barrier.Unlock()
-
-	if g.pbar == nil {
-		g.pbar = base.LogSpinner("Build Graph ")
-	}
-	return g.pbar
+func (g *buildEvents) RemoveOnBuildGraphStart(h base.DelegateHandle) bool {
+	return g.onBuildGraphStartEvent.Remove(h)
 }
-func (g *buildEvents) onBuildGraphFinished_ThreadSafe() {
-	g.barrier.Lock()
-	defer g.barrier.Unlock()
-
-	if g.pbar != nil {
-		g.pbar.Close()
-		g.pbar = nil
-	}
+func (g *buildEvents) RemoveOnBuildNodeStart(h base.DelegateHandle) bool {
+	return g.onBuildNodeStartEvent.Remove(h)
+}
+func (g *buildEvents) RemoveOnBuildNodeFinished(h base.DelegateHandle) bool {
+	return g.onBuildNodeFinishedEvent.Remove(h)
+}
+func (g *buildEvents) RemoveOnBuildGraphFinished(h base.DelegateHandle) bool {
+	return g.onBuildGraphFinishedEvent.Remove(h)
 }
 
 func (g *buildEvents) onBuildNodeStart_ThreadSafe(graph *buildGraph, node *buildNode) {
-	if g.numRunningTasks.Add(1) == 1 {
+	g.onBuildGraphStartOnce.Do(func() {
 		g.onBuildGraphStartEvent.Invoke(graph)
-	}
+		g.onBuildGraphFinishedOnce = sync.Once{}
+	})
 
 	base.LogDebug(LogBuildEvent, "%v -> %T: build start", node.BuildAlias, node.Buildable)
 
-	if base.EnableInteractiveShell() {
-		g.onBuildGraphStart_ThreadSafe()
-
-		if g.pbar != nil {
-			g.pbar.Grow(1)
-			g.pbar.Log("Built %d / %d nodes", g.pbar.Progress(), g.pbar.Len())
-		}
-	}
-
-	if g.onBuildNodeStartEvent.Bound() {
-		g.onBuildNodeStartEvent.Invoke(BuildNodeEvent{
-			Alias:     node.BuildAlias,
-			Node:      node,
-			Buildable: node.Buildable,
-		})
-	}
+	g.onBuildNodeStartEvent.Invoke(BuildNodeEvent{
+		Alias:     node.BuildAlias,
+		Node:      node,
+		Buildable: node.Buildable,
+	})
 }
 func (g *buildEvents) onBuildNodeFinished_ThreadSafe(graph *buildGraph, node *buildNode) {
-	if g.onBuildNodeFinishedEvent.Bound() {
-		g.onBuildNodeFinishedEvent.Invoke(BuildNodeEvent{
-			Alias:     node.BuildAlias,
-			Node:      node,
-			Buildable: node.Buildable,
-		})
-	}
-
 	base.LogDebug(LogBuildEvent, "%v -> %T: build finished", node.BuildAlias, node.Buildable)
 
-	if g.numRunningTasks.Add(-1) == 0 {
-		g.onBuildGraphFinishedEvent.Invoke(graph)
-		g.onBuildGraphFinished_ThreadSafe()
-	}
+	g.onBuildNodeFinishedEvent.Invoke(BuildNodeEvent{
+		Alias:     node.BuildAlias,
+		Node:      node,
+		Buildable: node.Buildable,
+	})
 
-	if base.EnableInteractiveShell() && g.pbar != nil {
-		g.pbar.Inc()
-		g.pbar.Log("Built %d / %d nodes", g.pbar.Progress(), g.pbar.Len())
-	}
+	g.onBuildGraphFinishedOnce.Do(func() {
+		g.onBuildGraphFinishedEvent.Invoke(graph)
+		g.onBuildGraphStartOnce = sync.Once{}
+	})
 }
