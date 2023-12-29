@@ -174,7 +174,7 @@ func (node *buildNode) addDynamic_AssumeLocked(a BuildAlias, stamp BuildStamp) {
 		if a.Valid() {
 			return nil
 		}
-		return fmt.Errorf("%v: invalid empty alias for dynamic dependency")
+		return fmt.Errorf("%v: invalid empty alias for dynamic dependency", node)
 	})
 	base.AssertErr(func() error {
 		if !node.Alias().Equals(a) {
@@ -209,7 +209,7 @@ func (node *buildNode) addOutputFile_AssumeLocked(a BuildAlias, stamp BuildStamp
 		if a.Valid() {
 			return nil
 		}
-		return fmt.Errorf("%v: invalid empty alias for output file dependency")
+		return fmt.Errorf("%v: invalid empty alias for output file dependency", node)
 	})
 	base.AssertErr(func() error {
 		if !node.Alias().Equals(a) {
@@ -243,7 +243,7 @@ func (node *buildNode) addOutputNode_AssumeLocked(a BuildAlias) {
 		if a.Valid() {
 			return nil
 		}
-		return fmt.Errorf("%v: invalid empty alias for output dependency")
+		return fmt.Errorf("%v: invalid empty alias for output dependency", node)
 	})
 	base.AssertErr(func() error {
 		if !node.Alias().Equals(a) {

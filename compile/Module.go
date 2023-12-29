@@ -5,10 +5,9 @@ import (
 	"path"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
-
 	"github.com/poppolopoppo/ppb/internal/base"
-	. "github.com/poppolopoppo/ppb/internal/io"
+
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
 
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
@@ -149,7 +148,7 @@ func (x *ModuleSource) GetFileSet(bc BuildContext) (FileSet, error) {
 	result := FileSet{}
 
 	for _, source := range x.SourceDirs {
-		if files, err := GlobDirectory(bc, source, x.SourceGlobs, x.ExcludedGlobs, x.ExcludedFiles); err == nil {
+		if files, err := internal_io.GlobDirectory(bc, source, x.SourceGlobs, x.ExcludedGlobs, x.ExcludedFiles); err == nil {
 			result.AppendUniq(files...)
 		} else {
 			return FileSet{}, err

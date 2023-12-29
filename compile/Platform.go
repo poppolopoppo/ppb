@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
 	"github.com/poppolopoppo/ppb/internal/base"
+
+	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
 
@@ -47,8 +48,9 @@ func (x *PlatformAlias) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *PlatformAlias) AutoComplete(in base.AutoComplete) {
-	AllPlatforms.Range(func(s string, p Platform) {
+	AllPlatforms.Range(func(s string, p Platform) error {
 		in.Add(p.String(), p.GetPlatform().Alias().String())
+		return nil
 	})
 }
 

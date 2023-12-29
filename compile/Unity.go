@@ -76,7 +76,7 @@ func (unit *Unit) GetSourceFiles(bc utils.BuildContext) (sourceFiles utils.FileS
 		if numUnityFiles > 0 {
 			return nil
 		}
-		return fmt.Errorf("unity: invalid count of unity files %s (was %v)", numUnityFiles, unit.Unity)
+		return fmt.Errorf("unity: invalid count of unity files %d (was %v)", numUnityFiles, unit.Unity)
 	})
 
 	// generate unity files

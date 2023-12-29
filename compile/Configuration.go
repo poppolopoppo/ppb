@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
 	"github.com/poppolopoppo/ppb/internal/base"
+
+	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
 
@@ -47,8 +48,9 @@ func (x *ConfigurationAlias) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *ConfigurationAlias) AutoComplete(in base.AutoComplete) {
-	AllConfigurations.Range(func(s string, c Configuration) {
+	AllConfigurations.Range(func(s string, c Configuration) error {
 		in.Add(c.String(), c.GetConfig().ConfigurationAlias.Alias().String())
+		return nil
 	})
 }
 

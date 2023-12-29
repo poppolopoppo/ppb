@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
 	"github.com/poppolopoppo/ppb/internal/base"
+	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
 

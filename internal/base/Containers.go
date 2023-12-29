@@ -641,11 +641,17 @@ func (shared *SharedMapT[K, V]) Values() (result []V) {
 	})
 	return
 }
-func (shared *SharedMapT[K, V]) Range(each func(K, V)) {
+func (shared *SharedMapT[K, V]) Range(each func(K, V) error) (lastErr error) {
 	shared.intern.Range(func(k, v interface{}) bool {
-		each(k.(K), v.(V))
-		return true
+		if err := each(k.(K), v.(V)); err == nil {
+			return true
+		} else {
+			lastErr = err
+			return false
+		}
 	})
+
+	return lastErr
 }
 func (shared *SharedMapT[K, V]) Add(key K, value V) V {
 	shared.intern.Store(key, value)
@@ -667,8 +673,9 @@ func (shared *SharedMapT[K, V]) Delete(key K) {
 }
 func (shared *SharedMapT[K, V]) Pin() map[K]V {
 	result := make(map[K]V, shared.Len())
-	shared.Range(func(k K, v V) {
+	shared.Range(func(k K, v V) error {
 		result[k] = v
+		return nil
 	})
 	return result
 }
@@ -771,10 +778,13 @@ func (x *SharedStringMapT[V]) Values() (result []V) {
 	}
 	return
 }
-func (x *SharedStringMapT[V]) Range(each func(string, V)) {
+func (x *SharedStringMapT[V]) Range(each func(string, V) error) error {
 	for _, shard := range x.shards {
-		shard.Range(each)
+		if err := shard.Range(each); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 func (x *SharedStringMapT[V]) Add(key string, value V) V {
 	return x.getShard(key).Add(key, value)

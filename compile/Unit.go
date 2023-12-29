@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
 	"github.com/poppolopoppo/ppb/internal/base"
-	. "github.com/poppolopoppo/ppb/internal/io"
+
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
 
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
@@ -136,7 +136,7 @@ type Unit struct {
 	CompilerAlias     CompilerAlias
 	PreprocessorAlias CompilerAlias
 
-	Environment ProcessEnvironment
+	Environment internal_io.ProcessEnvironment
 
 	TransitiveFacet Facet // append in case of public dependency
 	GeneratedFiles  FileSet
@@ -396,10 +396,10 @@ func (unit *Unit) Build(bc BuildContext) error {
 		return err
 	}
 
-	if err := CreateDirectory(bc, unit.OutputFile.Dirname); err != nil {
+	if err := internal_io.CreateDirectory(bc, unit.OutputFile.Dirname); err != nil {
 		return err
 	}
-	if err := CreateDirectory(bc, unit.IntermediateDir); err != nil {
+	if err := internal_io.CreateDirectory(bc, unit.IntermediateDir); err != nil {
 		return err
 	}
 

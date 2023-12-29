@@ -317,17 +317,14 @@ func (g *buildGraph) BuildMany(targets BuildAliases, options ...BuildOptionFunc)
 }
 
 func (g *buildGraph) Join() (lastErr error) {
-	for lastErr == nil && g.numRunningTasks.Load() > 0 {
-		g.nodes.Range(func(_ string, node *buildNode) {
-			if node == nil {
-				return
-			}
-			if future := node.future.Load(); future != nil {
-				result := future.Join()
-				if err := result.Failure(); err != nil {
-					base.LogPanicErr(LogBuildGraph, err)
+	for lastErr == nil && g.hasRunningTasks() {
+		lastErr = g.nodes.Range(func(_ string, node *buildNode) error {
+			if node != nil {
+				if future := node.future.Load(); future != nil {
+					return future.Join().Failure()
 				}
 			}
+			return nil
 		})
 	}
 	return
@@ -550,7 +547,7 @@ func (g *buildGraph) GetMostExpansiveNodes(n int, inclusive bool) (results []Bui
 		}
 	}
 
-	g.nodes.Range(func(key string, node *buildNode) {
+	g.nodes.Range(func(key string, node *buildNode) error {
 		if node.state.stats.Count != 0 {
 			results = append(results, node)
 			sort.Slice(results, predicate)
@@ -559,6 +556,7 @@ func (g *buildGraph) GetMostExpansiveNodes(n int, inclusive bool) (results []Bui
 				results = results[:n]
 			}
 		}
+		return nil
 	})
 	return
 }

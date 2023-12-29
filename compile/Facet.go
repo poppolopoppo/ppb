@@ -2,12 +2,11 @@ package compile
 
 import (
 	"fmt"
-	"github.com/poppolopoppo/ppb/utils"
 	"regexp"
 	"strings"
 
-	//lint:ignore ST1001 ignore dot imports warning
 	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
 type Facetable interface {

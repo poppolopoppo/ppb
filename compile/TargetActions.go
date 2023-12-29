@@ -2,7 +2,6 @@ package compile
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/poppolopoppo/ppb/action"
@@ -617,10 +616,6 @@ func (x *buildActionGenerator) LinkActions(pchs action.ActionSet, objs action.Ac
 /***************************************
  * Command-line quoting and parameter expansion
  ***************************************/
-
-var getArgumentSubstitutionRE = base.Memoize(func() *regexp.Regexp {
-	return regexp.MustCompile(`%(\d)`)
-})
 
 func performArgumentSubstitution(unit *Unit, payload PayloadType, inputs FileSet, outputs FileSet, arguments ...string) base.StringSet {
 	result := make([]string, 0, len(arguments))
