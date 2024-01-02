@@ -29,9 +29,10 @@ func InitLinuxCompile() {
 		COMPILER_CLANG,
 		COMPILER_GCC,
 	}
-	AllCompilerNames.Append(
-		CompilerName{PersistentVar: &compilerTypes[0]},
-		CompilerName{PersistentVar: &compilerTypes[1]})
+
+	compile.AllCompilerNames.Append(
+		compile.CompilerName{PersistentVar: &compilerTypes[0]},
+		compile.CompilerName{PersistentVar: &compilerTypes[1]})
 }
 
 /***************************************

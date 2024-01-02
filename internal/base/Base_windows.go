@@ -39,7 +39,6 @@ func GetCurrentThreadId() uintptr {
 
 /***************************************
  * Avoid UFS.MTime() when we already opened an *os.File, this is much faster:
- * https://github.com/loov/hrtime/blob/master/now_windows.go
  ***************************************/
 
 func SetMTime(file *os.File, mtime time.Time) (err error) {
@@ -58,6 +57,14 @@ func SetMTime(file *os.File, mtime time.Time) (err error) {
 		})
 	}
 	return err
+}
+
+/***************************************
+ * Escape command-line argument (Windows specific)
+ ***************************************/
+
+func EscapeCommandLineArg(a string) string {
+	return syscall.EscapeArg(a)
 }
 
 /***************************************

@@ -2,6 +2,7 @@ package windows
 
 import (
 	"fmt"
+
 	"github.com/poppolopoppo/ppb/internal/base"
 
 	"github.com/poppolopoppo/ppb/action"
@@ -105,14 +106,15 @@ func (res *ResourceCompiler) Serialize(ar base.Archive) {
 	ar.Serializable(&res.CompilerRules)
 }
 
-func (res *ResourceCompiler) checkCompilerInterfaceAtCompileTime() compile.Compiler { return res }
-
 func GetWindowsResourceCompiler() utils.BuildFactoryTyped[*ResourceCompiler] {
 	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (ResourceCompiler, error) {
 		rc := ResourceCompiler{
 			CompilerRules: compile.NewCompilerRules(compile.NewCompilerAlias("custom", "rc", "windows_sdk")),
 		}
-		rc.checkCompilerInterfaceAtCompileTime()
+		base.Assert(func() bool {
+			var compiler compile.Compiler = &rc
+			return compiler == &rc
+		})
 		return rc, nil
 	})
 }

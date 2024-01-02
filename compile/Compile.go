@@ -8,36 +8,6 @@ import (
 
 var LogCompile = base.NewLogCategory("Compile")
 
-var AllCompilationFlags []struct {
-	Name, Description string
-	CommandParsableFlags
-}
-
-func NewCompilationFlags[T any, P interface {
-	*T
-	CommandParsableFlags
-}](name, description string, flags *T) func() P {
-	parsable := P(flags)
-	AllCompilationFlags = append(AllCompilationFlags, struct {
-		Name        string
-		Description string
-		CommandParsableFlags
-	}{
-		Name:                 name,
-		Description:          description,
-		CommandParsableFlags: parsable,
-	})
-	return NewCommandParsableFlags[T, P](flags)
-}
-
-func OptionCommandAllCompilationFlags() CommandOptionFunc {
-	return OptionCommandItem(func(ci CommandItem) {
-		for _, it := range AllCompilationFlags {
-			ci.Options(OptionCommandParsableFlags(it.Name, it.Description, it.CommandParsableFlags))
-		}
-	})
-}
-
 func InitCompile() {
 	base.LogTrace(LogCompile, "build/compile.Init()")
 
@@ -73,6 +43,36 @@ func InitCompile() {
 	AllConfigurations.Add("Devel", Configuration_Devel)
 	AllConfigurations.Add("Test", Configuration_Test)
 	AllConfigurations.Add("Shipping", Configuration_Shipping)
+}
+
+var AllCompilationFlags []struct {
+	Name, Description string
+	CommandParsableFlags
+}
+
+func NewCompilationFlags[T any, P interface {
+	*T
+	CommandParsableFlags
+}](name, description string, flags *T) func() P {
+	parsable := P(flags)
+	AllCompilationFlags = append(AllCompilationFlags, struct {
+		Name        string
+		Description string
+		CommandParsableFlags
+	}{
+		Name:                 name,
+		Description:          description,
+		CommandParsableFlags: parsable,
+	})
+	return NewCommandParsableFlags[T, P](flags)
+}
+
+func OptionCommandAllCompilationFlags() CommandOptionFunc {
+	return OptionCommandItem(func(ci CommandItem) {
+		for _, it := range AllCompilationFlags {
+			ci.Options(OptionCommandParsableFlags(it.Name, it.Description, it.CommandParsableFlags))
+		}
+	})
 }
 
 /***************************************

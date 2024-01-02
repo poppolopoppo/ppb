@@ -5,8 +5,10 @@ import (
 	"strings"
 
 	"github.com/poppolopoppo/ppb/action"
+	"github.com/poppolopoppo/ppb/compile"
 	. "github.com/poppolopoppo/ppb/compile"
 	"github.com/poppolopoppo/ppb/internal/base"
+	. "github.com/poppolopoppo/ppb/internal/hal/generic"
 	internal_io "github.com/poppolopoppo/ppb/internal/io"
 
 	. "github.com/poppolopoppo/ppb/utils"
@@ -75,10 +77,8 @@ func (msvc *LlvmCompiler) AllowEditAndContinue(u *Unit, payload PayloadType) (re
 }
 func (llvm *LlvmCompiler) CppRtti(f *Facet, enabled bool) {
 	if enabled {
-		f.Defines.Append("PPE_HAS_CXXRTTI=1")
 		f.AddCompilationFlag("-frtti")
 	} else {
-		f.Defines.Append("PPE_HAS_CXXRTTI=0")
 		f.AddCompilationFlag("-fno-rtti")
 	}
 }
@@ -135,10 +135,10 @@ func (llvm *LlvmCompiler) PrecompiledHeader(u *Unit) {
 	case PCH_MONOLITHIC, PCH_SHARED:
 		u.Defines.Append("BUILD_PCH=1")
 		u.CompilerOptions.Append(
-			"-include "+u.PrecompiledHeader.Relative(UFS.Source),
-			"-include-pch "+MakeLocalFilename(u.PrecompiledObject))
+			"-include"+u.PrecompiledHeader.Relative(UFS.Source),
+			"-include-pch"+MakeLocalFilename(u.PrecompiledObject))
 		if u.PCH != PCH_SHARED {
-			u.PrecompiledHeaderOptions.Prepend("-emit-pch", "-x c++-header")
+			u.PrecompiledHeaderOptions.Prepend("-emit-pch", "-xc++-header")
 		}
 	case PCH_DISABLED:
 		u.Defines.Append("BUILD_PCH=0")
@@ -196,9 +196,14 @@ func (llvm *LlvmCompiler) LibraryPath(f *Facet, dirs ...Directory) {
 		f.LinkerOptions.Append("-I" + s)
 	}
 }
-func (llvm *LlvmCompiler) CreateAction(_ *Unit, obj *action.ActionRules) action.Action {
-	// #TODO: included headers tracking with llvm
-	return obj
+func (llvm *LlvmCompiler) CreateAction(_ *Unit, _ PayloadType, obj *action.ActionRules) action.Action {
+	result := &GnuSourceDependenciesAction{
+		ActionRules: *obj.GetAction(),
+	}
+	result.GnuDepFile = result.Outputs[0].ReplaceExt(llvm.Extname(compile.PAYLOAD_DEPENDENCIES))
+	result.Arguments.Append("--write-dependencies", "-MF"+MakeLocalFilename(result.GnuDepFile))
+	result.Extras.Append(result.GnuDepFile)
+	return result
 }
 func (llvm *LlvmCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 	if u.CompilerVerbose.Get() {
@@ -268,27 +273,27 @@ func llvm_CXX_runtimeChecks(u *Unit, enabled bool, strong bool) {
 }
 
 func decorateLlvmConfig_Debug(u *Unit) {
-	u.AddCompilationFlag("-O0", "-fno-pie")
+	u.AddCompilationFlag("-O0", "-fno-PIE")
 	llvm_CXX_linkTimeCodeGeneration(u, false, u.Incremental.Get())
 	llvm_CXX_runtimeChecks(u, u.RuntimeChecks.Get(), true)
 }
 func decorateLlvmConfig_FastDebug(u *Unit) {
-	u.AddCompilationFlag("-O1", "-fno-pie")
+	u.AddCompilationFlag("-O1", "-fno-PIE")
 	llvm_CXX_linkTimeCodeGeneration(u, true, u.Incremental.Get())
 	llvm_CXX_runtimeChecks(u, u.RuntimeChecks.Get(), false)
 }
 func decorateLlvmConfig_Devel(u *Unit) {
-	u.AddCompilationFlag("-O2", "-fno-pie")
+	u.AddCompilationFlag("-O2", "-fno-PIE", "-ffast-math")
 	llvm_CXX_linkTimeCodeGeneration(u, true, u.Incremental.Get())
 	llvm_CXX_runtimeChecks(u, false, false)
 }
 func decorateLlvmConfig_Test(u *Unit) {
-	u.AddCompilationFlag("-O3", "-fpie", "-ffast-math")
+	u.AddCompilationFlag("-O3", "-fPIE", "-ffast-math")
 	llvm_CXX_linkTimeCodeGeneration(u, true, u.Incremental.Get())
 	llvm_CXX_runtimeChecks(u, false, false)
 }
 func decorateLlvmConfig_Shipping(u *Unit) {
-	u.AddCompilationFlag("-O3", "-fpie", "-ffast-math")
+	u.AddCompilationFlag("-O3", "-fPIE", "-ffast-math")
 	llvm_CXX_linkTimeCodeGeneration(u, true, u.Incremental.Get())
 	llvm_CXX_runtimeChecks(u, false, false)
 }
@@ -387,13 +392,7 @@ func (x *LlvmProductInstall) Build(bc BuildContext) error {
 }
 
 func (llvm *LlvmCompiler) Build(bc BuildContext) error {
-	compileFlags := GetCompileFlags()
 	linuxFlags := GetLinuxFlags()
-	if err := bc.NeedFactories(
-		GetBuildableFlags(compileFlags),
-		GetBuildableFlags(linuxFlags)); err != nil {
-		return err
-	}
 
 	var err error
 	llvm.ProductInstall, err = GetLlvmProductInstall(LlvmProductVer{
@@ -434,21 +433,21 @@ func (llvm *LlvmCompiler) Build(bc BuildContext) error {
 		"-Wshadow",
 		"-Wno-unused-command-line-argument", // #TODO: unsilence this warning
 		"-fcolor-diagnostics",
-		"-march=x86-64-v3 ",
+		"-march=native",
 		"-mavx", "-msse4.2",
 		"-mlzcnt", "-mpopcnt",
 		"-fsized-deallocation", // https://isocpp.org/files/papers/n3778.html
 		"-c",                   // compile only
-		"-o \"%2\" \"%1\"",     // input file injection
+		"-o", "%2", "%1",       // input file injection
 	)
 
-	if compileFlags.Benchmark.Get() {
+	if GetCompileFlags().Benchmark.Get() {
 		// https: //aras-p.info/blog/2019/01/16/time-trace-timeline-flame-chart-profiler-for-Clang/
 		facet.CompilerOptions.Append("-ftime-trace")
 	}
 
-	facet.LibrarianOptions.Append("rcs \"%2\" \"%1\"")
-	facet.LinkerOptions.Append("\"%1\" -o \"%2\"")
+	facet.LibrarianOptions.Append("rcs", "%2", "%1")
+	facet.LinkerOptions.Append("%1", "-o", "%2")
 
 	if int(llvm.Version) >= int(LLVM_14) {
 		facet.AddCompilationFlag_NoPreprocessor("-Xclang -fuse-ctor-homing")
@@ -483,9 +482,16 @@ func GetLlvmProductInstall(productVer LlvmProductVer) BuildFactoryTyped[*LlvmPro
 
 func GetLlvmCompiler(arch ArchType) BuildFactoryTyped[*LlvmCompiler] {
 	return MakeBuildFactory(func(bi BuildInitializer) (LlvmCompiler, error) {
-		return LlvmCompiler{
+		llvm := LlvmCompiler{
 			Arch:          arch,
 			CompilerRules: NewCompilerRules(NewCompilerAlias("clang", "llvm", arch.String())),
-		}, nil
+		}
+		base.Assert(func() bool {
+			var compiler compile.Compiler = &llvm
+			return compiler == &llvm
+		})
+		return llvm, bi.NeedFactories(
+			GetBuildableFlags(GetCompileFlags()),
+			GetBuildableFlags(GetLinuxFlags()))
 	})
 }

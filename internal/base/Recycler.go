@@ -2,6 +2,7 @@ package base
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"sync"
 	"unsafe"
@@ -148,9 +149,11 @@ func AsyncTransientIoCopy(dst io.Writer, src io.Reader) (int64, error) {
 				// ONLY SAFE FOR THE FIRST BLOCK AND NEED TO VALIDATE EOF TO BE SURE
 				if er == nil {
 					// try to read the remaining part of the buffer to check for EOF
-					nr, er = src.Read(buf[view.size:])
+					nr, er = src.Read(buf[view.size:view.size])
 					if nr > 0 {
-						readerSize += int64(view.size)
+						view.size += nr
+						readerSize += int64(nr)
+
 						Assert(func() bool { return view.size <= len(view.buf) })
 					}
 				}
@@ -191,59 +194,62 @@ func AsyncTransientIoCopy(dst io.Writer, src io.Reader) (int64, error) {
 		writerWg.Wait()
 	}
 
-	if writerErr != nil {
-		return writerSize, writerErr
-	} else {
-		AssertIn(readerSize, writerSize)
+	if writerErr == nil {
+		if readerErr == nil && readerSize != writerSize {
+			readerErr = fmt.Errorf("AsyncTransientIoCopy: read %d bytes, but wrote %d bytes", readerSize, writerSize)
+		}
 		return writerSize, readerErr
 	}
+
+	return writerSize, writerErr
 }
 
 // io copy with transient bytes to replace io.Copy()
 func TransientIoCopy(dst io.Writer, src io.Reader) (size int64, err error) {
+	if wt, ok := src.(io.WriterTo); ok {
+		// If the reader has a WriteTo method, use it to do the copy.
+		// Avoids an allocation and a copy.
+		return wt.WriteTo(dst)
+	} else if rt, ok := dst.(io.ReaderFrom); ok {
+		// Similarly, if the writer has a ReadFrom method, use it to do the copy.
+		return rt.ReadFrom(src)
+	}
+
 	if useTransientIoCopyOverIoCopy {
 		if useTransientIoCopyAsynchronous {
+			// #TODO: profile performance of WriterTo/ReaderFrom vs AsyncTransientIoCopy
+			// io.CopyBuffer is slower in general case, but special overrides could avoid extra copy to intermediate buffer
 			return AsyncTransientIoCopy(dst, src)
 		} else {
-			// From io.Copy(), but with TransientBytes recycler:
-			/*if wt, ok := src.(io.WriterTo); ok {
-				// If the reader has a WriteTo method, use it to do the copy.
-				// Avoids an allocation and a copy.
-				_, err = wt.WriteTo(dst)
-			} else if rt, ok := dst.(io.ReaderFrom); ok {
-				// Similarly, if the writer has a ReadFrom method, use it to do the copy.
-				_, err = rt.ReadFrom(src)
-			} else*/{
-				// io.Copy() will make a temporary allocation, and we have a recycler for this
-				buf := TransientLargePage.Allocate()
-				defer TransientLargePage.Release(buf)
+			// io.Copy() will make a temporary allocation, and we have a recycler for this
+			buf := TransientLargePage.Allocate()
+			defer TransientLargePage.Release(buf)
 
-				for {
-					nr, er := src.Read(buf)
-					if nr > 0 {
-						nw, ew := dst.Write(buf[0:nr])
-						if nw < 0 || nr < nw {
-							nw = 0
-							if ew == nil {
-								ew = io.ErrShortWrite
-							}
-						}
-						size += int64(nw)
-						if ew != nil {
-							err = ew
-							break
-						}
-						if nr != nw {
-							err = io.ErrShortWrite
-							break
+			for {
+				nr, er := src.Read(buf)
+				if nr > 0 {
+					nw, ew := dst.Write(buf[0:nr])
+					if nw < 0 || nr < nw {
+						nw = 0
+						if ew == nil {
+							ew = io.ErrShortWrite
 						}
 					}
-					if er != nil {
-						if er != io.EOF {
-							err = er
-						}
+					size += int64(nw)
+					if ew != nil {
+						err = ew
 						break
 					}
+					if nr != nw {
+						err = io.ErrShortWrite
+						break
+					}
+				}
+				if er != nil {
+					if er != io.EOF {
+						err = er
+					}
+					break
 				}
 			}
 		}
@@ -258,4 +264,22 @@ func TransientIoCopy(dst io.Writer, src io.Reader) (size int64, err error) {
 		err = nil
 	}
 	return
+}
+
+func TransientIoCopyWithProgress(context string, totalSize int64, dst io.Writer, src io.Reader) (size int64, err error) {
+	var pbar ProgressScope
+	if totalSize > 0 {
+		pbar = LogProgress(0, int(totalSize), "copying %s -- %.3f MiB", context, float32(totalSize)/(1024*1024))
+	} else {
+		pbar = LogSpinner("copying %s -- unknown size", context)
+	}
+	defer pbar.Close()
+
+	if writerTo, ok := src.(io.WriterTo); ok {
+		return writerTo.WriteTo(WriterWithProgress{writer: dst, pbar: pbar})
+	} else if readerFrom, ok := dst.(io.ReaderFrom); ok {
+		return readerFrom.ReadFrom(ReaderWithProgress{reader: src, pbar: pbar})
+	} else {
+		return TransientIoCopy(WriterWithProgress{writer: dst, pbar: pbar}, src)
+	}
 }

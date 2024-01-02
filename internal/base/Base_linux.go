@@ -24,14 +24,37 @@ func GetCurrentThreadId() uintptr {
  ***************************************/
 
 func SetMTime(file *os.File, mtime time.Time) error {
-	// #TODO, see UFS_windows.go
-	return MakeUnexpectedValueError(file, mtime)
+	sysMTime := syscall.NsecToTimeval(mtime.Unix() * int64(time.Second))
+	err := syscall.Futimes(int(file.Fd()), []syscall.Timeval{
+		sysMTime, // atime
+		sysMTime, // mtime
+	})
+	if err == nil {
+		Assert(func() bool {
+			var info os.FileInfo
+			if info, err = file.Stat(); err == nil {
+				if info.ModTime() != mtime {
+					LogPanic(LogBase, "SetMTime: timestamp mismatch for %q\n\tfound:\t\t%v\n\texpected:\t\t%v", file.Name(), info.ModTime(), mtime)
+				}
+			}
+			return true
+		})
+	}
+	return err
 }
 
 var startedAt = time.Now()
 
 func Elapsed() time.Duration {
-	return time.Now() - startedAt
+	return time.Since(startedAt)
+}
+
+/***************************************
+ * Escape command-line argument (pass-through on linux)
+ ***************************************/
+
+func EscapeCommandLineArg(a string) string {
+	return a
 }
 
 /***************************************
@@ -39,30 +62,24 @@ func Elapsed() time.Duration {
  ***************************************/
 
 func GetDefaultNetInterface() (net.Interface, net.Addr, error) {
-	defaultRoute, err := net.DefaultRoute()
-	if err != nil {
-		return net.Interface{}, nil, err
-	}
-
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		return net.Interface{}, nil, err
 	}
 
 	for _, iface := range interfaces {
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-
-		for _, addr := range addrs {
-			ipNet, ok := addr.(*net.IPNet)
-			if !ok {
-				continue
+		if iface.Flags&net.FlagUp != 0 && iface.Flags&net.FlagLoopback == 0 {
+			addrs, err := iface.Addrs()
+			if err != nil {
+				return net.Interface{}, nil, err
 			}
 
-			if ipNet.IP.Equal(defaultRoute.Gateway) {
-				return iface, addr, nil
+			for _, addr := range addrs {
+				if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+					if ipnet.IP.To4() != nil {
+						return iface, addr, nil
+					}
+				}
 			}
 		}
 	}

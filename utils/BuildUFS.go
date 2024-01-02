@@ -34,7 +34,7 @@ func (x *Directory) Alias() BuildAlias {
 func (x Directory) Build(bc BuildContext) error {
 	x.Invalidate()
 	if info, err := x.Info(); err == nil {
-		bc.Timestamp(GetCreationTime(info))
+		bc.Timestamp(GetModificationTime(info))
 		return nil
 	} else {
 		return err

@@ -109,10 +109,8 @@ func (msvc *MsvcCompiler) Extname(x PayloadType) string {
 }
 func (msvc *MsvcCompiler) CppRtti(f *Facet, enabled bool) {
 	if enabled {
-		f.Defines.Append("PPE_HAS_CXXRTTI=1")
 		f.AddCompilationFlag("/GR")
 	} else {
-		f.Defines.Append("PPE_HAS_CXXRTTI=0")
 		f.AddCompilationFlag("/GR-")
 	}
 }
@@ -1202,6 +1200,10 @@ func GetMsvcCompiler(arch ArchType) BuildFactoryTyped[*MsvcCompiler] {
 			Arch:          arch,
 			CompilerRules: NewCompilerRules(NewCompilerAlias("msvc", "VisualStudio", arch.String())),
 		}
+		base.Assert(func() bool {
+			var compiler Compiler = &msvc
+			return compiler == &msvc
+		})
 		return msvc, bi.NeedFactories(
 			GetBuildableFlags(GetCompileFlags()),
 			GetBuildableFlags(GetWindowsFlags()))

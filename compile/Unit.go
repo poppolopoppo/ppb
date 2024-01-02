@@ -13,16 +13,6 @@ import (
 )
 
 /***************************************
- * Target Build Order
- ***************************************/
-
-type TargetBuildOrder int32
-
-func (x *TargetBuildOrder) Serialize(ar base.Archive) {
-	ar.Int32((*int32)(x))
-}
-
-/***************************************
  * Target Alias
  ***************************************/
 
@@ -99,7 +89,7 @@ func (x *TargetAlias) AutoComplete(in base.AutoComplete) {
 }
 
 /***************************************
- * Unit Rules
+ * Compilation Environment injection
  ***************************************/
 
 type UnitDecorator interface {
@@ -107,12 +97,30 @@ type UnitDecorator interface {
 	fmt.Stringer
 }
 
+type UnitCompileEvent struct {
+	Environment *CompileEnv
+	Unit        *Unit
+}
+
+var onUnitCompileEvent base.ConcurrentEvent[UnitCompileEvent]
+
+func OnUnitCompile(e base.EventDelegate[UnitCompileEvent]) base.DelegateHandle {
+	return onUnitCompileEvent.Add(e)
+}
+func RemoveOnUnitCompile(h base.DelegateHandle) bool {
+	return onUnitCompileEvent.Remove(h)
+}
+
+/***************************************
+ * Unit Rules
+ ***************************************/
+
 type Units = base.SetT[*Unit]
 
 type Unit struct {
 	TargetAlias TargetAlias
 
-	Ordinal     TargetBuildOrder
+	Ordinal     int32
 	Payload     PayloadType
 	OutputFile  Filename
 	SymbolsFile Filename
@@ -244,7 +252,7 @@ func (unit *Unit) GetPayloadOutput(compiler Compiler, src Filename, payload Payl
 func (unit *Unit) Serialize(ar base.Archive) {
 	ar.Serializable(&unit.TargetAlias)
 
-	ar.Serializable(&unit.Ordinal)
+	ar.Int32(&unit.Ordinal)
 	ar.Serializable(&unit.Payload)
 	ar.Serializable(&unit.OutputFile)
 	ar.Serializable(&unit.SymbolsFile)
@@ -414,6 +422,11 @@ func (unit *Unit) Build(bc BuildContext) error {
 		staticDeps.Append(generated.Alias())
 		unit.GeneratedFiles.Append(generated.OutputFile)
 	}
+
+	onUnitCompileEvent.Invoke(UnitCompileEvent{
+		Environment: compileEnv,
+		Unit:        unit,
+	})
 
 	_, err = bc.OutputFactory(WrapBuildFactory[*TargetActions](func(bi BuildInitializer) (*TargetActions, error) {
 		return &TargetActions{

@@ -1010,6 +1010,7 @@ func (x *interactiveLogger) Pin(msg string, args ...interface{}) PinScope {
 		pin.color = NewPastelizerColor(rand.Float64()).Quantize(true)
 		pin.writer = pin.writeLogHeader
 
+		x.detachMessages()
 		x.messages.Append(pin)
 		x.attachMessages()
 		return pin
@@ -1027,6 +1028,7 @@ func (x *interactiveLogger) Progress(first, last int, msg string, args ...interf
 		pin.color = NewPastelizerColor(rand.Float64()).Quantize(true)
 		pin.writer = pin.writeLogProgress
 
+		x.detachMessages()
 		x.messages.Append(pin)
 		x.attachMessages()
 		return pin
@@ -1334,40 +1336,35 @@ func MakeStringer(fn func() string) fmt.Stringer {
 
 func CopyWithProgress(context string, totalSize int64, dst io.Writer, src io.Reader) (err error) {
 	if enableInteractiveShell {
-		return TransientIoCopyWithProgress(context, totalSize, dst, src)
+		_, err = TransientIoCopyWithProgress(context, totalSize, dst, src)
 	} else {
-		_, err := TransientIoCopy(dst, src)
-		return err
+		_, err = TransientIoCopy(dst, src)
 	}
+	return
 }
 
 func CopyWithSpinner(context string, dst io.Writer, src io.Reader) (err error) {
 	return CopyWithProgress(context, 0, dst, src)
 }
 
-type writerWithProgress struct {
-	wr   io.Writer
-	pbar ProgressScope
+type ReaderWithProgress struct {
+	reader io.Reader
+	pbar   ProgressScope
 }
 
-func (x writerWithProgress) Write(p []byte) (int, error) {
-	n, err := x.wr.Write(p)
+func (x ReaderWithProgress) Read(buf []byte) (int, error) {
+	n, err := x.reader.Read(buf)
 	x.pbar.Add(n)
 	return n, err
 }
 
-func TransientIoCopyWithProgress(context string, totalSize int64, dst io.Writer, src io.Reader) (err error) {
-	var pbar ProgressScope
-	if totalSize > 0 {
-		pbar = LogProgress(0, int(totalSize), "copying %s -- %.3f MiB", context, float32(totalSize)/(1024*1024))
-	} else {
-		pbar = LogSpinner("copying %s -- unknown size", context)
-	}
-	defer pbar.Close()
+type WriterWithProgress struct {
+	writer io.Writer
+	pbar   ProgressScope
+}
 
-	_, err = TransientIoCopy(writerWithProgress{
-		wr:   dst,
-		pbar: pbar,
-	}, src)
-	return
+func (x WriterWithProgress) Write(p []byte) (int, error) {
+	n, err := x.writer.Write(p)
+	x.pbar.Add(n)
+	return n, err
 }

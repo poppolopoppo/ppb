@@ -132,8 +132,8 @@ func (x BuildAlias) String() string {
 	return (string)(x)
 }
 func (x *BuildAlias) Set(in string) error {
-	base.Assert(func() bool { return x.Valid() })
 	*x = BuildAlias(in)
+	base.Assert(func() bool { return x.Valid() })
 	return nil
 }
 func (x *BuildAlias) Serialize(ar base.Archive) {

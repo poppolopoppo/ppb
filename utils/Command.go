@@ -738,7 +738,7 @@ func GetBuildableFlags[T any, P interface {
 }](flags *T) BuildFactoryTyped[*CommandParsableBuilder[T, P]] {
 	return MakeBuildFactory(func(bi BuildInitializer) (CommandParsableBuilder[T, P], error) {
 		return CommandParsableBuilder[T, P]{
-			Name:  base.GetTypename(P(flags)),
+			Name:  AllParsableFlags.Key(P(flags)),
 			Flags: *flags,
 		}, nil
 	})

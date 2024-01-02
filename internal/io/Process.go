@@ -3,11 +3,11 @@ package io
 import (
 	"bufio"
 	"fmt"
-	"github.com/poppolopoppo/ppb/utils"
 	"io"
 	"os/exec"
 	"strings"
-	"syscall"
+
+	"github.com/poppolopoppo/ppb/utils"
 
 	"github.com/poppolopoppo/ppb/internal/base"
 )
@@ -213,7 +213,7 @@ func RunProcess(executable utils.Filename, arguments base.StringSet, userOptions
 						return err
 					}
 				}
-				if _, err := w.Write(base.UnsafeBytesFromString(syscall.EscapeArg(a))); err != nil {
+				if _, err := w.Write(base.UnsafeBytesFromString(base.EscapeCommandLineArg(a))); err != nil {
 					return err
 				}
 			}

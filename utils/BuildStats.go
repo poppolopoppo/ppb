@@ -78,7 +78,7 @@ type buildEvents struct {
 	onBuildNodeStartEvent    base.ConcurrentEvent[BuildNodeEvent]
 	onBuildNodeFinishedEvent base.ConcurrentEvent[BuildNodeEvent]
 
-	gprahEventBarrier sync.Mutex
+	graphEventBarrier sync.Mutex
 	numRunningTasks   int32
 }
 
@@ -138,25 +138,6 @@ func (g *buildEvents) RemoveOnBuildGraphFinished(h base.DelegateHandle) bool {
 	return g.onBuildGraphFinishedEvent.Remove(h)
 }
 
-func (g *buildEvents) onBuildGraphStart_ThreadSafe(graph *buildGraph) {
-	g.gprahEventBarrier.Lock()
-	defer g.gprahEventBarrier.Unlock()
-
-	if g.numRunningTasks == -1 {
-		defer atomic.StoreInt32(&g.numRunningTasks, 0)
-		g.onBuildGraphStartEvent.Invoke(graph)
-	}
-}
-func (g *buildEvents) onBuildGraphFinished_ThreadSafe(graph *buildGraph) {
-	g.gprahEventBarrier.Lock()
-	defer g.gprahEventBarrier.Unlock()
-
-	if g.numRunningTasks == 0 {
-		defer atomic.StoreInt32(&g.numRunningTasks, -1)
-		g.onBuildGraphFinishedEvent.Invoke(graph)
-	}
-}
-
 func (g *buildEvents) onBuildNodeStart_ThreadSafe(graph *buildGraph, node *buildNode) {
 	base.LogDebug(LogBuildEvent, "%v -> %T: build start", node.BuildAlias, node.Buildable)
 
@@ -185,5 +166,24 @@ func (g *buildEvents) onBuildNodeFinished_ThreadSafe(graph *buildGraph, node *bu
 
 	if atomic.LoadInt32(&g.numRunningTasks) == 0 {
 		g.onBuildGraphFinished_ThreadSafe(graph)
+	}
+}
+
+func (g *buildEvents) onBuildGraphStart_ThreadSafe(graph *buildGraph) {
+	g.graphEventBarrier.Lock()
+	defer g.graphEventBarrier.Unlock()
+
+	if g.numRunningTasks == -1 {
+		defer atomic.StoreInt32(&g.numRunningTasks, 0)
+		g.onBuildGraphStartEvent.Invoke(graph)
+	}
+}
+func (g *buildEvents) onBuildGraphFinished_ThreadSafe(graph *buildGraph) {
+	g.graphEventBarrier.Lock()
+	defer g.graphEventBarrier.Unlock()
+
+	if g.numRunningTasks == 0 {
+		defer atomic.StoreInt32(&g.numRunningTasks, -1)
+		g.onBuildGraphFinishedEvent.Invoke(graph)
 	}
 }

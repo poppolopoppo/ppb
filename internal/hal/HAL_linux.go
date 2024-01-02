@@ -3,14 +3,16 @@
 package hal
 
 import (
-	"github.com/poppolopoppo/ppb/internal/base"
 	"os"
 	"strings"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 
+	"github.com/poppolopoppo/ppb/internal/base"
 	"github.com/poppolopoppo/ppb/internal/hal/generic"
+	"github.com/poppolopoppo/ppb/internal/hal/linux"
+	"github.com/poppolopoppo/ppb/internal/io"
 	"github.com/poppolopoppo/ppb/utils"
 )
 
@@ -31,7 +33,8 @@ func InitHAL() {
 }
 
 func InitCompile() {
-	utils.FBUILD_BIN = utils.UFS.Build.Folder("hal", "linux", "bin").File("fbuild")
+	io.FBUILD_BIN = utils.UFS.Internal.Folder("hal", "linux", "bin").File("fbuild")
+
 	generic.InitGenericCompile()
 	linux.InitLinuxCompile()
 }

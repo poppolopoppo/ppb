@@ -11,6 +11,8 @@ import (
 	//lint:ignore ST1001 ignore dot imports warning
 	"github.com/poppolopoppo/ppb/internal/base"
 	. "github.com/poppolopoppo/ppb/internal/hal/generic"
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
+
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
 )
@@ -70,8 +72,9 @@ func (clang *ClangCompiler) DebugSymbols(u *compile.Unit) {
 	// not supported by clang-cl
 	u.RemoveCompilationFlag("/Zf")
 }
-func (clang *ClangCompiler) CreateAction(u *compile.Unit, _ compile.PayloadType, obj *action.ActionRules) action.Action {
-	if !obj.SourceControlPath.Valid() {
+func (clang *ClangCompiler) CreateAction(_ *compile.Unit, _ compile.PayloadType, obj *action.ActionRules) action.Action {
+	if internal_io.OnRunCommandWithDetours != nil || // use IO detouring with DLL injection
+		!obj.SourceControlPath.Valid() { // rely on internal logic to track dependencies
 		return obj
 	}
 
@@ -304,15 +307,20 @@ func GetLlvmProductInstall() BuildFactoryTyped[*LlvmProductInstall] {
 
 func GetClangCompiler(arch compile.ArchType) BuildFactoryTyped[*ClangCompiler] {
 	return MakeBuildFactory(func(bi BuildInitializer) (ClangCompiler, error) {
-		return ClangCompiler{
-				UseMsvcLibrarian: false,
-				UseMsvcLinker:    false,
-				MsvcCompiler: MsvcCompiler{
-					Arch:          arch,
-					CompilerRules: compile.NewCompilerRules(compile.NewCompilerAlias("clang-cl", "LLVM", arch.String())),
-				},
-			}, bi.NeedFactories(
-				GetBuildableFlags(compile.GetCompileFlags()),
-				GetBuildableFlags(GetWindowsFlags()))
+		clang_cl := ClangCompiler{
+			UseMsvcLibrarian: false,
+			UseMsvcLinker:    false,
+			MsvcCompiler: MsvcCompiler{
+				Arch:          arch,
+				CompilerRules: compile.NewCompilerRules(compile.NewCompilerAlias("clang-cl", "LLVM", arch.String())),
+			},
+		}
+		base.Assert(func() bool {
+			var compiler compile.Compiler = &clang_cl
+			return compiler == &clang_cl
+		})
+		return clang_cl, bi.NeedFactories(
+			GetBuildableFlags(compile.GetCompileFlags()),
+			GetBuildableFlags(GetWindowsFlags()))
 	})
 }

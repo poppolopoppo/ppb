@@ -35,6 +35,14 @@ func Elapsed() time.Duration {
 }
 
 /***************************************
+ * Escape command-line argument (pass-through on darwin)
+ ***************************************/
+
+func EscapeCommandLineArg(a string) string {
+	return a
+}
+
+/***************************************
  * Get main network interface
  ***************************************/
 
