@@ -363,12 +363,14 @@ const (
 	CPPSTD_14
 	CPPSTD_17
 	CPPSTD_20
+	CPPSTD_23
 )
 
 func CppStdTypes() []CppStdType {
 	return []CppStdType{
 		CPPSTD_INHERIT,
 		CPPSTD_LATEST,
+		CPPSTD_23,
 		CPPSTD_20,
 		CPPSTD_17,
 		CPPSTD_14,
@@ -381,6 +383,8 @@ func (x CppStdType) Description() string {
 		return "inherit default value from configuration"
 	case CPPSTD_LATEST:
 		return "use latest C++ standard supported by the compiler"
+	case CPPSTD_23:
+		return "use C++23 standard"
 	case CPPSTD_20:
 		return "use C++20 standard"
 	case CPPSTD_17:
@@ -400,6 +404,8 @@ func (x CppStdType) String() string {
 		return "INHERIT"
 	case CPPSTD_LATEST:
 		return "LATEST"
+	case CPPSTD_23:
+		return "C++23"
 	case CPPSTD_20:
 		return "C++20"
 	case CPPSTD_17:
@@ -419,6 +425,8 @@ func (x *CppStdType) Set(in string) (err error) {
 		*x = CPPSTD_INHERIT
 	case CPPSTD_LATEST.String():
 		*x = CPPSTD_LATEST
+	case CPPSTD_23.String():
+		*x = CPPSTD_23
 	case CPPSTD_20.String():
 		*x = CPPSTD_20
 	case CPPSTD_17.String():

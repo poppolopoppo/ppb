@@ -91,7 +91,7 @@ var colorHslCold = Color3b{R: 103, G: 79, B: 73}.Unquantize(true)
 
 func NewColdHotColor(f float64) Color3f {
 	color := colorHslCold.Lerp(colorHslHot, f)
-	return color.Brightness(0.35 + 0.5*f*f)
+	return color.Brightness(0.45 + 0.40*f*f)
 }
 
 func NewHeatmapColor(f float64) Color3f {
