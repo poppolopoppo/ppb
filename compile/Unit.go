@@ -222,7 +222,7 @@ func (unit *Unit) GetBinariesOutput(compiler Compiler, src Filename, payload Pay
 		fmt.Sprintf("-%s%s", unit.TargetAlias.EnvironmentAlias, compiler.Extname(payload)))
 }
 func (unit *Unit) GetIntermediateOutput(compiler Compiler, src Filename, payload PayloadType) Filename {
-	base.AssertIn(payload, PAYLOAD_OBJECTLIST, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_STATICLIB)
+	base.AssertIn(payload, PAYLOAD_OBJECTLIST, PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_STATICLIB)
 	var modulePath string
 	if src.Dirname.IsIn(unit.GeneratedDir) {
 		modulePath = src.Relative(unit.GeneratedDir)
@@ -235,7 +235,7 @@ func (unit *Unit) GetPayloadOutput(compiler Compiler, src Filename, payload Payl
 	switch payload {
 	case PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB:
 		result = unit.GetBinariesOutput(compiler, src, payload)
-	case PAYLOAD_OBJECTLIST, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_STATICLIB:
+	case PAYLOAD_OBJECTLIST, PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_STATICLIB:
 		result = unit.GetIntermediateOutput(compiler, src, payload)
 	case PAYLOAD_HEADERS:
 		result = src
@@ -342,8 +342,7 @@ func (unit *Unit) Build(bc BuildContext) error {
 
 	switch unit.PCH {
 	case PCH_DISABLED:
-		break
-	case PCH_MONOLITHIC, PCH_SHARED:
+	case PCH_MONOLITHIC, PCH_SHARED, PCH_HEADERUNIT:
 		if !expandedModule.PrecompiledHeader.Valid() || !expandedModule.PrecompiledSource.Valid() {
 			if expandedModule.PrecompiledHeader.Valid() {
 				base.LogPanic(LogCompile, "unit is using PCH_%s, but precompiled source is nil (header: %v)", unit.PCH, expandedModule.PrecompiledHeader)
@@ -353,17 +352,11 @@ func (unit *Unit) Build(bc BuildContext) error {
 			}
 			unit.PCH = PCH_DISABLED
 		} else {
-			unit.PrecompiledHeader = expandedModule.PrecompiledHeader
-			unit.PrecompiledSource = unit.PrecompiledHeader
-
-			base.IfWindows(func() {
-				// CPP is only used on Windows platform
-				unit.PrecompiledSource = expandedModule.PrecompiledSource
-			})
-
 			base.Assert(func() bool { return expandedModule.PrecompiledHeader.Exists() })
 			base.Assert(func() bool { return expandedModule.PrecompiledSource.Exists() })
-			unit.PrecompiledObject = unit.GetPayloadOutput(compiler, unit.PrecompiledSource, PAYLOAD_PRECOMPILEDHEADER)
+
+			unit.PrecompiledHeader = expandedModule.PrecompiledHeader
+			unit.PrecompiledSource = expandedModule.PrecompiledSource
 		}
 	default:
 		base.UnexpectedValuePanic(unit.PCH, unit.PCH)
@@ -535,7 +528,7 @@ func (unit *Unit) linkModuleDependencies(bc BuildContext, compileEnv *CompileEnv
 		case PAYLOAD_HEADERS:
 			unit.addIncludeDependency(other)
 
-		case PAYLOAD_OBJECTLIST, PAYLOAD_PRECOMPILEDHEADER:
+		case PAYLOAD_OBJECTLIST, PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER:
 			unit.addCompileDependency(other)
 
 		case PAYLOAD_STATICLIB, PAYLOAD_SHAREDLIB:

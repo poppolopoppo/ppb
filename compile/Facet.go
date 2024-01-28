@@ -37,6 +37,7 @@ type Facet struct {
 	AnalysisOptions          base.StringSet
 	PreprocessorOptions      base.StringSet
 	CompilerOptions          base.StringSet
+	HeaderUnitOptions        base.StringSet
 	PrecompiledHeaderOptions base.StringSet
 
 	Libraries    utils.FileSet
@@ -63,6 +64,7 @@ func (facet *Facet) Serialize(ar base.Archive) {
 	ar.Serializable(&facet.AnalysisOptions)
 	ar.Serializable(&facet.PreprocessorOptions)
 	ar.Serializable(&facet.CompilerOptions)
+	ar.Serializable(&facet.HeaderUnitOptions)
 	ar.Serializable(&facet.PrecompiledHeaderOptions)
 
 	ar.Serializable(&facet.Libraries)
@@ -83,6 +85,7 @@ func NewFacet() Facet {
 		ExternIncludePaths:       utils.DirSet{},
 		SystemIncludePaths:       utils.DirSet{},
 		AnalysisOptions:          base.StringSet{},
+		HeaderUnitOptions:        base.StringSet{},
 		PreprocessorOptions:      base.StringSet{},
 		CompilerOptions:          base.StringSet{},
 		PrecompiledHeaderOptions: base.StringSet{},
@@ -101,6 +104,7 @@ func (x *Facet) DeepCopy(src *Facet) {
 	x.ExternIncludePaths = utils.NewDirSet(src.ExternIncludePaths...)
 	x.SystemIncludePaths = utils.NewDirSet(src.SystemIncludePaths...)
 	x.AnalysisOptions = base.NewStringSet(src.AnalysisOptions...)
+	x.HeaderUnitOptions = base.NewStringSet(src.HeaderUnitOptions...)
 	x.PreprocessorOptions = base.NewStringSet(src.PreprocessorOptions...)
 	x.CompilerOptions = base.NewStringSet(src.CompilerOptions...)
 	x.PrecompiledHeaderOptions = base.NewStringSet(src.PrecompiledHeaderOptions...)
@@ -124,6 +128,7 @@ func (facet *Facet) Append(others ...Facetable) {
 		facet.ExternIncludePaths.Append(x.ExternIncludePaths...)
 		facet.SystemIncludePaths.Append(x.SystemIncludePaths...)
 		facet.AnalysisOptions.Append(x.AnalysisOptions...)
+		facet.HeaderUnitOptions.Append(x.HeaderUnitOptions...)
 		facet.PreprocessorOptions.Append(x.PreprocessorOptions...)
 		facet.CompilerOptions.Append(x.CompilerOptions...)
 		facet.PrecompiledHeaderOptions.Append(x.PrecompiledHeaderOptions...)
@@ -144,6 +149,7 @@ func (facet *Facet) AppendUniq(others ...Facetable) {
 		facet.ExternIncludePaths.AppendUniq(x.ExternIncludePaths...)
 		facet.SystemIncludePaths.AppendUniq(x.SystemIncludePaths...)
 		facet.AnalysisOptions.AppendUniq(x.AnalysisOptions...)
+		facet.HeaderUnitOptions.AppendUniq(x.HeaderUnitOptions...)
 		facet.PreprocessorOptions.AppendUniq(x.PreprocessorOptions...)
 		facet.CompilerOptions.AppendUniq(x.CompilerOptions...)
 		facet.PrecompiledHeaderOptions.AppendUniq(x.PrecompiledHeaderOptions...)
@@ -166,6 +172,7 @@ func (facet *Facet) Prepend(others ...Facetable) {
 		facet.AnalysisOptions.Prepend(x.AnalysisOptions...)
 		facet.PreprocessorOptions.Prepend(x.PreprocessorOptions...)
 		facet.CompilerOptions.Prepend(x.CompilerOptions...)
+		facet.HeaderUnitOptions.Prepend(x.HeaderUnitOptions...)
 		facet.PrecompiledHeaderOptions.Prepend(x.PrecompiledHeaderOptions...)
 		facet.Libraries.Prepend(x.Libraries...)
 		facet.LibraryPaths.Prepend(x.LibraryPaths...)
@@ -181,16 +188,19 @@ func (facet *Facet) AddCompilationFlag(flags ...string) {
 	facet.AddCompilationFlag_NoAnalysis(flags...)
 }
 func (facet *Facet) AddCompilationFlag_NoAnalysis(flags ...string) {
+	facet.HeaderUnitOptions.Append(flags...)
 	facet.PrecompiledHeaderOptions.Append(flags...)
 	facet.PreprocessorOptions.Append(flags...)
 	facet.CompilerOptions.Append(flags...)
 }
 func (facet *Facet) AddCompilationFlag_NoPreprocessor(flags ...string) {
+	facet.HeaderUnitOptions.Append(flags...)
 	facet.PrecompiledHeaderOptions.Append(flags...)
 	facet.CompilerOptions.Append(flags...)
 }
 func (facet *Facet) RemoveCompilationFlag(flags ...string) {
 	facet.AnalysisOptions.Remove(flags...)
+	facet.HeaderUnitOptions.Remove(flags...)
 	facet.PrecompiledHeaderOptions.Remove(flags...)
 	facet.PreprocessorOptions.Remove(flags...)
 	facet.CompilerOptions.Remove(flags...)
@@ -204,6 +214,7 @@ func (facet *Facet) PerformSubstitutions() {
 		facet.ExternIncludePaths = base.Map(subst.ExpandDirectory, facet.ExternIncludePaths...)
 		facet.SystemIncludePaths = base.Map(subst.ExpandDirectory, facet.SystemIncludePaths...)
 		facet.AnalysisOptions = base.Map(subst.ExpandString, facet.AnalysisOptions...)
+		facet.HeaderUnitOptions = base.Map(subst.ExpandString, facet.HeaderUnitOptions...)
 		facet.PreprocessorOptions = base.Map(subst.ExpandString, facet.PreprocessorOptions...)
 		facet.CompilerOptions = base.Map(subst.ExpandString, facet.CompilerOptions...)
 		facet.PrecompiledHeaderOptions = base.Map(subst.ExpandString, facet.PrecompiledHeaderOptions...)
@@ -219,7 +230,7 @@ func (facet *Facet) String() string {
 }
 
 /***************************************
- * Variable Substitutions
+ * Variable Substitutions : some arguments can be defined before their actual are know, and then substituted in final stages with a variable
  ***************************************/
 
 var getVariableSubstitutionsRegexp = base.Memoize(func() *regexp.Regexp {

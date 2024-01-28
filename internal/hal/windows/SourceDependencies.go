@@ -78,7 +78,7 @@ func NewMsvcSourceDependenciesAction(model *action.ActionModel, output utils.Fil
 }
 
 func (x *MsvcSourceDependenciesAction) Alias() utils.BuildAlias {
-	exportFile := x.GetExportFile()
+	exportFile := x.GetGeneratedFile()
 	return utils.MakeBuildAlias("Action", "Msvc", exportFile.Dirname.Path, exportFile.Basename)
 }
 func (x *MsvcSourceDependenciesAction) Build(bc utils.BuildContext) error {

@@ -24,6 +24,10 @@ type BuildNode interface {
 	GetDependencyLinks() []BuildDependencyLink
 }
 
+type BuildableGeneratedFile interface {
+	GetGeneratedFile() Filename
+	Buildable
+}
 type BuildableSourceFile interface {
 	GetSourceFile() Filename
 	Buildable
@@ -81,7 +85,7 @@ func newBuildNode(alias BuildAlias, builder Buildable) *buildNode {
 func (node *buildNode) Alias() BuildAlias { return node.BuildAlias }
 func (node *buildNode) String() string    { return node.BuildAlias.String() }
 
-func (node *buildNode) IsFile() bool {
+func (node *buildNode) IsMuted() bool {
 	node.state.RLock()
 	defer node.state.RUnlock()
 	switch node.Buildable.(type) {
@@ -89,6 +93,8 @@ func (node *buildNode) IsFile() bool {
 		return true
 	case *DirectoryDependency, BuildableSourceDirectory:
 		return true
+	case BuildableGeneratedFile:
+		return false
 	default:
 		return false
 	}

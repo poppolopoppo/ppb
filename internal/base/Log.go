@@ -68,7 +68,7 @@ func LogWarningOnce(category *LogCategory, msg string, args ...interface{}) {
 	}
 }
 func LogWarningVerbose(category *LogCategory, msg string, args ...interface{}) {
-	if IsLogLevelActive(LOG_VERYVERBOSE) {
+	if IsLogLevelActive(LOG_VERBOSE) {
 		gLogger.Log(category, LOG_WARNING, msg, args...)
 	}
 }

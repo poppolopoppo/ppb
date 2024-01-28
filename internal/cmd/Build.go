@@ -5,8 +5,6 @@ import (
 	"github.com/poppolopoppo/ppb/cluster"
 	"github.com/poppolopoppo/ppb/compile"
 	"github.com/poppolopoppo/ppb/internal/base"
-
-	//lint:ignore ST1001 ignore dot imports warning
 	"github.com/poppolopoppo/ppb/utils"
 )
 
@@ -35,7 +33,6 @@ func (x *BuildCommand) Flags(cfv utils.CommandFlagsVisitor) {
 }
 func (x *BuildCommand) Init(ci utils.CommandContext) error {
 	ci.Options(
-		compile.OptionCommandAllCompilationFlags(),
 		utils.OptionCommandParsableFlags("BuildCommand", "control compilation actions execution", x),
 		utils.OptionCommandParsableAccessor("ClusterFlags", "action distribution in network cluster", cluster.GetClusterFlags),
 		utils.OptionCommandParsableAccessor("WorkerFlags", "set hardware limits for local action compilation", cluster.GetWorkerFlags),

@@ -143,10 +143,10 @@ func (x *buildGraphViz) Visit(node BuildNode, userOptions ...internal_io.GraphVi
 	x.CompoundNode(category, id, &options)
 
 	for _, dep := range x.graph.GetStaticDependencies(node) {
-		x.CompoundEdge(id, x.Visit(dep), internal_io.OptionGraphVizColor("#1E90FF30"), internal_io.OptionGraphVizWeight(2))
+		x.CompoundEdge(id, x.Visit(dep), internal_io.OptionGraphVizColor("#1E90FFFF"), internal_io.OptionGraphVizWeight(2))
 	}
 	for _, dep := range x.graph.GetDynamicDependencies(node) {
-		x.CompoundEdge(id, x.Visit(dep), internal_io.OptionGraphVizColor("#E16F0030"), internal_io.OptionGraphVizWeight(1))
+		x.CompoundEdge(id, x.Visit(dep), internal_io.OptionGraphVizColor("#E16F00FF"), internal_io.OptionGraphVizWeight(1))
 	}
 	// for _, dep := range x.graph.GetOutputDependencies(node) {
 	// 	x.Edge(id, x.Visit(dep), OptionGraphVizColor("#F4A46090"), OptionGraphVizWeight(3))

@@ -48,6 +48,8 @@ func (llvm *LlvmCompiler) Extname(x PayloadType) string {
 		return ".a"
 	case PAYLOAD_SHAREDLIB:
 		return ".so"
+	case PAYLOAD_HEADERUNIT:
+		return ".ifc"
 	case PAYLOAD_PRECOMPILEDHEADER:
 		return ".pch"
 	case PAYLOAD_HEADERS:

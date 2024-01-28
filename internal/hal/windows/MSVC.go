@@ -96,6 +96,8 @@ func (msvc *MsvcCompiler) Extname(x PayloadType) string {
 		return ".lib"
 	case PAYLOAD_SHAREDLIB:
 		return ".dll"
+	case PAYLOAD_HEADERUNIT:
+		return ".h.ifc"
 	case PAYLOAD_PRECOMPILEDHEADER:
 		return ".pch"
 	case PAYLOAD_HEADERS:
@@ -159,7 +161,7 @@ func (msvc *MsvcCompiler) AllowCaching(u *Unit, payload PayloadType) (result act
 		} else {
 			result = action.CACHE_READWRITE
 		}
-	case PAYLOAD_STATICLIB, PAYLOAD_DEBUGSYMBOLS:
+	case PAYLOAD_HEADERUNIT, PAYLOAD_STATICLIB, PAYLOAD_DEBUGSYMBOLS:
 		result = action.CACHE_READWRITE
 	}
 	if result == action.CACHE_INHERIT {
@@ -173,14 +175,16 @@ func (msvc *MsvcCompiler) AllowCaching(u *Unit, payload PayloadType) (result act
 }
 func (msvc *MsvcCompiler) AllowDistribution(u *Unit, payload PayloadType) (result action.DistModeType) {
 	switch payload {
-	case PAYLOAD_OBJECTLIST, PAYLOAD_PRECOMPILEDHEADER:
+	case PAYLOAD_PRECOMPILEDHEADER:
+		result = action.DIST_NONE
+	case PAYLOAD_OBJECTLIST:
 		if u.DebugSymbols == DEBUG_EMBEDDED {
 			result = action.DIST_ENABLE
 		} else {
 			result = action.DIST_NONE
 			base.LogVeryVerbose(LogWindows, "%v/%v: can't use distribution with %v debug symbols", u, payload, u.DebugSymbols)
 		}
-	case PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB, PAYLOAD_STATICLIB, PAYLOAD_DEBUGSYMBOLS:
+	case PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB, PAYLOAD_STATICLIB, PAYLOAD_HEADERUNIT, PAYLOAD_DEBUGSYMBOLS:
 		result = action.DIST_ENABLE
 	}
 	if result == action.DIST_INHERIT {
@@ -190,7 +194,7 @@ func (msvc *MsvcCompiler) AllowDistribution(u *Unit, payload PayloadType) (resul
 }
 func (msvc *MsvcCompiler) AllowResponseFile(u *Unit, payload PayloadType) (result CompilerSupportType) {
 	switch payload {
-	case PAYLOAD_OBJECTLIST, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB, PAYLOAD_STATICLIB, PAYLOAD_DEBUGSYMBOLS:
+	case PAYLOAD_OBJECTLIST, PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB, PAYLOAD_STATICLIB, PAYLOAD_DEBUGSYMBOLS:
 		result = COMPILERSUPPORT_ALLOWED
 	}
 	if result == COMPILERSUPPORT_INHERIT {
@@ -297,6 +301,16 @@ func (msvc *MsvcCompiler) PrecompiledHeader(u *Unit) {
 		if u.PCH != PCH_SHARED {
 			u.PrecompiledHeaderOptions.Append("/Yc" + u.PrecompiledHeader.Basename)
 		}
+	case PCH_HEADERUNIT:
+		headerFile := MakeLocalFilename(u.PrecompiledHeader)
+		if msvc.WindowsFlags.TranslateInclude.Get() {
+			u.CompilerOptions.Append("/translateInclude") // converts #include to #import automatically if an ifc is available for the header
+		}
+		u.CompilerOptions.Append(
+			// https://learn.microsoft.com/en-us/cpp/build/walkthrough-import-stl-header-units?view=msvc-170#approach1
+			"/headerUnit", fmt.Sprintf("%v=%v", headerFile, MakeLocalFilename(u.PrecompiledObject)),
+			"/reference", MakeLocalFilename(u.PrecompiledObject),
+			"/FI"+headerFile)
 	case PCH_DISABLED:
 	default:
 		base.UnexpectedValue(u.PCH)
@@ -496,11 +510,18 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 		base.UnexpectedValue(compileEnv.GetConfig().ConfigType)
 	}
 
-	// C++20 deprecates /Gm
+	// check if C++20 at least is enabled
 	if u.CppStd >= CPPSTD_20 {
+		// C++20 deprecates /Gm
 		// Command line warning D9035 : option 'Gm' has been deprecated and will be removed in a future release
 		// Command line error D8016 : '/Gm' and '/std:c++20' command-line options are incompatible
 		u.RemoveCompilationFlag("/Gm-", "/Gm")
+
+		// Use C++20 header units instead of precompiled headers
+		if msvc.WindowsFlags.TranslateInclude.Get() && (u.PCH == PCH_SHARED || u.PCH == PCH_MONOLITHIC) {
+			u.PCH = PCH_HEADERUNIT
+			base.LogVeryVerbose(LogWindows, "%v: generate a C++20 header unit instead of a precompiled header with /translateInclude", u)
+		}
 	}
 
 	// check AVX2 support
@@ -642,6 +663,7 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 		}
 
 	case PAYLOAD_STATICLIB:
+	case PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER:
 	case PAYLOAD_OBJECTLIST, PAYLOAD_HEADERS:
 	default:
 		base.UnexpectedValuePanic(u.Payload, u.Payload)
@@ -1072,10 +1094,12 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 	)
 
 	facet.CompilerOptions.Append("/Fo%2")
+	facet.HeaderUnitOptions = base.NewStringSet("/nologo", "/exportHeader", "%1", "/ifcOutput", "%2", "/Fo%3")
 	facet.PrecompiledHeaderOptions.Append("/Fp%2", "/Fo%3")
 	facet.PreprocessorOptions.Append("/Fo%2")
 
 	facet.AddCompilationFlag(
+		"/X",       // ignore standard include paths (we override them with /I)
 		"/GF",      // string pooling
 		"/GT",      // fiber safe optimizations (https://msdn.microsoft.com/fr-fr/library/6e298fy4.aspx)
 		"/bigobj",  // more sections inside obj files, support larger translation units, needed for unity builds

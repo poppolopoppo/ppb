@@ -13,6 +13,89 @@ import (
 	"github.com/poppolopoppo/ppb/utils"
 )
 
+/***************************************
+ * Unity File
+ ***************************************/
+
+type UnityFile struct {
+	Output    utils.Filename
+	Includes  base.StringSet
+	Inputs    utils.FileSet
+	Excludeds utils.FileSet
+}
+
+func MakeUnityFileAlias(output utils.Filename) utils.BuildAlias {
+	return utils.MakeBuildAlias("Unity", output.Dirname.Path, output.Basename)
+}
+func FindUnityFile(output utils.Filename) (*UnityFile, error) {
+	return utils.FindGlobalBuildable[*UnityFile](MakeUnityFileAlias(output))
+}
+
+func (x *UnityFile) Alias() utils.BuildAlias {
+	return MakeUnityFileAlias(x.Output)
+}
+func (x *UnityFile) GetGeneratedFile() utils.Filename {
+	return x.Output
+}
+func (x *UnityFile) GetInputsWithoutExcludeds() utils.FileSet {
+	return base.Remove(x.Inputs, x.Excludeds...)
+}
+func (x *UnityFile) Build(bc utils.BuildContext) error {
+	base.AssertNotIn(len(x.Inputs), 0)
+	base.Assert(x.Excludeds.IsUniq)
+
+	timestamp := time.Time{}
+
+	err := utils.UFS.CreateBuffered(x.Output, func(w io.Writer) error {
+		cpp := internal_io.NewCppFile(w, true)
+		for _, it := range x.Includes {
+			cpp.Include(it)
+		}
+		for _, it := range x.Inputs {
+			isExcluded := x.Excludeds.Contains(it)
+			if isExcluded {
+				cpp.BeginBlockComment()
+			}
+
+			cpp.Pragma("message(\"unity: \" %q)", it)
+			cpp.Include(utils.SanitizePath(it.Relative(utils.UFS.Source), '/'))
+
+			if isExcluded {
+				cpp.EndBlockComment()
+			}
+
+			if info, err := it.Info(); err == nil {
+				if timestamp.Before(info.ModTime()) {
+					timestamp = info.ModTime()
+				}
+			} else {
+				return err
+			}
+		}
+		return nil
+	})
+
+	if err == nil {
+		bc.Annotate(
+			utils.AnnocateBuildCommentf("%d files", len(x.Inputs)-len(x.Excludeds)),
+			utils.AnnocateBuildTimestamp(timestamp))
+		if err = utils.UFS.SetMTime(x.Output, timestamp); err == nil {
+			err = bc.OutputFile(x.Output)
+		}
+	}
+	return err
+}
+func (x *UnityFile) Serialize(ar base.Archive) {
+	ar.Serializable(&x.Output)
+	ar.Serializable(&x.Includes)
+	ar.Serializable(&x.Inputs)
+	ar.Serializable(&x.Excludeds)
+}
+
+/***************************************
+ * Unit helper generating unity files IFN
+ ***************************************/
+
 func (unit *Unit) GetSourceFiles(bc utils.BuildContext) (sourceFiles utils.FileSet, err error) {
 	sourceFiles, err = unit.Source.GetFileSet(bc)
 	if err != nil {
@@ -93,18 +176,6 @@ func (unit *Unit) GetSourceFiles(bc utils.BuildContext) (sourceFiles utils.FileS
 		return
 	}
 
-	// detect PCH parameters: shoud unity files include "stdafx.h"?
-	unityIncludes := base.StringSet{}
-	switch unit.PCH {
-	case PCH_MONOLITHIC, PCH_SHARED:
-		// add pch header
-		unityIncludes.Append(unit.PrecompiledHeader.Basename)
-	case PCH_DISABLED:
-		// no includes
-	default:
-		base.UnexpectedValuePanic(unit.PCH, unit.PCH)
-	}
-
 	// prepare clusters from previously estimated count
 	type unityFileWithSize struct {
 		TotalSize int64
@@ -114,8 +185,7 @@ func (unit *Unit) GetSourceFiles(bc utils.BuildContext) (sourceFiles utils.FileS
 	for i := range unityFiles {
 		unityFiles[i] = unityFileWithSize{
 			UnityFile: UnityFile{
-				Output:   unityDir.File(fmt.Sprintf("Unity_%d_of_%d.cpp", (i + 1), numUnityFiles)),
-				Includes: unityIncludes,
+				Output: unityDir.File(fmt.Sprintf("Unity_%d_of_%d.cpp", (i + 1), numUnityFiles)),
 			},
 		}
 	}
@@ -193,30 +263,32 @@ func (unit *Unit) GetSourceFiles(bc utils.BuildContext) (sourceFiles utils.FileS
 		}
 	}
 
-	// check for modified files if adaptive unity is enabled
-	adaptiveUnityFiles := utils.FileSet{}
-	if unit.AdaptiveUnity.Get() {
-		if _, err = utils.ForeachLocalSourceControlModifications(bc, func(modified utils.Filename, state utils.SourceControlState) error {
-			if !isolatedFiles.Contains(modified) { // check if not already isolated in module model
-				base.LogVerbose(LogCompile, "%v: adaptive unity isolated %q because scm sees it as %v", unit.TargetAlias, modified, state)
-				adaptiveUnityFiles.Append(modified)
-			}
-			return nil
-		}, sourceFiles...); err != nil {
-			return nil, err
-		}
-
-		base.Assert(adaptiveUnityFiles.IsUniq)
-	}
-
-	// replace source fileset by generated unity + isolated files + adaptive unity files
-	sourceFiles = append(isolatedFiles, adaptiveUnityFiles...)
+	// replace source fileset by isolated files
+	sourceFiles = isolatedFiles
 
 	for _, unityFile := range unityFiles {
 		base.Assert(unityFile.Inputs.IsUniq)
 		unityFile.Inputs.Sort()
-		unityFile.Excludeds = base.Intersect(unityFile.Inputs, adaptiveUnityFiles)
+
+		// append generated unity to source files
 		sourceFiles.Append(unityFile.Output)
+
+		// check for modified files if adaptive unity is enabled
+		unityFile.Excludeds = utils.FileSet{}
+		if unit.AdaptiveUnity.Get() {
+			if _, err = utils.ForeachLocalSourceControlModifications(bc, func(modified utils.Filename, state utils.SourceControlState) error {
+				base.LogVerbose(LogCompile, "%v: adaptive unity isolated %q because scm sees it as %v", unit.TargetAlias, modified, state)
+				unityFile.Excludeds.Append(modified)
+				return nil
+			}, unityFile.Inputs...); err != nil {
+				return nil, err
+			}
+
+			base.Assert(unityFile.Excludeds.IsUniq)
+
+			// append adaptive unity files to source files
+			sourceFiles = append(sourceFiles, unityFile.Excludeds...)
+		}
 
 		if _, err = bc.OutputFactory(utils.MakeBuildFactory(func(bi utils.BuildInitializer) (UnityFile, error) {
 			staticDeps := utils.NewFileSet(unityFile.Inputs...)
@@ -230,79 +302,4 @@ func (unit *Unit) GetSourceFiles(bc utils.BuildContext) (sourceFiles utils.FileS
 	sourceFiles.Sort()
 	base.Assert(sourceFiles.IsUniq)
 	return
-}
-
-/***************************************
- * Unity File
- ***************************************/
-
-type UnityFile struct {
-	Output    utils.Filename
-	Includes  base.StringSet
-	Inputs    utils.FileSet
-	Excludeds utils.FileSet
-}
-
-func MakeUnityFileAlias(output utils.Filename) utils.BuildAlias {
-	return utils.MakeBuildAlias("Unity", output.Dirname.Path, output.Basename)
-}
-func FindUnityFile(output utils.Filename) (*UnityFile, error) {
-	return utils.FindGlobalBuildable[*UnityFile](MakeUnityFileAlias(output))
-}
-
-func (x *UnityFile) Alias() utils.BuildAlias {
-	return MakeUnityFileAlias(x.Output)
-}
-func (x *UnityFile) GetInputsWithoutExcludeds() utils.FileSet {
-	return base.Remove(x.Inputs, x.Excludeds...)
-}
-func (x *UnityFile) Build(bc utils.BuildContext) error {
-	base.AssertNotIn(len(x.Inputs), 0)
-
-	timestamp := time.Time{}
-
-	err := utils.UFS.CreateBuffered(x.Output, func(w io.Writer) error {
-		cpp := internal_io.NewCppFile(w, true)
-		for _, it := range x.Includes {
-			cpp.Include(it)
-		}
-		for _, it := range x.Inputs {
-			isExcluded := x.Excludeds.Contains(it)
-			if isExcluded {
-				cpp.BeginBlockComment()
-			}
-
-			cpp.Pragma("message(\"unity: \" %q)", it)
-			cpp.Include(utils.SanitizePath(it.Relative(utils.UFS.Source), '/'))
-
-			if isExcluded {
-				cpp.EndBlockComment()
-			}
-
-			if info, err := it.Info(); err == nil {
-				if timestamp.Before(info.ModTime()) {
-					timestamp = info.ModTime()
-				}
-			} else {
-				return err
-			}
-		}
-		return nil
-	})
-
-	if err == nil {
-		bc.Annotate(
-			utils.AnnocateBuildCommentf("%d files", len(x.Inputs)-len(x.Excludeds)),
-			utils.AnnocateBuildTimestamp(timestamp))
-		if err = utils.UFS.SetMTime(x.Output, timestamp); err == nil {
-			err = bc.OutputFile(x.Output)
-		}
-	}
-	return err
-}
-func (x *UnityFile) Serialize(ar base.Archive) {
-	ar.Serializable(&x.Output)
-	ar.Serializable(&x.Includes)
-	ar.Serializable(&x.Inputs)
-	ar.Serializable(&x.Excludeds)
 }

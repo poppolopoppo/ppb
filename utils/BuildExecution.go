@@ -112,7 +112,7 @@ func (x *buildExecuteContext) prepareStaticDependencies_rlock() error {
 	// record static dependency results for clients
 	x.staticResults = make([]BuildResult, len(staticDeps))
 
-	return x.graph.buildMany(len(staticDeps),
+	if err := x.graph.buildMany(len(staticDeps),
 		func(i int) (*buildNode, error) {
 			return x.graph.findNode(staticDeps[i])
 		},
@@ -120,7 +120,10 @@ func (x *buildExecuteContext) prepareStaticDependencies_rlock() error {
 			x.staticResults[i] = br
 			return nil
 		},
-		OptionBuildRecurse(x.options, x.node))
+		OptionBuildRecurse(x.options, x.node)); err != nil {
+		return buildDependencyError{alias: x.Alias(), link: DEPENDENCY_STATIC, inner: err}
+	}
+	return nil
 }
 
 func (x *buildExecuteContext) buildOutputFiles_assumeLocked() base.Future[[]BuildResult] {
@@ -967,7 +970,7 @@ func (g *buildGraph) launchBuild(node *buildNode, options *BuildOptions) base.Fu
 				g.makeDirty()
 			}
 
-			if base.IsLogLevelActive(base.LOG_VERYVERBOSE) || !(node.IsFile() || context.annotations.Mute) {
+			if base.IsLogLevelActive(base.LOG_VERYVERBOSE) || !(node.IsMuted() || context.annotations.Mute) {
 				base.LogInfo(
 					LogBuildGraph,
 					"%s%s %q in %v%s",

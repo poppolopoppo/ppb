@@ -52,29 +52,32 @@ func InitWindowsCompile() {
  ***************************************/
 
 type WindowsFlags struct {
-	Compiler      CompilerType
-	Analyze       BoolVar
-	Insider       BoolVar
-	JustMyCode    BoolVar
-	MscVer        MsvcVersion
-	PerfSDK       BoolVar
-	Permissive    BoolVar
-	StackSize     IntVar
-	StaticCRT     BoolVar
-	WindowsSDK    Directory
-	LlvmToolchain BoolVar
+	Compiler         CompilerType
+	Analyze          BoolVar
+	Insider          BoolVar
+	JustMyCode       BoolVar
+	LlvmToolchain    BoolVar
+	MscVer           MsvcVersion
+	PerfSDK          BoolVar
+	Permissive       BoolVar
+	StackSize        IntVar
+	StaticCRT        BoolVar
+	TranslateInclude BoolVar
+	WindowsSDK       Directory
 }
 
 var GetWindowsFlags = NewCompilationFlags("WindowsCompilation", "windows-specific compilation flags", WindowsFlags{
-	Analyze:    base.INHERITABLE_FALSE,
-	Compiler:   COMPILER_MSVC,
-	Insider:    base.INHERITABLE_FALSE,
-	JustMyCode: base.INHERITABLE_FALSE,
-	MscVer:     MSC_VER_LATEST,
-	PerfSDK:    base.INHERITABLE_FALSE,
-	Permissive: base.INHERITABLE_FALSE,
-	StackSize:  2000000,
-	StaticCRT:  base.INHERITABLE_FALSE,
+	Analyze:          base.INHERITABLE_FALSE,
+	Compiler:         COMPILER_MSVC,
+	Insider:          base.INHERITABLE_FALSE,
+	JustMyCode:       base.INHERITABLE_FALSE,
+	LlvmToolchain:    base.INHERITABLE_TRUE,
+	MscVer:           MSC_VER_LATEST,
+	PerfSDK:          base.INHERITABLE_FALSE,
+	Permissive:       base.INHERITABLE_FALSE,
+	StackSize:        2000000,
+	StaticCRT:        base.INHERITABLE_FALSE,
+	TranslateInclude: base.INHERITABLE_TRUE,
 })
 
 func (flags *WindowsFlags) Flags(cfv CommandFlagsVisitor) {
@@ -82,12 +85,13 @@ func (flags *WindowsFlags) Flags(cfv CommandFlagsVisitor) {
 	cfv.Persistent("Compiler", "select windows compiler", &flags.Compiler)
 	cfv.Persistent("Insider", "enable/disable support for pre-release toolchain", &flags.Insider)
 	cfv.Persistent("JustMyCode", "enable/disable MSCV just-my-code", &flags.JustMyCode)
+	cfv.Persistent("LlvmToolchain", "if enabled clang-cl will use llvm-lib and lld-link", &flags.LlvmToolchain)
 	cfv.Persistent("MscVer", "select MSVC toolchain version", &flags.MscVer)
 	cfv.Persistent("PerfSDK", "enable/disable Visual Studio Performance SDK", &flags.PerfSDK)
 	cfv.Persistent("Permissive", "enable/disable MSCV permissive", &flags.Permissive)
 	cfv.Persistent("StackSize", "set default thread stack size in bytes", &flags.StackSize)
 	cfv.Persistent("StaticCRT", "use static CRT libraries instead of dynamic (/MT vs /MD)", &flags.StaticCRT)
-	cfv.Persistent("LlvmToolchain", "if enabled clang-cl will use llvm-lib and lld-link", &flags.LlvmToolchain)
+	cfv.Persistent("TranslateInclude", "convert PCH to header units for C++20 units if enabled ", &flags.TranslateInclude)
 	cfv.Persistent("WindowsSDK", "override Windows SDK install path (use latest otherwise)", &flags.WindowsSDK)
 }
 

@@ -73,6 +73,20 @@ func (clang *ClangCompiler) DebugSymbols(u *compile.Unit) {
 	// not supported by clang-cl
 	u.RemoveCompilationFlag("/Zf")
 }
+func (clang *ClangCompiler) PrecompiledHeader(u *compile.Unit) {
+	switch u.PCH {
+	case compile.PCH_MONOLITHIC, compile.PCH_SHARED, compile.PCH_DISABLED:
+		clang.MsvcCompiler.PrecompiledHeader(u)
+	case compile.PCH_HEADERUNIT:
+		headerFile := MakeLocalFilename(u.PrecompiledHeader)
+		u.CompilerOptions.Append(
+			"/clang:-fmodules", // converts #include to #import automatically if an ifc is available for the header
+			fmt.Sprintf("/clang:-fmodule-file=%v=%v", headerFile, MakeLocalFilename(u.PrecompiledObject)),
+			"/FI"+headerFile)
+	default:
+		base.UnexpectedValue(u.PCH)
+	}
+}
 func (clang *ClangCompiler) GetPayloadOutput(u *compile.Unit, payload compile.PayloadType, file Filename) Filename {
 	return file.ReplaceExt(clang.Extname(payload))
 }
@@ -86,7 +100,7 @@ func (clang *ClangCompiler) CreateAction(_ *compile.Unit, _ compile.PayloadType,
 	result := &generic.GnuSourceDependenciesAction{
 		ActionRules: model.CreateActionRules(),
 	}
-	result.GnuDepFile = result.GetExportFile().ReplaceExt(clang.Extname(compile.PAYLOAD_DEPENDENCIES))
+	result.GnuDepFile = result.GetGeneratedFile().ReplaceExt(clang.Extname(compile.PAYLOAD_DEPENDENCIES))
 	result.Arguments.Append("/clang:--write-dependencies", "/clang:-MF"+MakeLocalFilename(result.GnuDepFile))
 	result.OutputFiles.Append(result.GnuDepFile)
 	return result
@@ -147,8 +161,7 @@ func (clang *ClangCompiler) Decorate(compileEnv *compile.CompileEnv, u *compile.
 	// #TODO: wait for MSTL/llvm to be fixed with this optimization
 	// if u.Payload == PAYLOAD_SHAREDLIB {
 	// 	// https://blog.llvm.org/2018/11/30-faster-windows-builds-with-clang-cl_14.html
-	// 	u.CompilerOptions.Append("/Zc:dllexportInlines-") // not working with /MD and std
-	// 	u.PrecompiledHeaderOptions.Append("/Zc:dllexportInlines-")
+	// 	u.AddCompilationFlags.Append("/Zc:dllexportInlines-") // not working with /MD and std
 	// }
 
 	return nil
@@ -184,7 +197,18 @@ func (clang *ClangCompiler) Build(bc BuildContext) error {
 	clang.UseMsvcLibrarian = !clang.WindowsFlags.LlvmToolchain.Get()
 	clang.UseMsvcLinker = !clang.WindowsFlags.LlvmToolchain.Get()
 
+	// not supported by clang-cl atm (#TODO: revert when fixed)
+	clang.MsvcCompiler.WindowsFlags.TranslateInclude.Disable()
+
 	rules := clang.GetCompiler()
+
+	// clang-cl does not follow MSVC arguments for header-units
+	rules.HeaderUnitOptions = base.NewStringSet(
+		"-Xclang",
+		"-emit-header-module", "%1",
+		"-o", "%2",
+	)
+
 	rules.Executable = llvm.ClangCl_exe
 	rules.ExtraFiles = FileSet{
 		llvm.InstallDir.Folder("bin").File("msvcp140.dll"),
@@ -250,8 +274,7 @@ func (clang *ClangCompiler) Build(bc BuildContext) error {
 	)
 
 	// https://blog.llvm.org/posts/2021-04-05-constructor-homing-for-debug-info/
-	rules.CompilerOptions.Append("-Xclang", "-fuse-ctor-homing")
-	rules.PrecompiledHeaderOptions.Append("-Xclang", "-fuse-ctor-homing")
+	rules.AddCompilationFlag_NoPreprocessor("-Xclang", "-fuse-ctor-homing")
 
 	return nil
 }

@@ -181,6 +181,16 @@ func (rules *CompilerRules) Decorate(env *CompileEnv, unit *Unit) error {
 		return err
 	}
 
+	switch unit.PCH {
+	case PCH_DISABLED:
+	case PCH_HEADERUNIT:
+		unit.PrecompiledObject = unit.GetPayloadOutput(compiler, unit.PrecompiledHeader, PAYLOAD_HEADERUNIT)
+	case PCH_MONOLITHIC, PCH_SHARED:
+		unit.PrecompiledObject = unit.GetPayloadOutput(compiler, unit.PrecompiledHeader, PAYLOAD_PRECOMPILEDHEADER)
+	default:
+		base.UnexpectedValuePanic(unit.PCH, unit.PCH)
+	}
+
 	compiler.CppStd(&unit.Facet, unit.CppStd)
 	compiler.CppRtti(&unit.Facet, unit.CppRtti == CPPRTTI_ENABLED)
 

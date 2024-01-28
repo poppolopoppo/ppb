@@ -87,8 +87,8 @@ func (x *ActionRules) Alias() utils.BuildAlias {
 	return utils.MakeBuildAlias("Action", exportFile.Dirname.Path, exportFile.Basename)
 }
 
-func (x *ActionRules) GetAction() *ActionRules       { return x }
-func (x *ActionRules) GetExportFile() utils.Filename { return x.OutputFiles[x.ExportIndex] }
+func (x *ActionRules) GetAction() *ActionRules          { return x }
+func (x *ActionRules) GetGeneratedFile() utils.Filename { return x.OutputFiles[x.ExportIndex] }
 func (x *ActionRules) GetInputFiles() (results utils.FileSet) {
 	bg := utils.CommandEnv.BuildGraph()
 	node, err := bg.Expect(x.Alias())
@@ -96,10 +96,10 @@ func (x *ActionRules) GetInputFiles() (results utils.FileSet) {
 
 	for _, it := range bg.GetStaticDependencies(node) {
 		switch buildable := it.GetBuildable().(type) {
+		case utils.BuildableGeneratedFile:
+			results.Append(buildable.GetGeneratedFile())
 		case utils.BuildableSourceFile:
 			results.Append(buildable.GetSourceFile())
-		case Action:
-			results.Append(buildable.GetAction().GetExportFile())
 		}
 	}
 	return
@@ -200,13 +200,10 @@ func (x *ActionRules) Build(bc utils.BuildContext) error {
 
 func harvestActionInputFiles(bc utils.BuildContext, br utils.BuildResult, results, excludeds *utils.FileSet) error {
 	switch buildable := br.Buildable.(type) {
-	case utils.BuildableSourceFile:
-		results.Append(buildable.GetSourceFile())
-
 	case Action:
 		rules := buildable.GetAction()
 
-		if err := bc.NeedFiles(rules.GetExportFile()); err != nil {
+		if err := bc.NeedFiles(rules.GetGeneratedFile()); err != nil {
 			return err
 		}
 
@@ -218,8 +215,19 @@ func harvestActionInputFiles(bc utils.BuildContext, br utils.BuildResult, result
 			results.AppendUniq(inputs...)
 			excludeds.Append(rules.OutputFiles...)
 		} else {
-			results.Append(rules.GetExportFile())
+			results.Append(rules.GetGeneratedFile())
 		}
+
+	case utils.BuildableGeneratedFile:
+		file := buildable.GetGeneratedFile()
+		if err := bc.NeedFiles(file); err != nil {
+			return err
+		}
+
+		results.Append(file)
+
+	case utils.BuildableSourceFile:
+		results.Append(buildable.GetSourceFile())
 	}
 	return nil
 }
@@ -233,7 +241,7 @@ func asyncCacheWriteAction(cacheKey ActionCacheKey, cacheArtifact *CacheArtifact
 		writeToCache := true
 		if _, err := utils.ForeachLocalSourceControlModifications(bg.GlobalContext(), func(modified utils.Filename, state utils.SourceControlState) error {
 			writeToCache = false
-			base.LogWarning(LogAction, "%v: excluded from cache since %q is seen as %v by source control", utils.ForceLocalFilename(cacheArtifact.OutputFiles[0]), modified, state)
+			base.LogWarningVerbose(LogAction, "%v: excluded from cache since %q is seen as %v by source control", utils.ForceLocalFilename(cacheArtifact.OutputFiles[0]), modified, state)
 			return nil
 		}, cacheArtifact.InputFiles.Concat(cacheArtifact.DependencyFiles...)...); err != nil {
 			base.LogPanicIfFailed(LogActionCache, err)
@@ -333,7 +341,7 @@ func executeOrDistributeAction(bc utils.BuildContext, action *ActionRules, flags
 					base.ProgressOptionFormat("[W:%02d/%2d] %v",
 						tc.GetThreadId()+1,
 						tc.GetThreadPool().GetArity(),
-						utils.ForceLocalFilename(action.GetExportFile())),
+						utils.ForceLocalFilename(action.GetGeneratedFile())),
 					base.ProgressOptionColor(base.NewPastelizerColor(float64(tc.GetThreadId())/float64(tc.GetThreadPool().GetArity())).Quantize(true)))
 				return spinner
 			})(&processOptions)
@@ -417,7 +425,7 @@ func (x ActionSet) GetOutputFiles() (result utils.FileSet) {
 func (x ActionSet) GetExportFiles() (results utils.FileSet) {
 	results = make(utils.FileSet, len(x))
 	for i, action := range x {
-		results[i] = action.GetAction().GetExportFile()
+		results[i] = action.GetAction().GetGeneratedFile()
 	}
 	return
 }

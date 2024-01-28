@@ -102,7 +102,7 @@ type GnuSourceDependenciesAction struct {
 }
 
 func (x *GnuSourceDependenciesAction) Alias() BuildAlias {
-	exportFile := x.GetExportFile()
+	exportFile := x.GetGeneratedFile()
 	return MakeBuildAlias("Action", "Gnu", exportFile.Dirname.Path, exportFile.Basename)
 }
 func (x *GnuSourceDependenciesAction) Build(bc BuildContext) error {

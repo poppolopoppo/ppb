@@ -96,18 +96,12 @@ func AppendUniq[T comparable](src []T, elts ...T) (result []T) {
 func Remove[T comparable](src []T, elts ...T) (result []T) {
 	result = src
 	numDeleteds := 0
-MAIN_LOOP:
 	for i, it := range result {
-		for j, jt := range elts {
-			if it == jt {
-				result[i] = result[len(result)-1-numDeleteds]
-				numDeleteds++
-				elts = append(elts[:j], elts[j+1:]...)
-				if len(elts) == 0 {
-					break MAIN_LOOP
-				} else {
-					break
-				}
+		if _, ok := IndexOf(it, elts...); ok {
+			result[i] = result[len(result)-1-numDeleteds]
+			numDeleteds++
+			if numDeleteds == len(elts) {
+				break
 			}
 		}
 	}

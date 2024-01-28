@@ -180,6 +180,10 @@ func (x *fixedSizeThreadPool) threadLoop(threadContext ThreadContext) {
 		case task = <-x.give[TASKPRIORITY_LOW]: // low priority only if high if empty
 		}
 
+		if task == nil {
+			break // worker was killed
+		}
+
 		x.workload.Add(1)
 		task(threadContext)
 		x.workload.Add(-1)

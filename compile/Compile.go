@@ -111,7 +111,7 @@ var GetCompileFlags = NewCompilationFlags("GenericCompilation", "cross-platform 
 	PCH:             PCH_INHERIT,
 	RuntimeChecks:   base.INHERITABLE_INHERIT,
 	Sanitizer:       SANITIZER_NONE,
-	SizePerUnity:    300 * 1024.0, // 300 KiB
+	SizePerUnity:    150 * 1024.0, // 150 KiB
 	Unity:           UNITY_INHERIT,
 })
 

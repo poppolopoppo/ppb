@@ -396,6 +396,8 @@ func (g *buildGraph) GetDependencyInputFiles(recursive bool, queue ...BuildAlias
 		switch file := node.Buildable.(type) {
 		case BuildableSourceFile:
 			files.AppendUniq(file.GetSourceFile())
+		case BuildableGeneratedFile:
+			files.AppendUniq(file.GetGeneratedFile())
 		}
 
 		if recursive {
@@ -440,6 +442,8 @@ func (g *buildGraph) GetDependencyOutputFiles(queue ...BuildAlias) (FileSet, err
 		switch file := node.Buildable.(type) {
 		case BuildableSourceFile:
 			files.AppendUniq(file.GetSourceFile())
+		case BuildableGeneratedFile:
+			files.AppendUniq(file.GetGeneratedFile())
 		}
 
 		for _, it := range node.OutputFiles {

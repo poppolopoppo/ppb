@@ -31,6 +31,7 @@ The current version of the toolchain is stronlgy assuming C++ is the main langua
 - Generate [compile_commands.json](https://clangd.llvm.org/design/compile-commands) and Visual Studio Code workspace
 - Build execution is parallelized and dependencies are tracked to guarantee mininal rebuilds
 - Supports compilation and link caching with deterministic builds
+- Projects can use precompiled headers (PCH) or convert them to C++20 header units, to allow caching and distribution
 - Cached compilation results are compressed using [facebook zstd](https://github.com/facebook/zstd) or [lz4](https://github.com/lz4/lz4)
 - Actions can be distributed over a cluster of workers using [google QUIC](https://en.wikipedia.org/wiki/QUIC) peer-to-peer protocol
 - Distribution is decentralized and workload is balanced according to resources available on peers

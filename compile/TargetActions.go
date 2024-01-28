@@ -212,7 +212,16 @@ func (x *buildActionGenerator) CreateActions(bg BuildGraph) error {
 			return err
 		}
 
-		objs, err := x.ObjectListActions(pchs)
+		headerUnits, err := x.HeaderUnitActions(customs)
+		if err != nil {
+			return err
+		}
+
+		if err := x.CreatePayload(PAYLOAD_HEADERUNIT, headerUnits.Aliases()); err != nil {
+			return err
+		}
+
+		objs, err := x.ObjectListActions(headerUnits, pchs)
 		if err != nil {
 			return err
 		}
@@ -223,10 +232,11 @@ func (x *buildActionGenerator) CreateActions(bg BuildGraph) error {
 
 		switch x.Unit.Payload {
 		case PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB:
-			link, err := x.LinkActions(pchs, objs.Concat(customs...))
+			link, err := x.LinkActions(headerUnits, pchs, objs.Concat(customs...))
 			if err != nil {
 				return err
 			}
+			base.AssertNotIn(len(link), 0)
 
 			if err := x.CreatePayload(x.Unit.Payload, link.Aliases()); err != nil {
 				return err
@@ -235,10 +245,11 @@ func (x *buildActionGenerator) CreateActions(bg BuildGraph) error {
 			targetOutputs = link
 
 		case PAYLOAD_STATICLIB:
-			lib, err := x.LibrarianActions(pchs, objs.Concat(customs...))
+			lib, err := x.LibrarianActions(headerUnits, pchs, objs.Concat(customs...))
 			if err != nil {
 				return err
 			}
+			base.AssertNotIn(len(lib), 0)
 
 			if err := x.CreatePayload(PAYLOAD_STATICLIB, lib.Aliases()); err != nil {
 				return err
@@ -254,7 +265,7 @@ func (x *buildActionGenerator) CreateActions(bg BuildGraph) error {
 		}
 
 	} else {
-		if err := x.CreatePayload(PAYLOAD_HEADERS, customs.Aliases()); err != nil {
+		if err := x.ForceCreatePayload(PAYLOAD_HEADERS, customs.Aliases()); err != nil {
 			return err
 		}
 
@@ -284,7 +295,7 @@ func (x *buildActionGenerator) NumActions() (total int) {
 	}
 	return
 }
-func (x *buildActionGenerator) CreatePayload(payloadType PayloadType, actionAliases BuildAliases) error {
+func (x *buildActionGenerator) ForceCreatePayload(payloadType PayloadType, actionAliases BuildAliases) error {
 	targetPayload := &TargetPayload{
 		TargetAlias:   x.TargetAlias,
 		PayloadType:   payloadType,
@@ -297,6 +308,12 @@ func (x *buildActionGenerator) CreatePayload(payloadType PayloadType, actionAlia
 	return x.BuildContext.OutputNode(WrapBuildFactory(func(bi BuildInitializer) (*TargetPayload, error) {
 		return targetPayload, bi.DependsOn(targetPayload.ActionAliases...)
 	}))
+}
+func (x *buildActionGenerator) CreatePayload(payloadType PayloadType, actionAliases BuildAliases) error {
+	if !actionAliases.Empty() {
+		return x.ForceCreatePayload(payloadType, actionAliases)
+	}
+	return nil
 }
 
 func (x *buildActionGenerator) CreateAction(
@@ -328,7 +345,7 @@ func (x *buildActionGenerator) CreateAction(
 	}
 
 	// expand %1, %2 and %3: this is the final step, after every other side-effect has been applied
-	model.Command.Arguments = performArgumentSubstitution(x.Unit, payload, &model)
+	model.Command.Arguments = performArgumentSubstitution(payload, &model)
 
 	// finally, outputs generated action in build graph
 	actionFactory := action.BuildAction(&model,
@@ -375,6 +392,40 @@ func (x *buildActionGenerator) GetOutputActions(targets ...TargetAlias) (action.
 	return action.ActionSet{}, err
 }
 
+func (x *buildActionGenerator) HeaderUnitActions(dependencies action.ActionSet) (action.ActionSet, error) {
+	actions := action.ActionSet{}
+	switch x.Unit.PCH {
+	case PCH_HEADERUNIT:
+		compilerRules := x.Compiler.GetCompiler()
+
+		headerUnitObject := Filename{
+			Dirname:  x.Unit.PrecompiledObject.Dirname,
+			Basename: x.Unit.PrecompiledObject.Basename + x.Compiler.Extname(PAYLOAD_OBJECTLIST)}
+
+		buildAction, err := x.CreateAction(
+			PAYLOAD_HEADERUNIT,
+			action.ActionModel{
+				Command: action.CommandRules{
+					Arguments:   x.Unit.HeaderUnitOptions,
+					Environment: compilerRules.Environment,
+					Executable:  compilerRules.Executable,
+					WorkingDir:  UFS.Root,
+				},
+				StaticInputFiles: FileSet{x.Unit.PrecompiledHeader},
+				ExportFile:       headerUnitObject,
+				OutputFile:       x.Unit.PrecompiledObject,
+				StaticDeps:       dependencies.Aliases(),
+				Options:          action.MakeOptionFlags(action.OPT_ALLOW_SOURCECONTROL),
+			})
+		if err != nil {
+			return action.ActionSet{}, err
+		}
+
+		actions.Append(buildAction)
+	}
+	return actions, nil
+}
+
 func (x *buildActionGenerator) PrecompilerHeaderActions(dependencies action.ActionSet) (action.ActionSet, error) {
 	actions := action.ActionSet{}
 	switch x.Unit.PCH {
@@ -382,6 +433,7 @@ func (x *buildActionGenerator) PrecompilerHeaderActions(dependencies action.Acti
 		// nothing to do
 	case PCH_MONOLITHIC:
 		compilerRules := x.Compiler.GetCompiler()
+
 		pchObject := Filename{
 			Dirname:  x.Unit.PrecompiledObject.Dirname,
 			Basename: x.Unit.PrecompiledObject.Basename + x.Compiler.Extname(PAYLOAD_OBJECTLIST)}
@@ -407,6 +459,8 @@ func (x *buildActionGenerator) PrecompilerHeaderActions(dependencies action.Acti
 		}
 
 		actions.Append(buildAction)
+	case PCH_HEADERUNIT:
+		// handed in HeaderUnitActions()
 	case PCH_SHARED:
 		return action.ActionSet{}, fmt.Errorf("PCH_SHARED is not supported at the monent")
 	default:
@@ -428,7 +482,7 @@ func (x *buildActionGenerator) CustomActions() (action.ActionSet, error) {
 			TargetActions: x.TargetActions,
 			BuildContext:  x.BuildContext,
 		}
-		if actions, err := generator.ObjectListActions(action.ActionSet{}); err == nil {
+		if actions, err := generator.ObjectListActions(action.ActionSet{}, action.ActionSet{}); err == nil {
 			result.Append(actions...)
 		} else {
 			return action.ActionSet{}, err
@@ -436,7 +490,7 @@ func (x *buildActionGenerator) CustomActions() (action.ActionSet, error) {
 	}
 	return result, nil
 }
-func (x *buildActionGenerator) ObjectListActions(pchs action.ActionSet) (action.ActionSet, error) {
+func (x *buildActionGenerator) ObjectListActions(headerUnits, pchs action.ActionSet) (action.ActionSet, error) {
 	includeDeps, err := x.GetOutputActions(x.Unit.IncludeDependencies...)
 	if err != nil {
 		return action.ActionSet{}, err
@@ -448,18 +502,24 @@ func (x *buildActionGenerator) ObjectListActions(pchs action.ActionSet) (action.
 	}
 
 	compilerRules := x.Compiler.GetCompiler()
+
 	includeAliases := includeDeps.Aliases()
+	includeAliases.Append(headerUnits.Aliases()...)
 
 	base.Assert(sourceFiles.IsUniq)
 	objs := make(action.ActionSet, len(sourceFiles))
 	for i, input := range sourceFiles {
 		output := x.Unit.GetPayloadOutput(x.Compiler, input, PAYLOAD_OBJECTLIST)
 
-		// only insert generated unity files as static inputs for object lists
-		// do *NOT* insert all inputs as static dependencies: they are already recorded as dynamic dependencies by ActionRules.Build()
-		var staticDeps BuildAliases
+		staticDeps := includeAliases
+		staticInputFiles := FileSet{input}
+		dynamicInputFiles := FileSet{}
+
+		// can't depend staticaly of unity output file
 		if unity, err := FindUnityFile(input); err == nil {
-			staticDeps.Append(unity.Alias())
+			dynamicInputFiles = staticInputFiles
+			staticInputFiles = FileSet{}
+			staticDeps = append(staticDeps, unity.Alias())
 		}
 
 		objs[i], err = x.CreateAction(
@@ -471,11 +531,12 @@ func (x *buildActionGenerator) ObjectListActions(pchs action.ActionSet) (action.
 					Executable:  compilerRules.Executable,
 					WorkingDir:  UFS.Root,
 				},
-				StaticInputFiles: FileSet{input},
-				ExportFile:       output,
-				OutputFile:       output,
-				Prerequisites:    pchs,
-				StaticDeps:       append(includeAliases, staticDeps...),
+				StaticInputFiles:  staticInputFiles,
+				DynamicInputFiles: dynamicInputFiles,
+				ExportFile:        output,
+				OutputFile:        output,
+				Prerequisites:     pchs,
+				StaticDeps:        staticDeps,
 				// allow compiler support for dependency list generation
 				Options: action.MakeOptionFlags(action.OPT_ALLOW_SOURCECONTROL),
 			})
@@ -487,8 +548,9 @@ func (x *buildActionGenerator) ObjectListActions(pchs action.ActionSet) (action.
 
 	return objs, nil
 }
-func (x *buildActionGenerator) LibrarianActions(pchs, objs action.ActionSet) (action.ActionSet, error) {
+func (x *buildActionGenerator) LibrarianActions(headerUnits, pchs, objs action.ActionSet) (action.ActionSet, error) {
 	base.AssertIn(x.Unit.Payload, PAYLOAD_STATICLIB, PAYLOAD_SHAREDLIB)
+	base.AssertNotIn(len(objs), 0)
 
 	compileDeps, err := x.GetOutputActions(x.Unit.CompileDependencies...)
 	if err != nil {
@@ -511,7 +573,7 @@ func (x *buildActionGenerator) LibrarianActions(pchs, objs action.ActionSet) (ac
 				Executable:  compilerRules.Librarian,
 				WorkingDir:  UFS.Root,
 			},
-			DynamicInputs: objs.Concat(compileDeps...),
+			DynamicInputs: objs.Concat(compileDeps...).Concat(headerUnits...),
 			ExportFile:    x.Unit.ExportFile,
 			OutputFile:    x.Unit.OutputFile,
 			ExtraFiles:    extraFiles,
@@ -520,8 +582,9 @@ func (x *buildActionGenerator) LibrarianActions(pchs, objs action.ActionSet) (ac
 
 	return action.ActionSet{lib}, err
 }
-func (x *buildActionGenerator) LinkActions(pchs, objs action.ActionSet) (action.ActionSet, error) {
+func (x *buildActionGenerator) LinkActions(headerUnits, pchs, objs action.ActionSet) (action.ActionSet, error) {
 	base.AssertIn(x.Unit.Payload, PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB)
+	base.AssertNotIn(len(objs), 0)
 
 	compileDeps, err := x.GetOutputActions(x.Unit.CompileDependencies...)
 	if err != nil {
@@ -554,7 +617,7 @@ func (x *buildActionGenerator) LinkActions(pchs, objs action.ActionSet) (action.
 				Executable:  compilerRules.Linker,
 				WorkingDir:  UFS.Root,
 			},
-			DynamicInputs: objs.Concat(compileDeps.Concat(linkDeps...)...),
+			DynamicInputs: objs.Concat(compileDeps...).Concat(linkDeps...).Concat(headerUnits...),
 			ExportFile:    x.Unit.ExportFile,
 			OutputFile:    x.Unit.OutputFile,
 			ExtraFiles:    extraFiles,
@@ -569,9 +632,7 @@ func (x *buildActionGenerator) LinkActions(pchs, objs action.ActionSet) (action.
  * Command-line quoting and parameter expansion
  ***************************************/
 
-func performArgumentSubstitution(
-	unit *Unit, payload PayloadType,
-	model *action.ActionModel) base.StringSet {
+func performArgumentSubstitution(payload PayloadType, model *action.ActionModel) base.StringSet {
 	var (
 		allowRelativePath = model.Options.Any(action.OPT_ALLOW_RELATIVEPATH)
 		inputFiles        = model.GetCommandInputFiles()
@@ -605,12 +666,14 @@ func performArgumentSubstitution(
 				}
 			}
 
-			if payload != PAYLOAD_PRECOMPILEDHEADER {
+			switch payload {
+			case PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_HEADERUNIT:
+				arg = strings.ReplaceAll(arg, "%2", MakeLocalFilenameIFP(model.OutputFile, allowRelativePath)) // stdafx.pch
+				// special for PCH generation
+				arg = strings.ReplaceAll(arg, "%3", MakeLocalFilenameIFP(model.ExportFile, allowRelativePath)) // stdafx.pch.obj
+			default:
 				relativePath := MakeLocalFilenameIFP(model.OutputFile, allowRelativePath)
 				arg = strings.ReplaceAll(arg, "%2", relativePath)
-			} else { // special for PCH generation
-				arg = strings.ReplaceAll(arg, "%2", MakeLocalFilenameIFP(unit.PrecompiledObject, allowRelativePath)) // stdafx.pch
-				arg = strings.ReplaceAll(arg, "%3", MakeLocalFilenameIFP(model.ExportFile, allowRelativePath))       // stdafx.pch.obj
 			}
 		}
 

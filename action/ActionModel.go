@@ -46,23 +46,25 @@ func (x *ArtifactRules) Serialize(ar base.Archive) {
 type ActionModel struct {
 	Command CommandRules
 
-	DynamicInputs    ActionSet
-	StaticInputFiles utils.FileSet
-	ExportFile       utils.Filename
-	OutputFile       utils.Filename
-	ExtraFiles       utils.FileSet
+	DynamicInputs     ActionSet
+	DynamicInputFiles utils.FileSet
+	StaticInputFiles  utils.FileSet
+
+	ExportFile utils.Filename
+	OutputFile utils.Filename
+	ExtraFiles utils.FileSet
 
 	Options       OptionFlags
 	Prerequisites ActionSet
 	StaticDeps    utils.BuildAliases
 }
 
-func (x *ActionModel) GetCommandInputFiles() utils.FileSet {
-	if len(x.DynamicInputs) == 0 {
-		return x.StaticInputFiles
-	} else {
-		return x.StaticInputFiles.Concat(x.DynamicInputs.GetExportFiles()...)
+func (x *ActionModel) GetCommandInputFiles() (results utils.FileSet) {
+	results = x.StaticInputFiles.Concat(x.DynamicInputFiles...)
+	if len(x.DynamicInputs) > 0 {
+		results.Append(x.DynamicInputs.GetExportFiles()...)
 	}
+	return
 }
 
 func (x *ActionModel) CreateActionRules() ActionRules {

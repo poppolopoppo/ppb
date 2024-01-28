@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -217,13 +218,26 @@ func (g *buildGraph) PrintSummary(startedAt time.Time) {
 		sstep := base.Smootherstep(ns.Duration.Exclusive.Seconds() / totalDuration.Seconds()) // use percent of blocking duration
 		rowColor := base.NewColdHotColor(math.Sqrt(sstep))
 
-		base.LogForwardf("%v[%02d] - %6.2f%% -  %6.3f  %6.3f  --  %s%v",
+		annotation := ""
+		switch buildable := node.GetBuildable().(type) {
+		case BuildableGeneratedFile:
+			if info, err := buildable.GetGeneratedFile().Info(); err == nil {
+				annotation = fmt.Sprintf("  (%v)", base.SizeInBytes(info.Size()))
+			}
+		case BuildableSourceFile:
+			if info, err := buildable.GetSourceFile().Info(); err == nil {
+				annotation = fmt.Sprintf("  (%v)", base.SizeInBytes(info.Size()))
+			}
+		}
+
+		base.LogForwardf("%v[%02d] - %6.2f%% -  %6.3f  %6.3f  --  %s%v%v",
 			rowColor.Quantize(true).Ansi(true),
 			(i + 1),
 			100.0*fract,
 			ns.Duration.Exclusive.Seconds(),
 			ns.Duration.Inclusive.Seconds(),
 			node.Alias(),
+			annotation,
 			base.ANSI_RESET)
 	}
 }

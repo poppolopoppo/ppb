@@ -796,6 +796,7 @@ const (
 	PCH_DISABLED
 	PCH_MONOLITHIC
 	PCH_SHARED
+	PCH_HEADERUNIT
 )
 
 func PrecompiledHeaderTypes() []PrecompiledHeaderType {
@@ -804,6 +805,7 @@ func PrecompiledHeaderTypes() []PrecompiledHeaderType {
 		PCH_DISABLED,
 		PCH_MONOLITHIC,
 		PCH_SHARED,
+		PCH_HEADERUNIT,
 	}
 }
 func (x PrecompiledHeaderType) Description() string {
@@ -816,6 +818,8 @@ func (x PrecompiledHeaderType) Description() string {
 		return "generate a dedicated precompiled header for this module"
 	case PCH_SHARED:
 		return "reuse a shared precompiled header for this module"
+	case PCH_HEADERUNIT:
+		return "generate a C++20 header unit, which is faster/smaller than PCH and machine indepedent"
 	default:
 		base.UnexpectedValue(x)
 		return ""
@@ -831,6 +835,8 @@ func (x PrecompiledHeaderType) String() string {
 		return "MONOLITHIC"
 	case PCH_SHARED:
 		return "SHARED"
+	case PCH_HEADERUNIT:
+		return "HEADERUNIT"
 	default:
 		base.UnexpectedValue(x)
 		return ""
@@ -849,6 +855,8 @@ func (x *PrecompiledHeaderType) Set(in string) (err error) {
 		*x = PCH_MONOLITHIC
 	case PCH_SHARED.String():
 		*x = PCH_SHARED
+	case PCH_HEADERUNIT.String():
+		*x = PCH_HEADERUNIT
 	default:
 		err = base.MakeUnexpectedValueError(x, in)
 	}
@@ -880,6 +888,7 @@ const (
 	PAYLOAD_OBJECTLIST
 	PAYLOAD_STATICLIB
 	PAYLOAD_SHAREDLIB
+	PAYLOAD_HEADERUNIT
 	PAYLOAD_PRECOMPILEDHEADER
 	PAYLOAD_HEADERS
 	PAYLOAD_SOURCES
@@ -895,6 +904,7 @@ func PayloadTypes() []PayloadType {
 		PAYLOAD_OBJECTLIST,
 		PAYLOAD_STATICLIB,
 		PAYLOAD_SHAREDLIB,
+		PAYLOAD_HEADERUNIT,
 		PAYLOAD_PRECOMPILEDHEADER,
 		PAYLOAD_HEADERS,
 		PAYLOAD_SOURCES,
@@ -918,6 +928,8 @@ func (x PayloadType) Description() string {
 		return "static library"
 	case PAYLOAD_SHAREDLIB:
 		return "shared dynamic library"
+	case PAYLOAD_HEADERUNIT:
+		return "header unit"
 	case PAYLOAD_PRECOMPILEDHEADER:
 		return "shared precompiled header"
 	case PAYLOAD_HEADERS:
@@ -943,6 +955,8 @@ func (x PayloadType) String() string {
 		return "STATICLIB"
 	case PAYLOAD_SHAREDLIB:
 		return "SHAREDLIB"
+	case PAYLOAD_HEADERUNIT:
+		return "HEADERUNIT"
 	case PAYLOAD_PRECOMPILEDHEADER:
 		return "PRECOMPILEDHEADER"
 	case PAYLOAD_HEADERS:
@@ -968,6 +982,8 @@ func (x *PayloadType) Set(in string) (err error) {
 		*x = PAYLOAD_STATICLIB
 	case PAYLOAD_SHAREDLIB.String():
 		*x = PAYLOAD_SHAREDLIB
+	case PAYLOAD_HEADERUNIT.String():
+		*x = PAYLOAD_HEADERUNIT
 	case PAYLOAD_PRECOMPILEDHEADER.String():
 		*x = PAYLOAD_PRECOMPILEDHEADER
 	case PAYLOAD_HEADERS.String():
@@ -1012,7 +1028,8 @@ func (x PayloadType) HasLinker() bool {
 	case PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB:
 		return true
 	case PAYLOAD_OBJECTLIST, PAYLOAD_STATICLIB:
-	case PAYLOAD_HEADERS, PAYLOAD_SOURCES, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_DEBUGSYMBOLS, PAYLOAD_DEPENDENCIES:
+	case PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER:
+	case PAYLOAD_HEADERS, PAYLOAD_SOURCES, PAYLOAD_DEBUGSYMBOLS, PAYLOAD_DEPENDENCIES:
 	default:
 		base.UnexpectedValue(x)
 	}
@@ -1020,7 +1037,7 @@ func (x PayloadType) HasLinker() bool {
 }
 func (x PayloadType) HasOutput() bool {
 	switch x {
-	case PAYLOAD_EXECUTABLE, PAYLOAD_OBJECTLIST, PAYLOAD_STATICLIB, PAYLOAD_SHAREDLIB:
+	case PAYLOAD_EXECUTABLE, PAYLOAD_OBJECTLIST, PAYLOAD_STATICLIB, PAYLOAD_SHAREDLIB, PAYLOAD_HEADERUNIT:
 		return true
 	case PAYLOAD_HEADERS, PAYLOAD_SOURCES, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_DEBUGSYMBOLS, PAYLOAD_DEPENDENCIES:
 	default:
@@ -1032,7 +1049,7 @@ func (x PayloadType) HasMultipleInput() bool {
 	switch x {
 	case PAYLOAD_EXECUTABLE, PAYLOAD_STATICLIB, PAYLOAD_SHAREDLIB:
 		return true
-	case PAYLOAD_OBJECTLIST, PAYLOAD_HEADERS, PAYLOAD_SOURCES, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_DEBUGSYMBOLS, PAYLOAD_DEPENDENCIES:
+	case PAYLOAD_OBJECTLIST, PAYLOAD_HEADERS, PAYLOAD_SOURCES, PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_DEBUGSYMBOLS, PAYLOAD_DEPENDENCIES:
 	default:
 		base.UnexpectedValue(x)
 	}
