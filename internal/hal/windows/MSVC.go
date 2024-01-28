@@ -997,19 +997,22 @@ func (x *MsvcProductInstall) Build(bc BuildContext) error {
 }
 
 func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
+
 	compileFlags, err := GetCompileFlags(bc)
 	if err != nil {
 		return err
 	}
-	windowsFlags, err := GetWindowsFlags(bc)
-	if err != nil {
+
+	if windowsFlags, err := GetWindowsFlags(bc); err == nil {
+		msvc.WindowsFlags = *windowsFlags
+	} else {
 		return err
 	}
 
 	msvcProductInstall, err := GetMsvcProductInstall(MsvcProductVer{
 		Arch:    msvc.Arch,
-		MscVer:  windowsFlags.MscVer,
-		Insider: windowsFlags.Insider,
+		MscVer:  msvc.WindowsFlags.MscVer,
+		Insider: msvc.WindowsFlags.Insider,
 	}).Need(bc)
 	if err != nil {
 		return
@@ -1022,7 +1025,7 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 	}
 	msvc.ResourceCompilerInstall = resourceCompiler.Alias()
 
-	windowsSDKInstall, err := GetWindowsSDKInstall(bc, windowsFlags.WindowsSDK)
+	windowsSDKInstall, err := GetWindowsSDKInstall(bc, msvc.WindowsFlags.WindowsSDK)
 	if err != nil {
 		return
 	}
@@ -1159,7 +1162,7 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 	)
 
 	// strict vs permissive
-	if windowsFlags.Permissive.Get() {
+	if msvc.WindowsFlags.Permissive.Get() {
 		base.LogVeryVerbose(LogWindows, "MSVC: using permissive compilation options")
 
 		facet.AddCompilationFlag("/permissive", "/WX-")
@@ -1199,7 +1202,7 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 	}
 
 	if msc_ver >= MSC_VER_2019 {
-		if windowsFlags.JustMyCode.Get() {
+		if msvc.WindowsFlags.JustMyCode.Get() {
 			base.LogVeryVerbose(LogWindows, "MSVC: using just-my-code")
 			facet.AddCompilationFlag_NoAnalysis("/JMC")
 		} else {

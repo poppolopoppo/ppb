@@ -145,6 +145,11 @@ func (x *ActionRules) Build(bc utils.BuildContext) error {
 		if err = GetActionCache().CacheRead(cacheKey, &cacheArtifact); err == nil {
 			wasRetrievedFromCache = true // cache-hit
 			bc.Annotate(utils.AnnocateBuildComment(`CACHE`))
+
+			// restore dynamic dependencies
+			if err = bc.NeedFiles(cacheArtifact.DependencyFiles...); err != nil {
+				return err
+			}
 		} else {
 			base.LogWarningVerbose(LogAction, "%v: %v", x.Alias(), err)
 		}
@@ -172,7 +177,7 @@ func (x *ActionRules) Build(bc utils.BuildContext) error {
 		}
 
 		// whole input files set = static + dynamic
-		if !wasRetrievedFromCache && x.Options.Has(OPT_ALLOW_CACHEWRITE) && flags.CacheMode.HasWrite() {
+		if x.Options.Has(OPT_ALLOW_CACHEWRITE) && flags.CacheMode.HasWrite() {
 			if !hasValidCacheArtifact {
 				if cacheArtifact, cacheKey, err = createActionCacheArtifact(&x.CommandRules, staticInputFiles, x.OutputFiles); err != nil {
 					return err

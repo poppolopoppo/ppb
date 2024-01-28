@@ -241,7 +241,10 @@ func (x *ActionCacheBulk) Equals(y ActionCacheBulk) bool {
 	return x.Path.Equals(y.Path)
 }
 func (x *ActionCacheBulk) CacheHit(options ...BuildOptionFunc) error {
-	digests := internal_io.PrepareFileDigests(CommandEnv.BuildGraph(), len(x.Digests), func(i int) Filename { return x.Digests[i].Source }, options...)
+	digests := internal_io.PrepareFileDigests(CommandEnv.BuildGraph(),
+		len(x.Digests),
+		func(i int) Filename { return x.Digests[i].Source },
+		options...)
 
 	return base.ParallelJoin(func(i int, fd *internal_io.FileDigest) error {
 		base.AssertIn(fd.Source, x.Digests[i].Source)
@@ -354,6 +357,22 @@ func (x *ActionCacheBulk) Serialize(ar base.Archive) {
  * ActionCacheEntry
  ***************************************/
 
+type actionCacheMissError struct {
+	ActionCacheKey
+}
+
+func (x actionCacheMissError) Error() string {
+	return fmt.Sprintf("action-cache: cache miss for action key %q, recompiling", x.ActionCacheKey)
+}
+
+type actionCacheMissmatchError struct {
+	ActionCacheKey
+}
+
+func (x actionCacheMissmatchError) Error() string {
+	return fmt.Sprintf("action-cache: artifacts file set do not match for action key %q", x.ActionCacheKey)
+}
+
 type ActionCacheEntry struct {
 	Key   ActionCacheKey
 	Bulks []ActionCacheBulk
@@ -369,7 +388,16 @@ func (x *ActionCacheEntry) CacheRead(artifact *CacheArtifact) error {
 			retrieved, err := bulk.Inflate(UFS.Root)
 
 			if err == nil && !retrieved.Equals(artifact.OutputFiles) {
-				err = fmt.Errorf("action-cache: artifacts file set do not match for action key %q", x.Key)
+				err = actionCacheMissmatchError{x.Key}
+			}
+
+			if err == nil {
+				// restore dependency files from cache
+				for _, digest := range bulk.Digests {
+					if !artifact.InputFiles.Contains(digest.Source) {
+						artifact.DependencyFiles.Append(digest.Source)
+					}
+				}
 			}
 
 			return err
@@ -377,7 +405,7 @@ func (x *ActionCacheEntry) CacheRead(artifact *CacheArtifact) error {
 			base.LogWarningVerbose(LogActionCache, "cache read action key %q: %v", x.Key, err)
 		}
 	}
-	return fmt.Errorf("action-cache: cache miss for action key %q, recompiling", x.Key)
+	return actionCacheMissError{x.Key}
 }
 func (x *ActionCacheEntry) CacheWrite(cachePath Directory, artifact *CacheArtifact) (bool, error) {
 	bulk, err := NewActionCacheBulk(cachePath, x.Key, artifact.InputFiles.Concat(artifact.DependencyFiles...))
