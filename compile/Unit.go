@@ -218,8 +218,8 @@ func (unit *Unit) GetBinariesOutput(compiler Compiler, src Filename, payload Pay
 	base.AssertIn(payload, PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB)
 	modulePath := src.Relative(UFS.Source)
 	modulePath = SanitizePath(modulePath, '-')
-	return UFS.Binaries.AbsoluteFile(modulePath).Normalize().ReplaceExt(
-		fmt.Sprintf("-%s%s", unit.TargetAlias.EnvironmentAlias, compiler.Extname(payload)))
+	modulePath = fmt.Sprintf("%s-%s", modulePath, unit.TargetAlias.EnvironmentAlias)
+	return compiler.GetPayloadOutput(unit, payload, UFS.Binaries.AbsoluteFile(modulePath))
 }
 func (unit *Unit) GetIntermediateOutput(compiler Compiler, src Filename, payload PayloadType) Filename {
 	base.AssertIn(payload, PAYLOAD_OBJECTLIST, PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_STATICLIB)
@@ -229,7 +229,7 @@ func (unit *Unit) GetIntermediateOutput(compiler Compiler, src Filename, payload
 	} else {
 		modulePath = src.Relative(unit.ModuleDir)
 	}
-	return unit.IntermediateDir.AbsoluteFile(modulePath).Normalize().ReplaceExt(compiler.Extname(payload))
+	return compiler.GetPayloadOutput(unit, payload, unit.IntermediateDir.AbsoluteFile(modulePath))
 }
 func (unit *Unit) GetPayloadOutput(compiler Compiler, src Filename, payload PayloadType) (result Filename) {
 	switch payload {
