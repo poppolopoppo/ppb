@@ -1261,6 +1261,36 @@ func (x *AutoCompleteCommand) Run(cc CommandContext) error {
 	return nil
 }
 
-var CommandAutoComplete = NewCommandable("Misc", "autocomplete", "run auto-completion", &AutoCompleteCommand{
-	MaxResults: 15,
-})
+var CommandAutoComplete = NewCommandable(
+	"Misc",
+	"autocomplete",
+	"run auto-completion",
+	&AutoCompleteCommand{
+		MaxResults: 15,
+	})
+
+/***************************************
+ * Show Version
+ ***************************************/
+
+var CommandBuildVersion = NewCommand(
+	"Misc",
+	"version",
+	"print build version",
+	OptionCommandRun(func(cc CommandContext) error {
+		base.LogForwardln(GetProcessInfo().String())
+		return nil
+	}))
+
+/***************************************
+ * Show Build Seed
+ ***************************************/
+
+var CommandBuildSeed = NewCommand(
+	"Misc",
+	"seed",
+	"print build seed",
+	OptionCommandRun(func(cc CommandContext) error {
+		base.LogForwardln(GetProcessSeed().String())
+		return nil
+	}))

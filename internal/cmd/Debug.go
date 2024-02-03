@@ -501,36 +501,3 @@ var ProgressBar = utils.NewCommand(
 			pbar.Close()
 		}
 	}))
-
-var TestClient = utils.NewCommand(
-	"Debug",
-	"test_client",
-	"internal command for debugging distribution",
-	utils.OptionCommandRun(func(cc utils.CommandContext) error {
-		dist := action.GetActionDist()
-		tick := time.NewTicker(3 * time.Second)
-		defer tick.Stop()
-		for {
-			<-tick.C
-			dist.GetDistStats()
-			// stats.Print()
-		}
-	}))
-
-var ShowVersion = utils.NewCommand(
-	"Debug",
-	"version",
-	"print build version",
-	utils.OptionCommandRun(func(cc utils.CommandContext) error {
-		base.LogForwardln(utils.GetProcessInfo().String())
-		return nil
-	}))
-
-var ShowSeed = utils.NewCommand(
-	"Debug",
-	"seed",
-	"print build seed",
-	utils.OptionCommandRun(func(cc utils.CommandContext) error {
-		base.LogForwardln(utils.GetProcessSeed().String())
-		return nil
-	}))
