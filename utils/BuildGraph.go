@@ -66,15 +66,16 @@ type BuildGraph interface {
 	GetDynamicDependencies(BuildNode) []BuildNode
 	GetOutputDependencies(BuildNode) []BuildNode
 
-	GetDependencyChain(a, b BuildAlias) ([]BuildDependencyLink, error)
+	GetDependencyChain(a, b BuildAlias, weight func(BuildDependencyLink) float32) ([]BuildDependencyLink, error)
 	GetDependencyInputFiles(recursive bool, queue ...BuildAlias) (FileSet, error)
 	GetDependencyOutputFiles(queue ...BuildAlias) (FileSet, error)
 	GetDependencyLinks(BuildAlias) ([]BuildDependencyLink, error)
 
 	GetBuildStats() BuildStats
+	GetCriticalPathNodes() []BuildNode
 	GetMostExpansiveNodes(n int, inclusive bool) []BuildNode
 
-	PrintSummary(startedAt time.Time)
+	PrintSummary(startedAt time.Time, level base.LogLevel)
 
 	OnBuildGraphStart(base.EventDelegate[BuildGraph]) base.DelegateHandle
 	OnBuildNodeStart(base.EventDelegate[BuildNode]) base.DelegateHandle
@@ -476,26 +477,34 @@ func (g *buildGraph) GetDependencyOutputFiles(queue ...BuildAlias) (FileSet, err
 	return files, nil
 }
 
-func (g *buildGraph) GetDependencyChain(src, dst BuildAlias) ([]BuildDependencyLink, error) {
+func (g *buildGraph) GetDependencyChain(src, dst BuildAlias, weight func(BuildDependencyLink) float32) ([]BuildDependencyLink, error) {
 	// https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm#:~:text=in%20some%20topologies.-,Pseudocode,-%5Bedit%5D
 
 	const INDEX_NONE int32 = -1
 
 	vertices := g.nodes.Keys()
-	previous := make([]int32, len(vertices))
-	visiteds := make(map[string]int32, len(vertices))
-	distances := make([]int32, len(vertices))
-	linkTypes := make([]BuildDependencyType, len(vertices))
+	if len(vertices) == 0 {
+		return []BuildDependencyLink{}, nil
+	}
 
-	dstIndex := INDEX_NONE
+	var (
+		dstIndex  = INDEX_NONE
+		srcIndex  = INDEX_NONE
+		previous  = make([]int32, len(vertices))
+		visiteds  = make(map[string]int32, len(vertices))
+		distances = make([]float32, len(vertices))
+		linkTypes = make([]BuildDependencyType, len(vertices))
+	)
+
 	for i, a := range vertices {
 		visiteds[a] = int32(i)
-		distances[i] = math.MaxInt32
+		distances[i] = math.MaxFloat32
 		previous[i] = INDEX_NONE
 		linkTypes[i] = DEPENDENCY_ROOT
 
 		if a == src.String() {
 			distances[i] = 0
+			srcIndex = int32(i)
 		} else if a == dst.String() {
 			dstIndex = int32(i)
 		}
@@ -504,13 +513,21 @@ func (g *buildGraph) GetDependencyChain(src, dst BuildAlias) ([]BuildDependencyL
 	for len(visiteds) > 0 {
 		min := INDEX_NONE
 		for _, i := range visiteds {
-			if min < 0 || distances[i] < distances[min] {
+			if min == INDEX_NONE || distances[i] < distances[min] {
 				min = int32(i)
 			}
 		}
 
+		if distances[min] == math.MaxFloat32 {
+			break // no more reachability
+		}
+
 		u := vertices[min]
 		delete(visiteds, u)
+
+		if u == dst.String() {
+			break // destination found, guaranteed with shortest path
+		}
 
 		links, err := g.GetDependencyLinks(BuildAlias(u))
 		if err != nil {
@@ -520,8 +537,7 @@ func (g *buildGraph) GetDependencyChain(src, dst BuildAlias) ([]BuildDependencyL
 		for _, l := range links {
 			v := l.Alias
 			if j, ok := visiteds[v.String()]; ok {
-				alt := distances[min] + int32(l.Type) // weight by link type, favor output > static > dynamic
-				if alt < distances[j] {
+				if alt := distances[min] + 1; alt < distances[j] {
 					distances[j] = alt
 					previous[j] = min
 					linkTypes[j] = l.Type
@@ -530,19 +546,22 @@ func (g *buildGraph) GetDependencyChain(src, dst BuildAlias) ([]BuildDependencyL
 		}
 	}
 
-	chain := make([]BuildDependencyLink, distances[dstIndex]+1)
+	if distances[dstIndex] == math.MaxFloat32 {
+		return []BuildDependencyLink{}, fmt.Errorf("no link found between %q and %q", src, dst)
+	}
+
+	chain := make([]BuildDependencyLink, 1, 2)
 	chain[0] = BuildDependencyLink{
 		Alias: dst,
 		Type:  DEPENDENCY_ROOT,
 	}
 
-	next := dstIndex
-	for i := int32(0); i < distances[dstIndex]; i++ {
-		next = previous[next]
-		chain[i+1] = BuildDependencyLink{
-			Alias: BuildAlias(vertices[next]),
-			Type:  linkTypes[next],
-		}
+	for index := dstIndex; index != srcIndex; {
+		index = previous[index]
+		chain = append(chain, BuildDependencyLink{
+			Alias: BuildAlias(vertices[index]),
+			Type:  linkTypes[index],
+		})
 	}
 
 	return chain, nil
@@ -550,6 +569,67 @@ func (g *buildGraph) GetDependencyChain(src, dst BuildAlias) ([]BuildDependencyL
 
 func (g *buildGraph) GetBuildStats() BuildStats {
 	return g.stats
+}
+func (g *buildGraph) GetCriticalPathNodes() []BuildNode {
+	type buildNodes = base.SetT[BuildNode]
+	type criticalPath struct {
+		Nodes             buildNodes
+		InclusiveDuration time.Duration
+	}
+
+	var critical criticalPath
+
+	base.LogPanicIfFailed(LogBuildGraph,
+		g.nodes.Range(func(_ string, rootNode *buildNode) error {
+			if rootNode.GetBuildStats().Count == 0 ||
+				critical.Nodes.Contains(rootNode) {
+				return nil
+			}
+
+			queue := make([]criticalPath, 1)
+			queue[0] = criticalPath{Nodes: buildNodes{rootNode}}
+
+			foreachDependency := func(path criticalPath, it BuildAlias) error {
+				if node, err := g.Expect(it); err == nil {
+					base.Assert(func() bool { return !path.Nodes.Contains(node) })
+					queue = append(queue, criticalPath{
+						Nodes:             append(path.Nodes, node),
+						InclusiveDuration: path.InclusiveDuration,
+					})
+					return nil
+				} else {
+					return err
+				}
+			}
+
+			for len(queue) > 0 {
+				path := queue[len(queue)-1]
+				queue = queue[:len(queue)-1]
+
+				tip := path.Nodes[len(path.Nodes)-1]
+				base.AssertNotIn(tip.GetBuildStats().Count, 0)
+				path.InclusiveDuration += tip.GetBuildStats().Duration.Exclusive
+				if path.InclusiveDuration > critical.InclusiveDuration {
+					critical = path
+				}
+
+				for _, it := range tip.GetStaticDependencies() {
+					if err := foreachDependency(path, it); err != nil {
+						return err
+					}
+				}
+
+				for _, it := range tip.GetDynamicDependencies() {
+					if err := foreachDependency(path, it); err != nil {
+						return err
+					}
+				}
+			}
+
+			return nil
+		}))
+
+	return critical.Nodes
 }
 func (g *buildGraph) GetMostExpansiveNodes(n int, inclusive bool) (results []BuildNode) {
 	results = make([]BuildNode, 0, n)

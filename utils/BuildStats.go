@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,6 +19,13 @@ type BuildStats struct {
 		Exclusive time.Duration
 	}
 	Count int32
+}
+
+func (x BuildStats) GetExclusiveEnd() time.Duration {
+	return x.ExclusiveStart + x.Duration.Exclusive
+}
+func (x BuildStats) GetInclusiveEnd() time.Duration {
+	return x.InclusiveStart + x.Duration.Inclusive
 }
 
 /***************************************
@@ -96,12 +104,12 @@ func newBuildEvents() (result buildEvents) {
 		})
 		result.onBuildNodeStartEvent.Add(func(bn BuildNode) error {
 			pbar.Grow(1)
-			pbar.Log("Built %d / %d nodes", pbar.Progress(), pbar.Len())
+			pbar.Log("Built %d / %d nodes (workload: %d)", pbar.Progress(), pbar.Len(), base.GetGlobalThreadPool().GetWorkload())
 			return nil
 		})
 		result.onBuildNodeFinishedEvent.Add(func(bn BuildNode) error {
 			pbar.Inc()
-			pbar.Log("Built %d / %d nodes", pbar.Progress(), pbar.Len())
+			pbar.Log("Built %d / %d nodes (workload: %d)", pbar.Progress(), pbar.Len(), base.GetGlobalThreadPool().GetWorkload())
 			return nil
 		})
 		result.onBuildGraphFinishedEvent.Add(func(bg BuildGraph) error {
@@ -195,9 +203,20 @@ func (g *buildEvents) onBuildGraphFinished_ThreadSafe(graph *buildGraph) {
  * Build Summary
  ***************************************/
 
-func (g *buildGraph) PrintSummary(startedAt time.Time) {
+func (g *buildGraph) PrintSummary(startedAt time.Time, level base.LogLevel) {
+	/***************************************
+	 * Total duration (always)
+	 ***************************************/
+
 	totalDuration := time.Since(startedAt)
 	base.LogForwardf("\nProgram took %.3f seconds to run", totalDuration.Seconds())
+
+	/***************************************
+	 * Build durationl (if something was built)
+	 ***************************************/
+	if !level.IsVisible(base.LOG_INFO) {
+		return
+	}
 
 	stats := g.GetBuildStats()
 	if stats.Count == 0 {
@@ -208,6 +227,13 @@ func (g *buildGraph) PrintSummary(startedAt time.Time) {
 		stats.Duration.Exclusive.Seconds(), stats.Count,
 		base.GetGlobalThreadPool().GetArity(),
 		float32(stats.Duration.Exclusive)/float32(totalDuration))
+
+	/***************************************
+	 * Most expansive nodes built
+	 ***************************************/
+	if !level.IsVisible(base.LOG_VERBOSE) {
+		return
+	}
 
 	base.LogForwardf("\nMost expansive nodes built:")
 
@@ -222,11 +248,11 @@ func (g *buildGraph) PrintSummary(startedAt time.Time) {
 		switch buildable := node.GetBuildable().(type) {
 		case BuildableGeneratedFile:
 			if info, err := buildable.GetGeneratedFile().Info(); err == nil {
-				annotation = fmt.Sprintf("  (%v)", base.SizeInBytes(info.Size()))
+				annotation = fmt.Sprintf(" (%v)", base.SizeInBytes(info.Size()))
 			}
 		case BuildableSourceFile:
 			if info, err := buildable.GetSourceFile().Info(); err == nil {
-				annotation = fmt.Sprintf("  (%v)", base.SizeInBytes(info.Size()))
+				annotation = fmt.Sprintf(" (%v)", base.SizeInBytes(info.Size()))
 			}
 		}
 
@@ -236,6 +262,51 @@ func (g *buildGraph) PrintSummary(startedAt time.Time) {
 			100.0*fract,
 			ns.Duration.Exclusive.Seconds(),
 			ns.Duration.Inclusive.Seconds(),
+			node.Alias(),
+			annotation,
+			base.ANSI_RESET)
+	}
+
+	/***************************************
+	 * Critical path
+	 ***************************************/
+	if !level.IsVisible(base.LOG_VERYVERBOSE) {
+		return
+	}
+
+	criticalPath := g.GetCriticalPathNodes()
+	if len(criticalPath) < 2 {
+		return
+	}
+
+	base.LogForwardf("\nCritical path:")
+
+	for depth, node := range criticalPath {
+		ns := node.GetBuildStats()
+		fract := ns.Duration.Inclusive.Seconds() / stats.Duration.Inclusive.Seconds()
+
+		sstep := base.Smootherstep(ns.Duration.Inclusive.Seconds() / totalDuration.Seconds()) // use percent of blocking duration
+		rowColor := base.NewColdHotColor(math.Sqrt(sstep))
+
+		annotation := ``
+		switch buildable := node.GetBuildable().(type) {
+		case BuildableGeneratedFile:
+			if info, err := buildable.GetGeneratedFile().Info(); err == nil {
+				annotation = fmt.Sprintf(" (%v)", base.SizeInBytes(info.Size()))
+			}
+		case BuildableSourceFile:
+			if info, err := buildable.GetSourceFile().Info(); err == nil {
+				annotation = fmt.Sprintf(" (%v)", base.SizeInBytes(info.Size()))
+			}
+		}
+
+		base.LogForwardf("%v[%02d] - %6.2f%% -  %6.3f  %6.3f  --  %s%s%v%v",
+			rowColor.Quantize(true).Ansi(true),
+			depth,
+			100.0*fract,
+			ns.Duration.Exclusive.Seconds(),
+			ns.Duration.Inclusive.Seconds(),
+			strings.Repeat(` `, depth),
 			node.Alias(),
 			annotation,
 			base.ANSI_RESET)
