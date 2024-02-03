@@ -179,6 +179,7 @@ func (x *SlnSolutionBuilder) createBuildConfigProject(bc BuildContext, solutionF
 	buildProject.SolutionFolder = "Build"
 	buildProject.BasePath = UFS.Root
 
+	// #TODO: remove PPE files from this "build" project
 	buildProject.Files.Append(
 		UFS.Root.File(CommandEnv.Prefix()).ReplaceExt(".go"),
 		UFS.Root.File("README.md"),
@@ -188,6 +189,7 @@ func (x *SlnSolutionBuilder) createBuildConfigProject(bc BuildContext, solutionF
 		UFS.Source.File(".gitignore"),
 		UFS.Source.File("winnt_version.h"),
 		UFS.Extras.Folder("Debug").File("PPE.natvis"),
+		UFS.Extras.Folder("Debug").File("PPE.natstepfilter"),
 	)
 	buildProject.Files = base.RemoveUnless[Filename](func(f Filename) bool {
 		return f.Exists()
