@@ -96,10 +96,10 @@ func (x *ActionRules) GetInputFiles() (results utils.FileSet) {
 
 	for _, it := range bg.GetStaticDependencies(node) {
 		switch buildable := it.GetBuildable().(type) {
-		case utils.BuildableGeneratedFile:
-			results.Append(buildable.GetGeneratedFile())
-		case utils.BuildableSourceFile:
-			results.Append(buildable.GetSourceFile())
+		case *utils.FileDependency:
+			if buildable.Filename != x.Executable {
+				results.Append(buildable.Filename)
+			}
 		}
 	}
 	return

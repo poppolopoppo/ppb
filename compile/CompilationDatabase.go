@@ -105,13 +105,16 @@ func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
 	for _, action := range expandedActions {
 		rules := action.GetAction()
 
+		inputFiles := rules.GetInputFiles()
+		if len(inputFiles) == 0 {
+			continue // librarian or linker actions have dynamic inputs, but we are not interested in them here anyway
+		}
+
 		commandArgs := make([]string, len(rules.Arguments)+1)
 		commandArgs[0] = rules.Executable.String()
 		for j, arg := range rules.Arguments {
 			commandArgs[j+1] = arg
 		}
-
-		inputFiles := rules.GetInputFiles()
 
 		actionCmd := CompileCommand{
 			Directory: rules.WorkingDir,

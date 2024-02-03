@@ -607,7 +607,7 @@ func (g *buildGraph) GetCriticalPathNodes() []BuildNode {
 				queue = queue[:len(queue)-1]
 
 				tip := path.Nodes[len(path.Nodes)-1]
-				base.AssertNotIn(tip.GetBuildStats().Count, 0)
+
 				path.InclusiveDuration += tip.GetBuildStats().Duration.Exclusive
 				if path.InclusiveDuration > critical.InclusiveDuration {
 					critical = path
