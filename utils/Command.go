@@ -184,25 +184,25 @@ func (x *CommandEvents) Parse(cl CommandLine) (err error) {
 func (x *CommandEvents) Add(it *commandItem) {
 	if it.prepare.Bound() {
 		x.OnPrepare.Add(base.AnyDelegate(func() error {
-			base.LogTrace(LogCommand, "prepare command %q", it)
+			defer base.LogBenchmark(LogCommand, "prepare command %q", it).Close()
 			return makeCommandEventErrorIFN(it, "prepare", it.prepare.Invoke(it))
 		}))
 	}
 	if it.run.Bound() {
 		x.OnRun.Add(base.AnyDelegate(func() error {
-			base.LogTrace(LogCommand, "run command %q", it)
+			defer base.LogBenchmark(LogCommand, "run command %q", it).Close()
 			return makeCommandEventErrorIFN(it, "run", it.run.Invoke(it))
 		}))
 	}
 	if it.clean.Bound() {
 		x.OnClean.Add(base.AnyDelegate(func() error {
-			base.LogTrace(LogCommand, "clean command %q", it)
+			defer base.LogBenchmark(LogCommand, "clean command %q", it).Close()
 			return makeCommandEventErrorIFN(it, "clean", it.clean.Invoke(it))
 		}))
 	}
 	if it.panic.Bound() {
 		x.OnPanic.Add(func(err error) error {
-			base.LogTrace(LogCommand, "panic command %q: %v", it, err)
+			defer base.LogBenchmark(LogCommand, "panic command %q: %v", it, err).Close()
 			return it.panic.Invoke(err)
 		})
 	}
@@ -319,16 +319,23 @@ func (x *commandBasicArgument) Format() string {
 	return format
 }
 func (x *commandBasicArgument) Help(w *base.StructuredFile) {
-	w.Print("%s", x.Format())
-
-	if base.EnableInteractiveShell() {
-		w.Align(60)
-		w.Println("%v%v%s%v", base.ANSI_FG1_BLACK, base.ANSI_FAINT, x.Flags, base.ANSI_RESET)
-	}
-
-	w.ScopeIndent(func() {
+	if w.Minify() {
+		w.Print("%s", x.Format())
+		w.Align(30)
 		w.Println("%v%s%v", base.ANSI_FG0_BLUE, x.Description, base.ANSI_RESET)
-	})
+
+	} else {
+		w.Print("%s", x.Format())
+
+		if base.EnableInteractiveShell() {
+			w.Align(60)
+			w.Println("%v%v%s%v", base.ANSI_FG1_BLACK, base.ANSI_FAINT, x.Flags, base.ANSI_RESET)
+		}
+
+		w.ScopeIndent(func() {
+			w.Println("%v%s%v", base.ANSI_FG0_BLUE, x.Description, base.ANSI_RESET)
+		})
+	}
 }
 
 /***************************************
@@ -572,6 +579,12 @@ func (x *commandParsableArgument) Help(w *base.StructuredFile) {
 
 			printCommandBullet(w, colorBG)
 			w.Print("%v%v-%s%v", base.ANSI_ITALIC, colorFG, v.Name, base.ANSI_RESET)
+
+			if w.Minify() {
+				w.Align(30)
+				w.Println("%v%v%s%v", base.ANSI_FG0_WHITE, base.ANSI_FAINT, v.Usage, base.ANSI_RESET)
+				continue
+			}
 
 			w.Align(60)
 			if v.Flags.Has(COMMANDARG_PERSISTENT) {
@@ -870,7 +883,7 @@ func (x *commandItem) Usage() (format string) {
 }
 func (x *commandItem) Help(w *base.StructuredFile) {
 	if w.Minify() {
-		w.Println(" %s%-20s%s %s", base.ANSI_FG1_GREEN, x.Name, base.ANSI_RESET, x.Description)
+		w.Println(" %s%-25s%s %s", base.ANSI_FG1_GREEN, x.Name, base.ANSI_RESET, x.Description)
 	} else {
 		w.Println("%s", x.Usage())
 		w.ScopeIndent(func() {
@@ -1050,13 +1063,9 @@ func PrintCommandHelp(w io.Writer, detailed bool) {
 	f := base.NewStructuredFile(w, "  ", !detailed)
 	pi := GetProcessInfo()
 
-	f.Print(`
-%v  v.%v  [%v]
-build-system for PoPpOlOpPoPo Engine
-
-  %vcompiled on %v%v`,
-		pi.Path, pi.Version, GetProcessSeed().ShortString(),
-		base.ANSI_FG1_BLACK, pi.Timestamp.Local(), base.ANSI_RESET)
+	f.Print(`%v  v.%v  [%v]
+build-system for PoPpOlOpPoPo Engine`,
+		pi.Path, pi.Version, GetProcessSeed().ShortString())
 
 	header := func(title string) {
 		f.Print("%v%v", base.ANSI_FG1_MAGENTA, base.ANSI_FAINT)
@@ -1173,7 +1182,11 @@ func (x *HelpCommand) Run(cc CommandContext) (err error) {
 	return nil
 }
 
-var CommandHelp = NewCommandable("Misc", "help", "print help about command usage", &HelpCommand{})
+var CommandHelp = NewCommandable(
+	"Misc",
+	"help",
+	"print help about command usage",
+	&HelpCommand{})
 
 /***************************************
  * AutoComplete

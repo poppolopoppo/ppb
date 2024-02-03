@@ -318,7 +318,9 @@ var DependencyChain = newCompletionCommand[utils.BuildAlias, *utils.BuildAlias](
 				buildGraph := utils.CommandEnv.BuildGraph()
 				chain, err := buildGraph.GetDependencyChain(
 					utils.BuildAlias(ca.Inputs[0]),
-					utils.BuildAlias(ca.Inputs[i]))
+					utils.BuildAlias(ca.Inputs[i]),
+					// weight by link type, favor output > static > dynamic
+					func(bdl utils.BuildDependencyLink) float32 { return float32(bdl.Type) })
 				if err != nil {
 					return err
 				}
@@ -360,7 +362,9 @@ var DependencyFiles = newCompletionCommand[utils.BuildAlias, *utils.BuildAlias](
 			files.Sort()
 
 			for _, filename := range files {
-				fmt.Fprintln(w, filename)
+				if err := printFileCompletion(w, filename, ca.Detailed.Get()); err != nil {
+					return err
+				}
 			}
 			return nil
 		})
@@ -382,7 +386,9 @@ var OutputFiles = newCompletionCommand[utils.BuildAlias, *utils.BuildAlias](
 			files.Sort()
 
 			for _, filename := range files {
-				fmt.Fprintln(w, filename)
+				if err := printFileCompletion(w, filename, ca.Detailed.Get()); err != nil {
+					return err
+				}
 			}
 			return nil
 		})

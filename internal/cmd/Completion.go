@@ -3,8 +3,10 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"sort"
+	"time"
 
 	"github.com/poppolopoppo/ppb/compile"
 	"github.com/poppolopoppo/ppb/internal/base"
@@ -17,12 +19,14 @@ type completionArgsTraits[T base.Comparable[T]] interface {
 }
 
 type CompletionArgs[T base.Comparable[T], P completionArgsTraits[T]] struct {
-	Inputs []T
-	Output utils.Filename
+	Inputs   []T
+	Output   utils.Filename
+	Detailed utils.BoolVar
 }
 
 func (flags *CompletionArgs[T, P]) Flags(cfv utils.CommandFlagsVisitor) {
 	cfv.Variable("Output", "optional output file", &flags.Output)
+	cfv.Variable("l", "add more details to completion output", &flags.Detailed)
 }
 
 func openCompletion[T base.Comparable[T], P completionArgsTraits[T]](args *CompletionArgs[T, P], closure func(io.Writer) error) error {
@@ -36,14 +40,17 @@ func openCompletion[T base.Comparable[T], P completionArgsTraits[T]](args *Compl
 }
 func printCompletion[T base.Comparable[T], P completionArgsTraits[T]](args *CompletionArgs[T, P], in []T) error {
 	return openCompletion(args, func(w io.Writer) error {
-		filterCompletion(args, func(it T) error {
-			_, err := fmt.Fprintln(w, P(&it).String())
-			return err
+		return filterCompletion(args, func(it T) (err error) {
+			if args.Detailed.Get() {
+				_, err = fmt.Fprint(w, base.PrettyPrint(P(&it)))
+			} else {
+				_, err = fmt.Fprintln(w, P(&it).String())
+			}
+			return
 		}, in...)
-		return nil
 	})
 }
-func filterCompletion[T base.Comparable[T], P completionArgsTraits[T]](completionArgs *CompletionArgs[T, P], output func(T) error, values ...T) {
+func filterCompletion[T base.Comparable[T], P completionArgsTraits[T]](completionArgs *CompletionArgs[T, P], output func(T) error, values ...T) error {
 	args := completionArgs.Inputs
 
 	sort.Slice(values, func(i, j int) bool {
@@ -64,7 +71,9 @@ func filterCompletion[T base.Comparable[T], P completionArgsTraits[T]](completio
 			glob := regexp.MustCompile(regexp.QuoteMeta(P(&q).String()))
 			for i, it := range in {
 				if glob.MatchString(it) {
-					output(values[i])
+					if err := output(values[i]); err != nil {
+						return err
+					}
 				}
 			}
 			pbar.Inc()
@@ -74,15 +83,62 @@ func filterCompletion[T base.Comparable[T], P completionArgsTraits[T]](completio
 		defer pbar.Close()
 
 		for _, it := range values {
-			output(it)
+			if err := output(it); err != nil {
+				return err
+			}
 			pbar.Inc()
 		}
+	}
+
+	return nil
+}
+
+func printFileCompletion(w io.Writer, path utils.Filename, detailed bool) error {
+	pathColor := base.NewColorFromStringHash(path.Ext())
+
+	if detailed {
+		var (
+			fileMode os.FileMode
+			fileSize base.SizeInBytes
+			fileTime time.Time
+		)
+
+		modeColor := base.NewColorFromHash(uint64(fileMode))
+		sizeColor := base.ANSI_FG1_YELLOW
+		timeColor := base.ANSI_FG1_BLUE
+
+		if info, err := path.Info(); err == nil {
+			fileMode = info.Mode()
+			fileSize = base.SizeInBytes(info.Size())
+			fileTime = info.ModTime()
+		} else {
+			modeColor = modeColor.Brightness(0.25)
+			pathColor = pathColor.Brightness(0.25)
+			sizeColor = base.ANSI_FG0_YELLOW
+			timeColor = base.ANSI_FG0_BLUE
+		}
+
+		_, err := fmt.Fprintf(w, "%v%v %v%10v %v%v  %v%v%v\n",
+			modeColor.Quantize(true).Ansi(true),
+			fileMode,
+			sizeColor,
+			fileSize,
+			timeColor,
+			fileTime.Format(time.Stamp),
+			pathColor.Quantize(true).Ansi(true),
+			path,
+			base.ANSI_RESET)
+		return err
+	} else {
+		_, err := fmt.Fprintln(w, pathColor.Quantize(true).Ansi(true), path.String(), base.ANSI_RESET)
+		return err
 	}
 }
 
 func newCompletionCommand[T base.Comparable[T], P completionArgsTraits[T]](
 	category, name, description string,
-	run func(utils.CommandContext, *CompletionArgs[T, P]) error) func() utils.CommandItem {
+	run func(utils.CommandContext, *CompletionArgs[T, P]) error,
+) func() utils.CommandItem {
 	completionArgs := &CompletionArgs[T, P]{}
 	return utils.NewCommand(
 		category, name, description,
@@ -100,15 +156,62 @@ var ListArtifacts = newCompletionCommand(
 	func(cc utils.CommandContext, args *CompletionArgs[utils.BuildAlias, *utils.BuildAlias]) error {
 		bg := utils.CommandEnv.BuildGraph()
 		return openCompletion(args, func(w io.Writer) error {
-			filterCompletion(args, func(a utils.BuildAlias) error {
+			return filterCompletion(args, func(a utils.BuildAlias) error {
+				if args.Detailed.Get() {
+					if node, err := bg.Expect(a); err == nil {
+
+						_, err = fmt.Fprintf(w, "%v --> %v (%T)\n", node.GetBuildStamp(), a, node.GetBuildable())
+						return err
+					} else {
+						return err
+					}
+				} else {
+					_, err := fmt.Fprintln(w, a)
+					return err
+				}
+			}, bg.Aliases()...)
+		})
+	})
+
+var ListSourceFiles = newCompletionCommand(
+	"Metadata",
+	"list-source-files",
+	"list all known source files",
+	func(cc utils.CommandContext, args *CompletionArgs[utils.BuildAlias, *utils.BuildAlias]) error {
+		bg := utils.CommandEnv.BuildGraph()
+		return openCompletion(args, func(w io.Writer) error {
+			return filterCompletion(args, func(a utils.BuildAlias) error {
 				if node, err := bg.Expect(a); err == nil {
-					_, err = fmt.Fprintf(w, "%v --> %v (%T)\n", node.GetBuildStamp(), a, node.GetBuildable())
+					switch buildable := node.GetBuildable().(type) {
+					case utils.BuildableSourceFile:
+						err = printFileCompletion(w, buildable.GetSourceFile(), args.Detailed.Get())
+					}
 					return err
 				} else {
 					return err
 				}
 			}, bg.Aliases()...)
-			return nil
+		})
+	})
+
+var ListGeneratedFiles = newCompletionCommand(
+	"Metadata",
+	"list-generated-files",
+	"list all known generated files",
+	func(cc utils.CommandContext, args *CompletionArgs[utils.BuildAlias, *utils.BuildAlias]) error {
+		bg := utils.CommandEnv.BuildGraph()
+		return openCompletion(args, func(w io.Writer) error {
+			return filterCompletion(args, func(a utils.BuildAlias) error {
+				if node, err := bg.Expect(a); err == nil {
+					switch buildable := node.GetBuildable().(type) {
+					case utils.BuildableGeneratedFile:
+						err = printFileCompletion(w, buildable.GetGeneratedFile(), args.Detailed.Get())
+					}
+					return err
+				} else {
+					return err
+				}
+			}, bg.Aliases()...)
 		})
 	})
 
@@ -222,14 +325,13 @@ var ListPersistentData = newCompletionCommand[utils.StringVar, *utils.StringVar]
 	func(cc utils.CommandContext, ca *CompletionArgs[base.InheritableString, *base.InheritableString]) error {
 		data := utils.CommandEnv.Persistent().PinData()
 		return openCompletion(ca, func(w io.Writer) error {
-			filterCompletion(ca, func(is base.InheritableString) error {
+			return filterCompletion(ca, func(is base.InheritableString) error {
 				_, err := fmt.Fprintf(w, "%v=%v\n", is, data[is.Get()])
 				return err
 			}, base.Map(func(it string) (result utils.StringVar) {
 				result.Assign(it)
 				return
 			}, base.Keys(data)...)...)
-			return nil
 		})
 	})
 
@@ -242,5 +344,10 @@ var ListModifiedFiles = newCompletionCommand[utils.Filename, *utils.Filename](
 		if err := utils.GetSourceControlProvider().GetRepositoryStatus(&repo); err != nil {
 			return err
 		}
-		return printCompletion(ca, base.Keys(repo.Files))
+
+		return openCompletion(ca, func(w io.Writer) error {
+			return filterCompletion(ca, func(file utils.Filename) error {
+				return printFileCompletion(w, file, ca.Detailed.Get())
+			}, base.Keys(repo.Files)...)
+		})
 	})

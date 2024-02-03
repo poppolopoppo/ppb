@@ -334,7 +334,9 @@ func (x *ActionCacheBulk) Inflate(dst Directory) (FileSet, error) {
 				if err := base.SetMTime(w, file.Modified); err != nil {
 					return err
 				}
-				return base.CopyWithProgress(dst.String(), int64(file.UncompressedSize64), w, rc)
+
+				_, err := base.TransientIoCopy(w, rc, base.TransientPage1MiB, true)
+				return err
 			})
 			rc.Close()
 

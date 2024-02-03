@@ -266,15 +266,15 @@ func (x SizeInBytes) String() string {
 	case x < KiB:
 		return fmt.Sprintf("%d b", x.Get())
 	case x < MiB:
-		return fmt.Sprintf("%.3f Kib", Kibibytes(x.Get()))
+		return fmt.Sprintf("%.2f Kib", Kibibytes(x.Get()))
 	case x < GiB:
-		return fmt.Sprintf("%.3f Mib", Mebibytes(x.Get()))
+		return fmt.Sprintf("%.2f Mib", Mebibytes(x.Get()))
 	case x < TiB:
-		return fmt.Sprintf("%.3f Gib", Gibibytes(x.Get()))
+		return fmt.Sprintf("%.2f Gib", Gibibytes(x.Get()))
 	case x < PiB:
-		return fmt.Sprintf("%.3f Tib", Tebibytes(x.Get()))
+		return fmt.Sprintf("%.2f Tib", Tebibytes(x.Get()))
 	default:
-		return fmt.Sprintf("%.3f Pib", Pebibytes(x.Get()))
+		return fmt.Sprintf("%.2f Pib", Pebibytes(x.Get()))
 	}
 }
 

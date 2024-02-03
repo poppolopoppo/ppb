@@ -738,6 +738,9 @@ func (x deferredLogger) Log(category *LogCategory, level LogLevel, msg string, a
 func (x deferredLogger) Write(buf []byte) (n int, err error) {
 	x.thread.Queue(func(tc ThreadContext) {
 		n, err = x.logger.Write(buf)
+		if err == nil {
+			x.logger.Flush()
+		}
 	}, TASKPRIORITY_HIGH)
 	x.thread.Join()
 	return
@@ -756,12 +759,11 @@ func (x deferredLogger) Progress(opts ...ProgressOptionFunc) ProgressScope {
 			return pin, nil
 		}, TASKPRIORITY_HIGH)}
 }
-func (x deferredLogger) Close(pin PinScope) error {
+func (x deferredLogger) Close(pin PinScope) (err error) {
 	x.thread.Queue(func(ThreadContext) {
-		err := x.logger.Close(pin)
-		LogPanicIfFailed(LogGlobal, err)
+		err = x.logger.Close(pin)
 	}, TASKPRIORITY_HIGH)
-	return nil
+	return
 }
 func (x deferredLogger) Flush() {
 	x.thread.Queue(func(ThreadContext) {
@@ -1196,7 +1198,7 @@ func (x *interactiveLogger) detachMessages() bool {
  ***************************************/
 
 func writeLogCropped(dst LogWriter, capacity int, in string) {
-	i := int(Elapsed().Seconds() * 22)
+	i := int(Elapsed().Seconds() * 13)
 	if i < 0 {
 		i = -i
 	}
@@ -1234,7 +1236,7 @@ func (x *interactiveLogPin) writeLogHeader(lw LogWriter) {
 	}
 }
 
-var logProgressPattern = []rune{' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'}
+var logProgressPattern = []rune{' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '▉'} //'█'}
 var logSpinnerPattern = []rune{'⠏', '⠛', '⠹', '⢸', '⣰', '⣤', '⣆', '⡇'}
 
 func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
@@ -1271,7 +1273,7 @@ func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
 			ft := Smootherstep(math.Cos(t*1.5+float64(i)/(width-1)*math.Pi)*0.5 + 0.5)
 			mi := 0.5
 
-			fg := colorF.Brightness(ft*.15 + mi - .05).Quantize(true)
+			fg := colorF.Brightness(ft*.09 + mi - .05).Quantize(true)
 			bg := colorF.Brightness(ft*.07 + .28).Quantize(true)
 
 			var ch rune

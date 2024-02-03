@@ -11,7 +11,7 @@ import (
 
 func completeJsonExport[T base.Comparable[T], P completionArgsTraits[T], OUTPUT any](cmd *utils.CommandEnvT, args *CompletionArgs[T, P], factory func(T) (OUTPUT, error), inputs ...T) error {
 	return openCompletion(args, func(w io.Writer) error {
-		filterCompletion(args, func(it T) error {
+		return filterCompletion(args, func(it T) error {
 			if output, err := factory(it); err == nil {
 				_, err = fmt.Fprint(w, base.PrettyPrint(output))
 				return err
@@ -19,7 +19,6 @@ func completeJsonExport[T base.Comparable[T], P completionArgsTraits[T], OUTPUT 
 				return err
 			}
 		}, inputs...)
-		return nil
 	})
 }
 
