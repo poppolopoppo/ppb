@@ -237,7 +237,7 @@ func (g *buildGraph) Create(buildable Buildable, static BuildAliases, options ..
 		node.makeDirty_AssumeLocked()
 		node.Static.makeDirty()
 
-		g.makeDirty()
+		g.makeDirty("created dirty node")
 	}
 
 	base.AssertErr(func() error {
@@ -304,7 +304,7 @@ func (g *buildGraph) PostLoad() {
 	if g.flags.Purge.Get() {
 		g.revision = 0
 		g.nodes.Clear()
-		g.makeDirty()
+		g.makeDirty("clean purge requested")
 	}
 }
 func (g *buildGraph) Serialize(ar base.Archive) {
@@ -563,17 +563,18 @@ func (g *buildGraph) GetMostExpansiveNodes(n int, inclusive bool) (results []Bui
 		}
 	}
 
-	g.nodes.Range(func(key string, node *buildNode) error {
+	err := g.nodes.Range(func(key string, node *buildNode) error {
 		if node.state.stats.Count != 0 {
 			results = base.AppendBoundedSort(results, n, BuildNode(node), predicate)
 		}
 		return nil
 	})
+	base.LogPanicIfFailed(LogBuildGraph, err)
 	return
 }
 
-func (g *buildGraph) makeDirty() {
+func (g *buildGraph) makeDirty(reason string) {
 	if atomic.AddInt32(&g.revision, 1) == 1 {
-		base.LogWarningVerbose(LogBuildGraph, "graph was dirtied, need to resave after execution")
+		base.LogWarningVerbose(LogBuildGraph, "graph was dirtied, need to resave after execution: %s", reason)
 	}
 }

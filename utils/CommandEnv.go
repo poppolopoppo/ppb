@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -131,11 +130,16 @@ func (flags *CommandFlags) Apply() {
 		base.LogTrace(LogCommand, "fbuild will be forced due to '-f' command-line option")
 	}
 
-	// queue print summary if specified on command-line
-	if flags.Summary.Get() {
+	if flags.Summary.Get() || (flags.Ide.Get() && !flags.Quiet.Get()) {
 		CommandEnv.onExit.Add(func(cet *CommandEnvT) error {
 			base.PurgePinnedLogs()
-			cet.lazyBuildGraph.PrintSummary(cet.startedAt)
+			if flags.Summary.Get() {
+				// queue print summary if specified on command-line
+				cet.buildGraph.PrintSummary(cet.startedAt, base.LOG_ALL)
+			} else {
+				// ide mode only prints execution time as a feedback for process termination
+				cet.buildGraph.PrintSummary(cet.startedAt, base.LOG_CLAIM)
+			}
 			return nil
 		})
 	}
@@ -162,11 +166,11 @@ func (flags *CommandFlags) Apply() {
  ***************************************/
 
 type CommandEnvT struct {
-	prefix         string
-	lazyBuildGraph lazyBuildGraph
-	persistent     *persistentData
-	rootFile       Filename
-	startedAt      time.Time
+	prefix     string
+	buildGraph ProcessSafeBuildGraph
+	persistent *persistentData
+	rootFile   Filename
+	startedAt  time.Time
 
 	configPath   Filename
 	databasePath Filename
@@ -237,7 +241,7 @@ func InitCommandEnv(prefix string, args []string, startedAt time.Time) *CommandE
 	return CommandEnv
 }
 func (env *CommandEnvT) Prefix() string             { return env.prefix }
-func (env *CommandEnvT) BuildGraph() BuildGraph     { return env.lazyBuildGraph.Get() }
+func (env *CommandEnvT) BuildGraph() BuildGraph     { return env.buildGraph.Get() }
 func (env *CommandEnvT) Persistent() PersistentData { return env.persistent }
 func (env *CommandEnvT) ConfigPath() Filename       { return env.configPath }
 func (env *CommandEnvT) DatabasePath() Filename     { return env.databasePath }
@@ -251,10 +255,10 @@ func (env *CommandEnvT) SetRootFile(rootFile Filename) {
 }
 
 func (env *CommandEnvT) OnBuildGraphLoaded(e base.EventDelegate[BuildGraph]) error {
-	return env.lazyBuildGraph.OnBuildGraphLoaded(e)
+	return env.buildGraph.OnBuildGraphLoaded(e)
 }
 func (env *CommandEnvT) OnBuildGraphSaved(e base.EventDelegate[BuildGraph]) error {
-	return env.lazyBuildGraph.OnBuildGraphSaved(e)
+	return env.buildGraph.OnBuildGraphSaved(e)
 }
 func (env *CommandEnvT) OnExit(e base.EventDelegate[*CommandEnvT]) base.DelegateHandle {
 	return env.onExit.Add(e)
@@ -302,7 +306,7 @@ func (env *CommandEnvT) Run() error {
 
 	err := env.commandEvents.Run()
 
-	if er := env.lazyBuildGraph.Join(); err != nil && err == nil {
+	if er := env.buildGraph.Join(); err != nil && err == nil {
 		err = er
 	}
 	return err
@@ -324,107 +328,11 @@ func (env *CommandEnvT) SaveConfig() error {
 	return UFS.SafeCreate(env.configPath, env.persistent.Serialize)
 }
 func (env *CommandEnvT) SaveBuildGraph() error {
-	return env.lazyBuildGraph.Save(env)
+	return env.buildGraph.Save(env)
 }
 
 func (env *CommandEnvT) Abort() {
-	if env.lazyBuildGraph.Available() {
-		env.lazyBuildGraph.buildGraph.Abort()
-	}
-}
-
-/***************************************
- * Lazy build graph: don't load build database unless needed
- ***************************************/
-
-type lazyBuildGraph struct {
-	barrier    sync.Mutex
-	buildGraph BuildGraph
-
-	onBuildGraphLoadedEvent base.PublicEvent[BuildGraph]
-	onBuildGraphSavedEvent  base.PublicEvent[BuildGraph]
-}
-
-func (x *lazyBuildGraph) Available() bool {
-	x.barrier.Lock()
-	defer x.barrier.Unlock()
-	return !base.IsNil(x.buildGraph)
-}
-func (x *lazyBuildGraph) Get() BuildGraph {
-	x.barrier.Lock()
-	defer x.barrier.Unlock()
-	if base.IsNil(x.buildGraph) {
-		x.buildGraph = NewBuildGraph(GetCommandFlags())
-		if err := x.loadBuildGraph(CommandEnv); err != nil {
-			base.LogError(LogBuildGraph, "failed to load build graph database: %v", err)
-		}
-		x.buildGraph.PostLoad()
-	}
-	return x.buildGraph
-}
-func (x *lazyBuildGraph) Join() error {
-	x.barrier.Lock()
-	defer x.barrier.Unlock()
-	if base.IsNil(x.buildGraph) {
-		return nil
-	}
-	return x.buildGraph.Join()
-}
-func (x *lazyBuildGraph) Save(env *CommandEnvT) error {
-	x.barrier.Lock()
-	defer x.barrier.Unlock()
-	if base.IsNil(x.buildGraph) {
-		return nil
-	}
-	return x.saveBuildGraph(env)
-}
-
-func (x *lazyBuildGraph) OnBuildGraphLoaded(e base.EventDelegate[BuildGraph]) error {
-	x.barrier.Lock()
-	defer x.barrier.Unlock()
-	if base.IsNil(x.buildGraph) {
-		x.onBuildGraphLoadedEvent.Add(e)
-	} else {
-		return e(x.buildGraph)
-	}
-	return nil
-}
-func (x *lazyBuildGraph) OnBuildGraphSaved(e base.EventDelegate[BuildGraph]) error {
-	x.barrier.Lock()
-	defer x.barrier.Unlock()
-	x.onBuildGraphSavedEvent.Add(e)
-	return nil
-}
-
-func (x *lazyBuildGraph) saveBuildGraph(env *CommandEnvT) error {
-	if !base.IsNil(env.lastPanic.Load()) {
-		base.LogTrace(LogCommand, "won't save build graph since a panic occured")
-	} else if x.buildGraph.Dirty() {
-		benchmark := base.LogBenchmark(LogCommand, "saving build graph to '%v'...", env.databasePath)
-		defer benchmark.Close()
-
-		return UFS.SafeCreate(env.databasePath, x.buildGraph.Save)
-	} else {
-		base.LogTrace(LogCommand, "skipped saving unmodified build graph")
-	}
-	return x.onBuildGraphSavedEvent.FireAndForget(x.buildGraph)
-}
-func (x *lazyBuildGraph) loadBuildGraph(env *CommandEnvT) error {
-	benchmark := base.LogBenchmark(LogCommand, "loading build graph from '%v'...", env.databasePath)
-	defer benchmark.Close()
-
-	err := UFS.OpenBuffered(env.databasePath, x.buildGraph.Load)
-
-	if err == nil {
-		err = x.onBuildGraphLoadedEvent.FireAndForget(x.buildGraph)
-	} else {
-		x.buildGraph.(*buildGraph).makeDirty()
-	}
-	return err
-}
-
-func (x *lazyBuildGraph) PrintSummary(startedAt time.Time) {
-	if !base.IsNil(x.buildGraph) {
-		x.buildGraph.PrintSummary(startedAt)
+	if env.buildGraph.Available() {
+		env.buildGraph.buildGraph.Abort()
 	}
 }

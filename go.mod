@@ -5,6 +5,7 @@ go 1.21
 require (
 	github.com/DataDog/zstd v1.5.5
 	github.com/Showmax/go-fqdn v1.0.0
+	github.com/danjacques/gofslock v0.0.0-20230728142113-ae8f59f9e88b
 	github.com/djherbis/times v1.6.0
 	github.com/goccy/go-json v0.10.2
 	github.com/klauspost/compress v1.17.5
