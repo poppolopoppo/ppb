@@ -74,7 +74,6 @@ func buildFileWithoutDeps(path Filename) (FileDependency, time.Time, error) {
 		Filename: path,
 		Size:     info.Size(),
 	}
-	modTime := GetModificationTime(info)
 
 	if scm := GetSourceControlProvider(); scm.IsInRepository(path) {
 		fileStatus := SourceControlFileStatus{Path: path}
@@ -83,7 +82,7 @@ func buildFileWithoutDeps(path Filename) (FileDependency, time.Time, error) {
 		}
 	}
 
-	return file, modTime, err
+	return file, info.ModTime(), err
 }
 func buildFileStampWithoutDeps(path Filename) (BuildStamp, error) {
 	if file, modTime, err := buildFileWithoutDeps(path); err == nil {

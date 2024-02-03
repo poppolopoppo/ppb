@@ -64,7 +64,6 @@ type buildExecuteContext struct {
 	annotations   BuildAnnotations
 	staticResults []BuildResult
 	stats         BuildStats
-	timestamp     time.Time
 
 	barrier sync.Mutex
 }
@@ -96,10 +95,12 @@ func (x buildDependencyError) Error() string {
 
 func makeBuildExecuteContext(g *buildGraph, node *buildNode, options *BuildOptions) (result buildExecuteContext) {
 	result = buildExecuteContext{
-		graph:         g,
-		node:          node,
-		options:       options,
-		timestamp:     CommandEnv.BuildTime(),
+		graph:   g,
+		node:    node,
+		options: options,
+		annotations: BuildAnnotations{
+			Timestamp: CommandEnv.BuildTime(),
+		},
 		previousStamp: node.GetBuildStamp(),
 	}
 	return
@@ -173,6 +174,7 @@ func (x *buildExecuteContext) needToBuild_assumeLocked() (bool, error) {
 	var lastError error
 	rebuild := false
 
+	// check if a static dependency was updated
 	if results, err := static.Join().Get(); err == nil {
 		rebuild = rebuild || x.node.Static.updateBuild(x.node, DEPENDENCY_STATIC, results)
 	} else {
@@ -180,6 +182,7 @@ func (x *buildExecuteContext) needToBuild_assumeLocked() (bool, error) {
 		lastError = buildDependencyError{alias: x.Alias(), link: DEPENDENCY_STATIC, inner: err}
 	}
 
+	// check if a dynamic was updated
 	if results, err := dynamic.Join().Get(); err == nil {
 		rebuild = rebuild || x.node.Dynamic.updateBuild(x.node, DEPENDENCY_DYNAMIC, results)
 	} else {
@@ -187,6 +190,7 @@ func (x *buildExecuteContext) needToBuild_assumeLocked() (bool, error) {
 		lastError = buildDependencyError{alias: x.Alias(), link: DEPENDENCY_DYNAMIC, inner: err}
 	}
 
+	// check if an output file was updated
 	if results, err := outputFiles.Join().Get(); err == nil {
 		rebuild = rebuild || x.node.OutputFiles.updateBuild(x.node, DEPENDENCY_OUTPUT, results)
 	} else {
@@ -196,22 +200,26 @@ func (x *buildExecuteContext) needToBuild_assumeLocked() (bool, error) {
 		}
 	}
 
-	// check if the node has a valid content fingerprint
-	if !(rebuild || x.node.Stamp.Content.Valid()) {
-		base.LogDebug(LogBuildGraph, "%v: invalid content fingerprint, trigger rebuild", x.Alias())
-		// if not, then it needs to be rebuilt
-		rebuild = true
-	} else {
-		if base.DEBUG_ENABLED && !rebuild {
-			content := MakeBuildFingerprint(x.node.Buildable)
-			base.AssertErr(func() error {
-				if content == x.node.Stamp.Content {
-					return nil
-				}
-				return fmt.Errorf("%v: content fingerprint does not match buildable:\n\tnode:      %v\n\tbuildable: %v", x.Alias(), x.node.Stamp.Content, content)
-			})
-		}
+	// graph needs to be resaved if any dependency was updated
+	if rebuild {
+		x.graph.makeDirty("dependency updated")
 	}
+
+	// check if the node has a valid content fingerprint
+	if !rebuild && !x.node.Stamp.Content.Valid() {
+		rebuild = true
+		base.LogDebug(LogBuildGraph, "%v: invalid content fingerprint, trigger rebuild", x.Alias())
+	}
+
+	base.AssertErr(func() error {
+		if !rebuild {
+			content := MakeBuildFingerprint(x.node.Buildable)
+			if content != x.node.Stamp.Content {
+				return fmt.Errorf("%v: content fingerprint does not match buildable:\n\tnode:      %v\n\tbuildable: %v", x.Alias(), x.node.Stamp.Content, content)
+			}
+		}
+		return nil
+	})
 
 	return rebuild, lastError
 }
@@ -286,12 +294,12 @@ func (x *buildExecuteContext) Execute() (BuildResult, bool, error) {
 		base.Assert(func() bool { return x.node.OutputFiles.validate(x.node, DEPENDENCY_OUTPUT) })
 
 		// update node timestamp when build succeeded
-		x.node.Stamp = MakeTimedBuildFingerprint(x.timestamp, x.node.Buildable)
+		x.node.Stamp = MakeTimedBuildFingerprint(x.annotations.Timestamp, x.node.Buildable)
 		base.Assert(func() bool { return x.node.Stamp.Content.Valid() })
 
 		// need to save the build graph if build stamp changed
 		if x.previousStamp != x.node.Stamp {
-			x.graph.makeDirty()
+			x.graph.makeDirty("build stamp updated")
 		}
 
 		return BuildResult{
@@ -458,7 +466,6 @@ func (x *buildExecuteContext) OutputFile(files ...Filename) error {
 	x.lock_for_dependency()
 	defer x.unlock_for_dependency()
 
-	x.buildOutputFiles_assumeLocked()
 	for _, it := range files {
 		it = it.Normalize()
 
@@ -965,11 +972,6 @@ func (g *buildGraph) launchBuild(node *buildNode, options *BuildOptions) base.Fu
 		if built {
 			changed := (result.BuildStamp != context.previousStamp)
 
-			if changed {
-				base.LogDebug(LogBuildGraph, "%v: new build stamp for [%T]\n\tnew: %v\n\told: %v", node.BuildAlias, result.Buildable, result.BuildStamp, context.previousStamp)
-				g.makeDirty()
-			}
-
 			if base.IsLogLevelActive(base.LOG_VERYVERBOSE) || !(node.IsMuted() || context.annotations.Mute) {
 				base.LogInfo(
 					LogBuildGraph,
@@ -984,6 +986,10 @@ func (g *buildGraph) launchBuild(node *buildNode, options *BuildOptions) base.Fu
 						}
 						return
 					}))
+			}
+
+			if changed {
+				base.LogDebug(LogBuildGraph, "%v: new build stamp for [%T]\n\tnew: %v\n\told: %v", node.BuildAlias, result.Buildable, result.BuildStamp, context.previousStamp)
 			}
 
 		} else if options.Force {

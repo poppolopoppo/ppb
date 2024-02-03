@@ -12,14 +12,8 @@ import (
 	"github.com/poppolopoppo/ppb/internal/base"
 )
 
-func GetAccessTime(stat os.FileInfo) time.Time {
-	return times.Get(stat).AccessTime()
-}
 func GetCreationTime(stat os.FileInfo) time.Time {
 	return times.Get(stat).BirthTime()
-}
-func GetModificationTime(stat os.FileInfo) time.Time {
-	return times.Get(stat).ModTime()
 }
 
 /***************************************
