@@ -504,15 +504,15 @@ func (x *buildExecuteContext) outputFactory_AssumeLocked(factory BuildFactory, o
 		return factory.Create(bi)
 	})
 
-	node, err := buildInit(x.graph, childFactory, opts...)
+	outputNode, err := buildInit(x.graph, childFactory, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	base.LogDebug(LogBuildGraph, "%v: outputs node %q", x.Alias(), node.Alias())
-	x.node.addOutputNode_AssumeLocked(node.Alias())
+	base.LogDebug(LogBuildGraph, "%v: outputs node %q", x.Alias(), outputNode.Alias())
+	x.node.addOutputNode_AssumeLocked(outputNode.Alias())
 
-	return node.Buildable, nil
+	return outputNode.Buildable, nil
 }
 
 func (x *buildExecuteContext) OutputNode(factories ...BuildFactory) error {
@@ -602,13 +602,15 @@ func (x buildGraphContext) NeedFactory(factory BuildFactory, opts ...BuildOption
 	}
 }
 
-func (x buildGraphContext) needFactoriesFunc(n int, factories func(int) BuildFactory) error {
+func (x buildGraphContext) needFactoriesFunc(n int, factories func(int) BuildFactory, opts ...BuildOptionFunc) error {
 	return base.ParallelJoin(
 		func(i int, result BuildResult) error {
 			return nil
 		},
 		base.Range[base.Future[BuildResult]](func(i int) base.Future[BuildResult] {
-			return PrepareBuildFactory(x.graph, factories(i), OptionBuildRecurse(x.options, nil))
+			return PrepareBuildFactory(x.graph, factories(i),
+				OptionBuildRecurse(x.options, nil),
+				OptionBuildOverride(opts...))
 		}, n)...)
 }
 
@@ -629,13 +631,17 @@ func (x buildGraphContext) NeedDirectories(directories ...Directory) error {
 }
 
 func (x buildGraphContext) OutputFile(filenames ...Filename) error {
-	return x.NeedFiles(filenames...)
+	return x.needFactoriesFunc(len(filenames), func(i int) BuildFactory {
+		return BuildFile(filenames[i])
+	}, OptionBuildDirty, OptionBuildForce)
 }
 func (x buildGraphContext) OutputNode(factories ...BuildFactory) error {
-	return x.NeedFactories(factories...)
+	return x.needFactoriesFunc(len(factories), func(i int) BuildFactory {
+		return factories[i]
+	}, OptionBuildForce)
 }
 func (x buildGraphContext) OutputFactory(factory BuildFactory, opts ...BuildOptionFunc) (Buildable, error) {
-	return x.NeedFactory(factory, opts...)
+	return x.NeedFactory(factory, OptionBuildOverride(opts...), OptionBuildForce)
 }
 
 func (x *buildGraphContext) Annotate(annotations ...BuildAnnotateFunc) {
