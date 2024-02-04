@@ -21,21 +21,27 @@ type ConfigurationAlias struct {
 func NewConfigurationAlias(configName string) ConfigurationAlias {
 	return ConfigurationAlias{ConfigName: configName}
 }
-func (x *ConfigurationAlias) Valid() bool {
+func (x ConfigurationAlias) Valid() bool {
 	return len(x.ConfigName) > 0
 }
-func (x *ConfigurationAlias) Alias() BuildAlias {
+func (x ConfigurationAlias) Alias() BuildAlias {
 	return MakeBuildAlias("Rules", "Config", x.String())
 }
-func (x *ConfigurationAlias) String() string {
+func (x ConfigurationAlias) String() string {
 	base.Assert(func() bool { return x.Valid() })
 	return x.ConfigName
 }
-func (x *ConfigurationAlias) Serialize(ar base.Archive) {
-	ar.String(&x.ConfigName)
-}
 func (x ConfigurationAlias) Compare(o ConfigurationAlias) int {
 	return strings.Compare(x.ConfigName, o.ConfigName)
+}
+func (x ConfigurationAlias) AutoComplete(in base.AutoComplete) {
+	AllConfigurations.Range(func(s string, c Configuration) error {
+		in.Add(c.String(), c.GetConfig().ConfigurationAlias.Alias().String())
+		return nil
+	})
+}
+func (x *ConfigurationAlias) Serialize(ar base.Archive) {
+	ar.String(&x.ConfigName)
 }
 func (x *ConfigurationAlias) Set(in string) (err error) {
 	x.ConfigName = in
@@ -46,12 +52,6 @@ func (x *ConfigurationAlias) MarshalText() ([]byte, error) {
 }
 func (x *ConfigurationAlias) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
-}
-func (x *ConfigurationAlias) AutoComplete(in base.AutoComplete) {
-	AllConfigurations.Range(func(s string, c Configuration) error {
-		in.Add(c.String(), c.GetConfig().ConfigurationAlias.Alias().String())
-		return nil
-	})
 }
 
 /***************************************
@@ -254,21 +254,16 @@ func ForeachBuildConfig(each func(BuildFactoryTyped[*BuildConfig]) error) error 
 	return nil
 }
 
-func FindConfiguration(in string) (Configuration, error) {
-	if config, ok := AllConfigurations.Get(in); ok {
+func GetConfigurationFromUserInput(in ConfigurationAlias) (Configuration, error) {
+	if config, ok := AllConfigurations.Get(in.String()); ok {
 		return config, nil
 	}
 
-	query := strings.ToLower(in)
-	autocomplete := base.NewAutoComplete(in, 3)
-
-	for _, key := range AllConfigurations.Keys() {
-		config, _ := AllConfigurations.Get(key)
-		autocomplete.Add(key, config.GetConfig().ConfigurationAlias.Alias().String())
-		if strings.ToLower(key) == query {
-			return config, nil
-		}
+	if found, err := base.DidYouMean[ConfigurationAlias](strings.ToLower(in.String())); err == nil {
+		config, ok := AllConfigurations.Get(found)
+		base.AssertIn(ok, true)
+		return config, nil
+	} else {
+		return nil, err
 	}
-
-	return nil, fmt.Errorf("unknown configuration %q, did you mean %v?", in, autocomplete.Results())
 }

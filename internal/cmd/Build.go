@@ -80,21 +80,21 @@ func (x *BuildCommand) Run(cc utils.CommandContext) error {
 
 		for i, target := range x.Targets {
 			// verify module path and correct case if necessary
-			if module, err := compile.FindBuildModule(target.ModuleAlias); err == nil {
+			if module, err := compile.GetModuleFromUserInput(target.ModuleAlias); err == nil {
 				target.ModuleAlias = module.GetModule().ModuleAlias
 			} else {
 				return err
 			}
 
 			// verify configuration name and correct case if necessary
-			if cfg, err := compile.FindConfiguration(target.ConfigName); err == nil {
+			if cfg, err := compile.GetConfigurationFromUserInput(target.ConfigurationAlias); err == nil {
 				target.ConfigurationAlias = cfg.GetConfig().ConfigurationAlias
 			} else {
 				return err
 			}
 
 			// verify platform name and correct case if necessary
-			if plf, err := compile.FindPlatform(target.PlatformName); err == nil {
+			if plf, err := compile.GetPlatformFromUserInput(target.PlatformAlias); err == nil {
 				target.PlatformAlias = plf.GetPlatform().PlatformAlias
 			} else {
 				return err

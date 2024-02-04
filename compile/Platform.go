@@ -21,21 +21,27 @@ type PlatformAlias struct {
 func NewPlatformAlias(platformName string) PlatformAlias {
 	return PlatformAlias{PlatformName: platformName}
 }
-func (x *PlatformAlias) Valid() bool {
+func (x PlatformAlias) Valid() bool {
 	return len(x.PlatformName) > 0
 }
-func (x *PlatformAlias) Alias() BuildAlias {
+func (x PlatformAlias) Alias() BuildAlias {
 	return MakeBuildAlias("Rules", "Platform", x.String())
 }
-func (x *PlatformAlias) String() string {
+func (x PlatformAlias) String() string {
 	base.Assert(func() bool { return x.Valid() })
 	return x.PlatformName
 }
-func (x *PlatformAlias) Serialize(ar base.Archive) {
-	ar.String(&x.PlatformName)
-}
 func (x PlatformAlias) Compare(o PlatformAlias) int {
 	return strings.Compare(x.PlatformName, o.PlatformName)
+}
+func (x PlatformAlias) AutoComplete(in base.AutoComplete) {
+	AllPlatforms.Range(func(s string, p Platform) error {
+		in.Add(p.String(), p.GetPlatform().Alias().String())
+		return nil
+	})
+}
+func (x *PlatformAlias) Serialize(ar base.Archive) {
+	ar.String(&x.PlatformName)
 }
 func (x *PlatformAlias) Set(in string) (err error) {
 	x.PlatformName = in
@@ -46,12 +52,6 @@ func (x *PlatformAlias) MarshalText() ([]byte, error) {
 }
 func (x *PlatformAlias) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
-}
-func (x *PlatformAlias) AutoComplete(in base.AutoComplete) {
-	AllPlatforms.Range(func(s string, p Platform) error {
-		in.Add(p.String(), p.GetPlatform().Alias().String())
-		return nil
-	})
 }
 
 /***************************************
@@ -176,21 +176,16 @@ func GeLocalHostBuildPlatform() BuildFactoryTyped[Platform] {
 	return GetBuildPlatform(GetLocalHostPlatformAlias())
 }
 
-func FindPlatform(in string) (result Platform, err error) {
-	if platform, ok := AllPlatforms.Get(in); ok {
+func GetPlatformFromUserInput(in PlatformAlias) (result Platform, err error) {
+	if platform, ok := AllPlatforms.Get(in.String()); ok {
 		return platform, nil
 	}
 
-	query := strings.ToLower(in)
-	autocomplete := base.NewAutoComplete(in, 3)
-
-	for _, key := range AllPlatforms.Keys() {
-		platform, _ := AllPlatforms.Get(key)
-		autocomplete.Add(key, platform.GetPlatform().Alias().String())
-		if strings.ToLower(key) == query {
-			return platform, nil
-		}
+	if found, err := base.DidYouMean[PlatformAlias](strings.ToLower(in.String())); err == nil {
+		platform, ok := AllPlatforms.Get(found)
+		base.AssertIn(ok, true)
+		return platform, nil
+	} else {
+		return nil, err
 	}
-
-	return nil, fmt.Errorf("unknown platform %q, did you mean %v?", in, autocomplete.Results())
 }

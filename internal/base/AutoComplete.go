@@ -400,3 +400,22 @@ func (x *PrefixedAutoComplete) Highlight(in string, highlight func(rune) string)
 func (x *PrefixedAutoComplete) ClearResults() {
 	x.inner.ClearResults()
 }
+
+/***************************************
+ * XXX not founmd, did you mean YYY?
+ ***************************************/
+
+func DidYouMean[T AutoCompletable](in string) (string, error) {
+	in = strings.ToLower(in)
+	autocomplete := NewAutoComplete(in, 3)
+
+	var defaultValue T
+	defaultValue.AutoComplete(&autocomplete)
+
+	results := autocomplete.Results()
+	if len(results) > 0 && strings.ToLower(results[0].Text) == in {
+		return results[0].Text, nil
+	}
+
+	return "", fmt.Errorf("unknown value %q, did you mean %v?", in, autocomplete.Results())
+}

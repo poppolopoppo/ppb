@@ -75,20 +75,7 @@ func (x ModuleAlias) Compare(o ModuleAlias) int {
 		return namespaceCmp
 	}
 }
-func (x *ModuleAlias) Set(in string) (err error) {
-	if parts := SplitPath(in); len(parts) > 1 {
-		x.ModuleName = parts[len(parts)-1]
-		return x.NamespaceAlias.Set(path.Join(parts[0 : len(parts)-1]...))
-	}
-	return fmt.Errorf("malformed ModuleAlias: '%s'", in)
-}
-func (x ModuleAlias) MarshalText() ([]byte, error) {
-	return base.UnsafeBytesFromString(x.String()), nil
-}
-func (x *ModuleAlias) UnmarshalText(data []byte) error {
-	return x.Set(base.UnsafeStringFromBytes(data))
-}
-func (x *ModuleAlias) AutoComplete(in base.AutoComplete) {
+func (x ModuleAlias) AutoComplete(in base.AutoComplete) {
 	modules, err := NeedAllModuleAliases(CommandEnv.BuildGraph().GlobalContext())
 	if err == nil {
 		for _, it := range modules {
@@ -97,6 +84,19 @@ func (x *ModuleAlias) AutoComplete(in base.AutoComplete) {
 	} else {
 		CommandPanic(err)
 	}
+}
+func (x *ModuleAlias) Set(in string) (err error) {
+	if parts := SplitPath(in); len(parts) > 1 {
+		x.ModuleName = parts[len(parts)-1]
+		return x.NamespaceAlias.Set(path.Join(parts[0 : len(parts)-1]...))
+	}
+	return fmt.Errorf("malformed ModuleAlias: '%s'", in)
+}
+func (x *ModuleAlias) MarshalText() ([]byte, error) {
+	return base.UnsafeBytesFromString(x.String()), nil
+}
+func (x *ModuleAlias) UnmarshalText(data []byte) error {
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
 
 /***************************************
@@ -469,4 +469,19 @@ func ForeachNamespaceModuleAlias(bc BuildContext, namespaceAlias NamespaceAlias,
 	}
 
 	return nil
+}
+
+func GetModuleFromUserInput(in ModuleAlias) (Module, error) {
+	if module, err := FindBuildModule(in); err == nil {
+		return module, nil
+	}
+
+	if found, err := base.DidYouMean[ModuleAlias](strings.ToLower(in.String())); err == nil {
+		if err = in.Set(found); err != nil {
+			return nil, err
+		}
+		return FindBuildModule(in)
+	} else {
+		return nil, err
+	}
 }
