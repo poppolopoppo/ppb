@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
+	"slices"
 	"sort"
 	"time"
 
@@ -58,26 +58,25 @@ func filterCompletion[T base.Comparable[T], P completionArgsTraits[T]](completio
 	})
 
 	if len(args) > 0 {
-		pbar := base.LogProgress(0, int64(len(args)), "filter-completion")
+		pbar := base.LogProgress(0, int64(len(values)), "filter-completion")
 		defer pbar.Close()
 
-		in := make([]string, len(values))
-		for i, it := range values {
-			in[i] = P(&it).String()
+		keys := make(base.StringSet, len(args))
+		for i, it := range args {
+			keys[i] = P(&it).String()
 		}
-		sort.Strings(in)
+		keys.Sort()
 
-		for _, q := range args {
-			glob := regexp.MustCompile(regexp.QuoteMeta(P(&q).String()))
-			for i, it := range in {
-				if glob.MatchString(it) {
-					if err := output(values[i]); err != nil {
-						return err
-					}
+		for _, it := range values {
+			name := P(&it).String()
+			if _, ok := slices.BinarySearch(keys, name); ok {
+				if err := output(it); err != nil {
+					return err
 				}
 			}
 			pbar.Inc()
 		}
+
 	} else {
 		pbar := base.LogProgress(0, int64(len(values)), "filter-completion")
 		defer pbar.Close()
