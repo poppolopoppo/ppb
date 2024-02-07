@@ -318,18 +318,19 @@ func (x *ActionCacheBulk) Inflate(dst Directory) (FileSet, error) {
 			return err
 		}
 
-		for _, file := range zr.File {
+		artifacts, err = base.ParallelMap(func(file *zip.File) (Filename, error) {
 			if strings.Contains(file.Name, "..") {
-				return fmt.Errorf("potential 'zip slip' exploit: %q contains '..'", file.Name)
+				return Filename{}, fmt.Errorf("potential 'zip slip' exploit: %q contains '..'", file.Name)
 			}
 
 			rc, err := file.Open()
 			if err != nil {
-				return err
+				return Filename{}, err
 			}
+			defer rc.Close()
 
 			dst := dst.AbsoluteFile(file.Name)
-			err = UFS.CreateFile(dst, func(w *os.File) error {
+			return dst, UFS.CreateFile(dst, func(w *os.File) error {
 				// this is much faster than separate UFS.MTime()/os.Chtimes(), but OS dependant...
 				if err := base.SetMTime(w, file.Modified); err != nil {
 					return err
@@ -338,16 +339,9 @@ func (x *ActionCacheBulk) Inflate(dst Directory) (FileSet, error) {
 				_, err := base.TransientIoCopy(w, rc, base.TransientPage1MiB, true)
 				return err
 			})
-			rc.Close()
+		}, zr.File...)
 
-			if err != nil {
-				return err
-			}
-
-			artifacts.Append(dst)
-		}
-
-		return nil
+		return err
 	})
 }
 func (x *ActionCacheBulk) Serialize(ar base.Archive) {
