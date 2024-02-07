@@ -256,8 +256,10 @@ func (rules *ModuleRules) Decorate(env *CompileEnv, unit *Unit) error {
 		return err
 	}
 
-	unit.TransitiveFacet.ForceIncludes.Append(rules.ForceIncludes...)
-	unit.TransitiveFacet.Libraries.Append(rules.Libraries...)
+	// do not make force includes and libraries transitives
+	// unit.TransitiveFacet.ForceIncludes.Append(rules.ForceIncludes...)
+	// unit.TransitiveFacet.Libraries.Append(rules.Libraries...)
+
 	unit.TransitiveFacet.LibraryPaths.Append(rules.LibraryPaths...)
 
 	if publicDir := rules.PublicDir(); publicDir.Exists() {

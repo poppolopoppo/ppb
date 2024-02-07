@@ -28,7 +28,7 @@ func (x PlatformAlias) Alias() BuildAlias {
 	return MakeBuildAlias("Rules", "Platform", x.String())
 }
 func (x PlatformAlias) String() string {
-	base.Assert(func() bool { return x.Valid() })
+	base.Assert(x.Valid)
 	return x.PlatformName
 }
 func (x PlatformAlias) Compare(o PlatformAlias) int {

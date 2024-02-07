@@ -1069,7 +1069,7 @@ build-system for PoPpOlOpPoPo Engine`,
 
 	header := func(title string) {
 		f.Print("%v%v", base.ANSI_FG1_MAGENTA, base.ANSI_FAINT)
-		f.Pad(59, "-")
+		f.Pad(2, "-")
 		f.Print(" %s ", title)
 		f.Pad(80, "-")
 		f.Println("%v", base.ANSI_RESET)

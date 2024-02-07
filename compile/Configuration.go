@@ -28,7 +28,7 @@ func (x ConfigurationAlias) Alias() BuildAlias {
 	return MakeBuildAlias("Rules", "Config", x.String())
 }
 func (x ConfigurationAlias) String() string {
-	base.Assert(func() bool { return x.Valid() })
+	base.Assert(x.Valid)
 	return x.ConfigName
 }
 func (x ConfigurationAlias) Compare(o ConfigurationAlias) int {
