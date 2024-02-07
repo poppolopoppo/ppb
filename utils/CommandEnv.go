@@ -50,7 +50,7 @@ var GetCommandFlags = NewGlobalCommandParsableFlags("global command options", &C
 	Color:          base.INHERITABLE_INHERIT,
 	Ide:            base.INHERITABLE_FALSE,
 	Timestamp:      base.INHERITABLE_FALSE,
-	Summary:        base.MakeBoolVar(base.DEBUG_ENABLED),
+	Summary:        base.INHERITABLE_FALSE,
 	WarningAsError: base.INHERITABLE_FALSE,
 })
 
