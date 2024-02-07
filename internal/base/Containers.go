@@ -1,8 +1,6 @@
 package base
 
 import (
-	fastJson "github.com/goccy/go-json"
-
 	"flag"
 	"fmt"
 	"math/bits"
@@ -432,19 +430,27 @@ func (x *EnumSet[T, E]) Serialize(ar Archive) {
 	ar.Int32((*int32)(x))
 }
 
-// serialize as a Json array of T
-func (x *EnumSet[T, E]) UnmarshalJSON(data []byte) error {
-	var elements []T
-	if err := fastJson.Unmarshal(data, &elements); err == nil {
-		x.Clear()
-		x.Append(MakeEnumSet[T, E](elements...))
-		return nil
-	} else {
-		return err
-	}
+// // serialize as a Json array of T
+// func (x *EnumSet[T, E]) UnmarshalJSON(data []byte) error {
+// 	var elements []T
+// 	if err := fastJson.Unmarshal(data, &elements); err == nil {
+// 		x.Clear()
+// 		x.Append(MakeEnumSet[T, E](elements...))
+// 		return nil
+// 	} else {
+// 		return err
+// 	}
+// }
+// func (x EnumSet[T, E]) MarshalJSON() ([]byte, error) {
+// 	return fastJson.Marshal(x.Elements())
+// }
+
+// serialize as a Json string
+func (x EnumSet[T, E]) MarshalText() ([]byte, error) {
+	return UnsafeBytesFromString(x.String()), nil
 }
-func (x EnumSet[T, E]) MarshalJSON() ([]byte, error) {
-	return fastJson.Marshal(x.Elements())
+func (x *EnumSet[T, E]) UnmarshalText(data []byte) error {
+	return x.Set(UnsafeStringFromBytes(data))
 }
 
 /***************************************
