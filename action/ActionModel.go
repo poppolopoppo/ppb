@@ -9,6 +9,10 @@ import (
 	"github.com/poppolopoppo/ppb/utils"
 )
 
+/***************************************
+ * Command Rules
+ ***************************************/
+
 type CommandRules struct {
 	Arguments   base.StringSet
 	Environment internal_io.ProcessEnvironment
@@ -31,6 +35,10 @@ func (x *CommandRules) String() string {
 	return oss.String()
 }
 
+/***************************************
+ * Artifact Rules
+ ***************************************/
+
 type ArtifactRules struct {
 	InputFiles      utils.FileSet
 	DependencyFiles utils.FileSet
@@ -42,6 +50,10 @@ func (x *ArtifactRules) Serialize(ar base.Archive) {
 	ar.Serializable(&x.DependencyFiles)
 	ar.Serializable(&x.OutputFiles)
 }
+
+/***************************************
+ * Action Model
+ ***************************************/
 
 type ActionModel struct {
 	Command CommandRules
@@ -100,7 +112,7 @@ func BuildAction(model *ActionModel, factory func(*ActionModel) (Action, error))
 		}
 
 		// track dynamic inputs
-		if err := bi.DependsOn(model.DynamicInputs.Aliases()...); err != nil {
+		if err := bi.DependsOn(utils.MakeBuildAliases(model.DynamicInputs...)...); err != nil {
 			return nil, err
 		}
 

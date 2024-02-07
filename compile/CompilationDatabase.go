@@ -90,7 +90,7 @@ func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
 
 		base.LogTrace(LogCompile, "retrieved %d output actions for target %q", len(actions), targetActions.Alias())
 
-		if err = actions.ExpandDependencies(bc.BuildGraph(), &expandedActions); err != nil {
+		if expandedActions, err = actions.ExpandDependencies(bc.BuildGraph()); err != nil {
 			return err
 		}
 
@@ -105,7 +105,7 @@ func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
 	for _, action := range expandedActions {
 		rules := action.GetAction()
 
-		inputFiles := rules.GetInputFiles()
+		inputFiles := rules.GetStaticInputFiles(bc.BuildGraph())
 		if len(inputFiles) == 0 {
 			continue // librarian or linker actions have dynamic inputs, but we are not interested in them here anyway
 		}

@@ -621,6 +621,10 @@ func (list *FileSet) AppendUniq(it ...Filename) {
 func (list *FileSet) Prepend(it ...Filename) {
 	*list = base.PrependEquatable_CheckUniq(it, *list...)
 }
+func (list *FileSet) Delete(i int) *FileSet {
+	*list = base.Delete_DontPreserveOrder(*list, i)
+	return list
+}
 func (list *FileSet) Remove(it ...Filename) {
 	*list = base.Remove(*list, it...)
 }
@@ -1096,24 +1100,31 @@ func make_ufs_frontend() (ufs UFSFrontEnd) {
 	return ufs
 }
 
+func MakeGlobRegexpExpr(glob ...string) string {
+	if len(glob) == 0 {
+		return ".*"
+	}
+	var expr strings.Builder
+	expr.WriteString("(?i)(")
+	for i, it := range glob {
+		it = regexp.QuoteMeta(it)
+		it = strings.ReplaceAll(it, "\\?", ".")
+		it = strings.ReplaceAll(it, "\\*", ".*?")
+		it = strings.ReplaceAll(it, "/", "[\\\\/]")
+		it = "(" + it + ")"
+		if i > 0 {
+			expr.WriteString("|")
+		}
+		expr.WriteString(it)
+	}
+	expr.WriteString(")")
+	return expr.String()
+}
 func MakeGlobRegexp(glob ...string) *regexp.Regexp {
 	if len(glob) == 0 {
 		return nil
 	}
-	expr := "(?i)("
-	for i, x := range glob {
-		x = regexp.QuoteMeta(x)
-		x = strings.ReplaceAll(x, "\\?", ".")
-		x = strings.ReplaceAll(x, "\\*", ".*?")
-		x = strings.ReplaceAll(x, "/", "[\\\\/]")
-		x = "(" + x + ")"
-		if i == 0 {
-			expr += x
-		} else {
-			expr += "|" + x
-		}
-	}
-	return regexp.MustCompile(expr + ")")
+	return regexp.MustCompile(MakeGlobRegexpExpr(glob...))
 }
 
 /***************************************

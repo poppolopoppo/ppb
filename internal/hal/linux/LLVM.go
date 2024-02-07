@@ -202,13 +202,16 @@ func (llvm *LlvmCompiler) LibraryPath(f *Facet, dirs ...Directory) {
 func (llvm *LlvmCompiler) GetPayloadOutput(u *compile.Unit, payload compile.PayloadType, file Filename) Filename {
 	return file.ReplaceExt(llvm.Extname(payload))
 }
-func (llvm *LlvmCompiler) CreateAction(_ *Unit, _ PayloadType, obj *action.ActionRules) action.Action {
+func (llvm *LlvmCompiler) CreateAction(u *Unit, _ PayloadType, obj *action.ActionRules) action.Action {
 	result := &GnuSourceDependenciesAction{
+		GnuDepFile:  llvm.GetPayloadOutput(u, compile.PAYLOAD_DEPENDENCIES, obj.GetGeneratedFile()),
 		ActionRules: *obj.GetAction(),
 	}
-	result.GnuDepFile = result.Outputs[0].ReplaceExt(llvm.Extname(compile.PAYLOAD_DEPENDENCIES))
-	result.Arguments.Append("--write-dependencies", "-MF"+MakeLocalFilename(result.GnuDepFile))
-	result.Extras.Append(result.GnuDepFile)
+
+	allowRelativePath := result.Options.Has(action.OPT_ALLOW_RELATIVEPATH)
+
+	result.Arguments.Append("--write-dependencies", "-MF"+MakeLocalFilenameIFP(result.GnuDepFile, allowRelativePath))
+	result.OutputFiles.Append(result.GnuDepFile)
 	return result
 }
 func (llvm *LlvmCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {

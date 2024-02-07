@@ -141,7 +141,7 @@ func (x *BuildCommand) doBuild(bg utils.BuildGraph, targets []*compile.TargetAct
 	return err
 }
 func (x *BuildCommand) cleanBuild(bg utils.BuildGraph, targets []*compile.TargetActions) error {
-	aliases := utils.BuildAliases{}
+	aliases := action.ActionAliases{}
 	for _, ta := range targets {
 		if err := ta.ForeachPayload(func(tp *compile.TargetPayload) error {
 			aliases.Append(tp.ActionAliases...)
@@ -151,15 +151,17 @@ func (x *BuildCommand) cleanBuild(bg utils.BuildGraph, targets []*compile.Target
 		}
 	}
 
-	actions, err := action.GetBuildActions(aliases)
+	actions, err := action.GetBuildActions(aliases...)
 	if err != nil {
 		return err
 	}
 
-	expandeds := action.ActionSet{}
-	actions.ExpandDependencies(bg, &expandeds)
+	expandeds, err := actions.ExpandDependencies(bg)
+	if err != nil {
+		return err
+	}
 
-	filesToDelete, err := bg.GetDependencyOutputFiles(expandeds.Aliases()...)
+	filesToDelete, err := bg.GetDependencyOutputFiles(utils.MakeBuildAliases(expandeds.Aliases()...)...)
 	if err != nil {
 		return err
 	}

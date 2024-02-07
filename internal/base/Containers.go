@@ -1,6 +1,8 @@
 package base
 
 import (
+	fastJson "github.com/goccy/go-json"
+
 	"flag"
 	"fmt"
 	"math/bits"
@@ -20,6 +22,13 @@ func CopySlice[T any](in ...T) []T {
 	out := make([]T, len(in))
 	copy(out, in)
 	return out
+}
+
+func ReverseSlice[T any](in ...T) []T {
+	for i, j := 0, len(in)-1; i < j; i, j = i+1, j-1 {
+		in[i], in[j] = in[j], in[i]
+	}
+	return in
 }
 
 func CopyMap[K comparable, V any](in map[K]V) map[K]V {
@@ -91,6 +100,17 @@ func AppendUniq[T comparable](src []T, elts ...T) (result []T) {
 		}
 	}
 	return result
+}
+
+func Delete[T any](src []T, index int) []T {
+	return append(src[:index], src[index+1:]...)
+}
+
+func Delete_DontPreserveOrder[T any](src []T, index int) (result []T) {
+	if swap := len(src) - 1; swap != index {
+		src[index] = src[swap]
+	}
+	return src[:len(src)-1]
 }
 
 func Remove[T comparable](src []T, elts ...T) (result []T) {
@@ -262,7 +282,11 @@ func (set *SetT[T]) RemoveUnless(pred func(T) bool) (result SetT[T]) {
 	return SetT[T](RemoveUnless(pred, set.Slice()...))
 }
 func (set *SetT[T]) Delete(i int) *SetT[T] {
-	*set = append((*set)[:i], (*set)[i+1:]...)
+	*set = Delete(*set, i)
+	return set
+}
+func (set *SetT[T]) Delete_DontPreserveOrder(i int) *SetT[T] {
+	*set = Delete_DontPreserveOrder(*set, i)
 	return set
 }
 func (set *SetT[T]) Clear() *SetT[T] {
@@ -407,11 +431,20 @@ func (x *EnumSet[T, E]) Set(in string) error {
 func (x *EnumSet[T, E]) Serialize(ar Archive) {
 	ar.Int32((*int32)(x))
 }
-func (x EnumSet[T, E]) MarshalText() ([]byte, error) {
-	return UnsafeBytesFromString(x.String()), nil
+
+// serialize as a Json array of T
+func (x *EnumSet[T, E]) UnmarshalJSON(data []byte) error {
+	var elements []T
+	if err := fastJson.Unmarshal(data, &elements); err == nil {
+		x.Clear()
+		x.Append(MakeEnumSet[T, E](elements...))
+		return nil
+	} else {
+		return err
+	}
 }
-func (x *EnumSet[T, E]) UnmarshalText(data []byte) error {
-	return x.Set(UnsafeStringFromBytes(data))
+func (x EnumSet[T, E]) MarshalJSON() ([]byte, error) {
+	return fastJson.Marshal(x.Elements())
 }
 
 /***************************************

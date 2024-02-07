@@ -46,6 +46,8 @@ type BuildNodeEvent struct {
 
 type BuildGraph interface {
 	Aliases() []BuildAlias
+	Range(each func(BuildAlias, BuildNode) error) error
+
 	Dirty() bool
 
 	GlobalContext(options ...BuildOptionFunc) BuildContext
@@ -125,9 +127,16 @@ func (g *buildGraph) Aliases() []BuildAlias {
 	})
 	return base.Map(func(in string) BuildAlias { return BuildAlias(in) }, keys...)
 }
+func (g *buildGraph) Range(each func(BuildAlias, BuildNode) error) error {
+	return g.nodes.Range(func(key string, node *buildNode) error {
+		return each(BuildAlias(key), node)
+	})
+}
+
 func (g *buildGraph) Dirty() bool {
 	return atomic.LoadInt32(&g.revision) > 0
 }
+
 func (g *buildGraph) GlobalContext(options ...BuildOptionFunc) BuildContext {
 	bo := NewBuildOptions(options...)
 	context := makeBuildGraphContext(g, &bo)

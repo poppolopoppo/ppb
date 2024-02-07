@@ -22,7 +22,7 @@ import (
 type TargetPayload struct {
 	TargetAlias   TargetAlias
 	PayloadType   PayloadType
-	ActionAliases BuildAliases
+	ActionAliases action.ActionAliases
 }
 
 func MakeTargetPayloadAlias(ta TargetAlias, payload PayloadType) BuildAlias {
@@ -50,7 +50,7 @@ func (x *TargetPayload) Serialize(ar base.Archive) {
 }
 
 func (x *TargetPayload) GetActions() (action.ActionSet, error) {
-	return action.GetBuildActions(x.ActionAliases)
+	return action.GetBuildActions(x.ActionAliases...)
 }
 
 /***************************************
@@ -280,8 +280,8 @@ func (x *buildActionGenerator) CreateActions(bg BuildGraph) error {
 	})
 
 	if base.IsLogLevelActive(base.LOG_VERYVERBOSE) {
-		allActions := action.ActionSet{}
-		base.LogPanicIfFailed(LogCompile, targetOutputs.ExpandDependencies(bg, &allActions))
+		allActions, err := targetOutputs.ExpandDependencies(bg)
+		base.LogPanicIfFailed(LogCompile, err)
 		base.LogVeryVerbose(LogCompile, "%q outputs %v payload with %d artifacts (%d total actions)", x.Unit, x.Unit.Payload, len(targetOutputs), len(allActions))
 	}
 
@@ -295,7 +295,7 @@ func (x *buildActionGenerator) NumActions() (total int) {
 	}
 	return
 }
-func (x *buildActionGenerator) ForceCreatePayload(payloadType PayloadType, actionAliases BuildAliases) error {
+func (x *buildActionGenerator) ForceCreatePayload(payloadType PayloadType, actionAliases action.ActionAliases) error {
 	targetPayload := &TargetPayload{
 		TargetAlias:   x.TargetAlias,
 		PayloadType:   payloadType,
@@ -306,10 +306,10 @@ func (x *buildActionGenerator) ForceCreatePayload(payloadType PayloadType, actio
 	x.TargetPayloads[payloadType] = targetPayload
 
 	return x.BuildContext.OutputNode(WrapBuildFactory(func(bi BuildInitializer) (*TargetPayload, error) {
-		return targetPayload, bi.DependsOn(targetPayload.ActionAliases...)
+		return targetPayload, bi.DependsOn(MakeBuildAliases(targetPayload.ActionAliases...)...)
 	}))
 }
-func (x *buildActionGenerator) CreatePayload(payloadType PayloadType, actionAliases BuildAliases) error {
+func (x *buildActionGenerator) CreatePayload(payloadType PayloadType, actionAliases action.ActionAliases) error {
 	if !actionAliases.Empty() {
 		return x.ForceCreatePayload(payloadType, actionAliases)
 	}
@@ -377,17 +377,17 @@ func (x *buildActionGenerator) NeedTargetActions(each func(*TargetActions) error
 	return nil
 }
 func (x *buildActionGenerator) GetOutputActions(targets ...TargetAlias) (action.ActionSet, error) {
-	aliases := BuildAliases{}
+	aliases := action.ActionAliases{}
 	err := x.NeedTargetActions(func(ta *TargetActions) error {
 		if payload, err := ta.GetOutputPayload(); err == nil {
-			aliases.AppendUniq(payload.ActionAliases...)
+			aliases.Append(payload.ActionAliases...)
 		} else {
 			return err
 		}
 		return nil
 	}, targets...)
 	if err == nil {
-		return action.GetBuildActions(aliases)
+		return action.GetBuildActions(aliases...)
 	}
 	return action.ActionSet{}, err
 }
@@ -414,7 +414,7 @@ func (x *buildActionGenerator) HeaderUnitActions(dependencies action.ActionSet) 
 				StaticInputFiles: FileSet{x.Unit.PrecompiledHeader},
 				ExportFile:       headerUnitObject,
 				OutputFile:       x.Unit.PrecompiledObject,
-				StaticDeps:       dependencies.Aliases(),
+				StaticDeps:       MakeBuildAliases(dependencies...),
 				Options:          action.MakeOptionFlags(action.OPT_ALLOW_SOURCECONTROL),
 			})
 		if err != nil {
@@ -450,7 +450,7 @@ func (x *buildActionGenerator) PrecompilerHeaderActions(dependencies action.Acti
 				StaticInputFiles: FileSet{x.Unit.PrecompiledSource, x.Unit.PrecompiledHeader},
 				ExportFile:       pchObject,
 				OutputFile:       x.Unit.PrecompiledObject,
-				StaticDeps:       dependencies.Aliases(),
+				StaticDeps:       MakeBuildAliases(dependencies...),
 				// PCH object should not be stored in cache, but objects compiled with it can still be stored if we track PCH inputs instead of PCH outputs
 				Options: action.MakeOptionFlags(action.OPT_PROPAGATE_INPUTS),
 			})
@@ -503,8 +503,13 @@ func (x *buildActionGenerator) ObjectListActions(headerUnits, pchs action.Action
 
 	compilerRules := x.Compiler.GetCompiler()
 
-	includeAliases := includeDeps.Aliases()
-	includeAliases.Append(headerUnits.Aliases()...)
+	includeAliases := make(BuildAliases, 0, len(includeDeps)+len(headerUnits)+1)
+	for _, it := range includeDeps {
+		includeAliases.Append(it.Alias())
+	}
+	for _, it := range headerUnits {
+		includeAliases.Append(it.Alias())
+	}
 
 	base.Assert(sourceFiles.IsUniq)
 	objs := make(action.ActionSet, len(sourceFiles))
@@ -622,7 +627,7 @@ func (x *buildActionGenerator) LinkActions(headerUnits, pchs, objs action.Action
 			OutputFile:    x.Unit.OutputFile,
 			ExtraFiles:    extraFiles,
 			Prerequisites: pchs,
-			StaticDeps:    runtimeDeps.Aliases(),
+			StaticDeps:    MakeBuildAliases(runtimeDeps...),
 		})
 
 	return action.ActionSet{link}, err

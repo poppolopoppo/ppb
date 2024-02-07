@@ -19,78 +19,109 @@ func InitAction() {
 	base.RegisterSerializable[actionCache]()
 }
 
-/***************************************
- * ActionFlags
- ***************************************/
-
-type ActionFlags struct {
-	CacheCompression      base.CompressionFormat
-	CacheCompressionLevel base.CompressionLevel
-	CacheMode             CacheModeType
-	CachePath             utils.Directory
-	DistMode              DistModeType
-	ResponseFile          utils.BoolVar
-	ShowCmds              utils.BoolVar
-	ShowFiles             utils.BoolVar
-	ShowOutput            utils.BoolVar
-}
-
-func (x *ActionFlags) Flags(cfv utils.CommandFlagsVisitor) {
-	cfv.Persistent("CacheMode", "use input hashing to store/retrieve action outputs", &x.CacheMode)
-	cfv.Persistent("CachePath", "set path used to store cached actions", &x.CachePath)
-	cfv.Persistent("CacheCompression", "set compression format for cached bulk entries", &x.CacheCompression)
-	cfv.Persistent("CacheCompressionLevel", "set compression level for cached bulk entries", &x.CacheCompressionLevel)
-	cfv.Persistent("DistMode", "distribute actions to a cluster of remote workers", &x.DistMode)
-	cfv.Persistent("ResponseFile", "control response files usage", &x.ResponseFile)
-	cfv.Variable("ShowCmds", "print executed compilation commands", &x.ShowCmds)
-	cfv.Variable("ShowFiles", "print file accesses for external commands", &x.ShowFiles)
-	cfv.Variable("ShowOutput", "always show compilation commands output", &x.ShowOutput)
-}
-
-var GetActionFlags = utils.NewCommandParsableFlags(&ActionFlags{
-	CacheMode: CACHE_NONE,
-	CachePath: utils.UFS.Cache,
-	// Lz4 is almost as fast as uncompressed, but with fewer IO: when using Fast speed it is almost always a free win
-	CacheCompression:      base.COMPRESSION_FORMAT_LZ4,
-	CacheCompressionLevel: base.COMPRESSION_LEVEL_FAST,
-
-	DistMode: DIST_NONE,
-
-	ResponseFile: base.INHERITABLE_TRUE,
-	ShowCmds:     base.INHERITABLE_FALSE,
-	ShowFiles:    base.INHERITABLE_FALSE,
-	ShowOutput:   base.INHERITABLE_FALSE,
-})
-
-/***************************************
- * Action Rules
- ***************************************/
-
 type Action interface {
 	GetAction() *ActionRules
 	utils.Buildable
 	fmt.Stringer
 }
 
+/***************************************
+ * Action Rules
+ ***************************************/
+
+type ActionAlias struct {
+	ExportFile utils.Filename
+}
+
+type ActionAliases = base.SetT[ActionAlias]
+
+func NewActionAlias(exportFile utils.Filename) ActionAlias {
+	base.Assert(exportFile.Valid)
+	return ActionAlias{ExportFile: exportFile}
+}
+func (x ActionAlias) Valid() bool {
+	return x.ExportFile.Valid()
+}
+func (x ActionAlias) Alias() utils.BuildAlias {
+	return utils.MakeBuildAlias("Action", x.ExportFile.Dirname.Path, x.ExportFile.Basename)
+}
+func (x ActionAlias) String() string {
+	base.Assert(func() bool { return x.Valid() })
+	return x.ExportFile.String()
+}
+func (x ActionAlias) Compare(o ActionAlias) int {
+	return x.ExportFile.Compare(o.ExportFile)
+}
+func (x ActionAlias) AutoComplete(in base.AutoComplete) {
+	utils.CommandEnv.BuildGraph().Range(func(ba utils.BuildAlias, bn utils.BuildNode) error {
+		switch buildable := bn.GetBuildable().(type) {
+		case Action:
+			in.Add(buildable.GetAction().GetGeneratedFile().String(), "")
+		}
+		return nil
+	})
+}
+func (x *ActionAlias) Serialize(ar base.Archive) {
+	ar.Serializable(&x.ExportFile)
+}
+func (x *ActionAlias) Set(in string) (err error) {
+	return x.ExportFile.Set(in)
+}
+func (x *ActionAlias) MarshalText() ([]byte, error) {
+	return x.ExportFile.MarshalText()
+}
+func (x *ActionAlias) UnmarshalText(data []byte) error {
+	return x.ExportFile.UnmarshalText(data)
+}
+
+/***************************************
+ * Action Rules
+ ***************************************/
+
 type ActionRules struct {
 	CommandRules
 
-	OutputFiles   utils.FileSet      // all output files that should be tracked
-	ExportIndex   int32              // index of export file in outputs files
-	Prerequisites utils.BuildAliases // actions to run dynamically only if cache missed (PCH)
+	OutputFiles   utils.FileSet // all output files that should be tracked
+	ExportIndex   int32         // index of export file in outputs files
+	Prerequisites ActionAliases // actions to run dynamically only if cache missed (PCH)
 
 	Options OptionFlags
 }
 
 func (x *ActionRules) Alias() utils.BuildAlias {
-	exportFile := x.OutputFiles[x.ExportIndex]
-	return utils.MakeBuildAlias("Action", exportFile.Dirname.Path, exportFile.Basename)
+	return x.GetActionAlias().Alias()
 }
 
-func (x *ActionRules) GetAction() *ActionRules          { return x }
+func (x *ActionRules) GetAction() *ActionRules { return x }
+func (x *ActionRules) GetActionAlias() ActionAlias {
+	return NewActionAlias(x.OutputFiles[x.ExportIndex])
+}
 func (x *ActionRules) GetGeneratedFile() utils.Filename { return x.OutputFiles[x.ExportIndex] }
-func (x *ActionRules) GetInputFiles() (results utils.FileSet) {
-	bg := utils.CommandEnv.BuildGraph()
+
+func (x *ActionRules) GetDependentActions(bg utils.BuildGraph) (ActionSet, error) {
+	buildNode, err := bg.Expect(x.Alias())
+	if err != nil {
+		return nil, err
+	}
+
+	var result ActionSet
+	for _, it := range bg.GetStaticDependencies(buildNode) {
+		switch buildable := it.GetBuildable().(type) {
+		case Action:
+			result.AppendUniq(buildable)
+		}
+	}
+
+	if prerequisites, err := GetBuildActions(x.Prerequisites...); err == nil {
+		result.AppendUniq(prerequisites...)
+	} else {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (x *ActionRules) GetStaticInputFiles(bg utils.BuildGraph) (results utils.FileSet) {
 	node, err := bg.Expect(x.Alias())
 	base.LogPanicIfFailed(LogAction, err)
 
@@ -160,7 +191,7 @@ func (x *ActionRules) Build(bc utils.BuildContext) error {
 		// need prerequisites before building if cache missed
 		var prerequisiteFiles utils.FileSet
 		if err := bc.NeedBuildAliasables(len(x.Prerequisites),
-			func(i int) utils.BuildAliasable { return x.Prerequisites[i] },
+			func(i int) utils.BuildAliasable { return x.Prerequisites[i].Alias() },
 			func(i int, br utils.BuildResult) error {
 				return harvestActionInputFiles(bc, br, &prerequisiteFiles, &excludedInputFiles)
 			}); err != nil {
@@ -374,8 +405,12 @@ func executeOrDistributeAction(bc utils.BuildContext, action *ActionRules, flags
 type ActionSet []Action
 
 func (x ActionSet) Slice() []Action { return x }
-func (x ActionSet) Aliases() utils.BuildAliases {
-	return utils.MakeBuildAliases(x.Slice()...)
+func (x ActionSet) Aliases() ActionAliases {
+	aliases := make([]ActionAlias, len(x))
+	for i, it := range x {
+		aliases[i] = it.GetAction().GetActionAlias()
+	}
+	return aliases
 }
 func (x ActionSet) Contains(action Action) bool {
 	for _, it := range x {
@@ -388,39 +423,25 @@ func (x ActionSet) Contains(action Action) bool {
 func (x *ActionSet) Append(actions ...Action) {
 	*x = base.AppendComparable_CheckUniq(*x, actions...)
 }
+func (x *ActionSet) AppendUniq(actions ...Action) {
+	*x = base.AppendUniq(*x, actions...)
+}
 func (x ActionSet) Concat(actions ...Action) ActionSet {
 	return base.AppendComparable_CheckUniq(x, actions...)
 }
-func (x ActionSet) ExpandDependencies(bg utils.BuildGraph, result *ActionSet) error {
-	for _, action := range x {
-		if !result.Contains(action) {
-			result.Append(action)
+func (x ActionSet) ExpandDependencies(bg utils.BuildGraph) (ActionSet, error) {
+	var result ActionSet = base.CopySlice(x...)
 
-			buildNode, err := bg.Expect(action.Alias())
-			if err != nil {
-				return err
-			}
-
-			dependencies := base.RemoveUnless(func(a utils.BuildAlias) bool {
-				return a.HasCategory("Action")
-			}, buildNode.GetStaticDependencies()...)
-
-			if len(dependencies) == 0 {
-				continue
-			}
-
-			if actions, err := GetBuildActions(dependencies); err == nil {
-				if err = actions.ExpandDependencies(bg, result); err != nil {
-					return err
-				}
-			} else {
-				return err
-			}
+	for i := 0; i < len(result); i++ {
+		if actions, err := result[i].GetAction().GetDependentActions(bg); err == nil {
+			result.AppendUniq(actions...)
+		} else {
+			return nil, err
 		}
 	}
-	return nil
-}
 
+	return base.ReverseSlice(result...), nil
+}
 func (x ActionSet) GetOutputFiles() (result utils.FileSet) {
 	for _, action := range x {
 		result.Append(action.GetAction().OutputFiles...)
@@ -435,11 +456,24 @@ func (x ActionSet) GetExportFiles() (results utils.FileSet) {
 	return
 }
 
-func GetBuildActions(aliases utils.BuildAliases) (ActionSet, error) {
-	base.Assert(aliases.IsUniq)
+func FindBuildAction(alias ActionAlias) (Action, error) {
+	return utils.FindGlobalBuildable[Action](alias.Alias())
+}
+
+func ForeachBuildAction(bg utils.BuildGraph, each func(utils.BuildNode, Action) error) error {
+	return bg.Range(func(ba utils.BuildAlias, bn utils.BuildNode) error {
+		switch buildable := bn.GetBuildable().(type) {
+		case Action:
+			return each(bn, buildable)
+		}
+		return nil
+	})
+}
+
+func GetBuildActions(aliases ...ActionAlias) (ActionSet, error) {
 	result := make(ActionSet, len(aliases))
 	for i, alias := range aliases {
-		if action, err := utils.FindGlobalBuildable[Action](alias); err == nil {
+		if action, err := FindBuildAction(alias); err == nil {
 			base.Assert(func() bool { return nil != action })
 			result[i] = action
 		} else {
@@ -447,99 +481,4 @@ func GetBuildActions(aliases utils.BuildAliases) (ActionSet, error) {
 		}
 	}
 	return result, nil
-}
-
-/***************************************
- * Action Options
- ***************************************/
-
-type OptionType byte
-type OptionFlags = base.EnumSet[OptionType, *OptionType]
-
-func MakeOptionFlags(opts ...OptionType) OptionFlags {
-	return base.MakeEnumSet[OptionType, *OptionType](opts...)
-}
-
-const (
-	// Allow action output to be retrieved from cache
-	OPT_ALLOW_CACHEREAD OptionType = iota
-	// Allow action output to be stored in cache
-	OPT_ALLOW_CACHEWRITE
-	// Allow action to be distributed in remote peers cluster
-	OPT_ALLOW_DISTRIBUTION
-	// Allow action to use relative paths (for caching)
-	OPT_ALLOW_RELATIVEPATH
-	// Allow action to use response files when command-line is too long (depends on executable support)
-	OPT_ALLOW_RESPONSEFILE
-	// Allow action to check source control for local modications, and avoid storing in cache when dirty
-	OPT_ALLOW_SOURCECONTROL
-	// This action should propagate its input files instead of its own output when tracking inputs (for PCH)
-	OPT_PROPAGATE_INPUTS
-
-	OPT_ALLOW_CACHEREADWRITE OptionType = OPT_ALLOW_CACHEREAD | OPT_ALLOW_CACHEWRITE
-)
-
-func OptionTypes() []OptionType {
-	return []OptionType{
-		OPT_ALLOW_CACHEREAD,
-		OPT_ALLOW_CACHEWRITE,
-		OPT_ALLOW_DISTRIBUTION,
-		OPT_ALLOW_RELATIVEPATH,
-		OPT_ALLOW_RESPONSEFILE,
-		OPT_ALLOW_SOURCECONTROL,
-		OPT_PROPAGATE_INPUTS,
-	}
-}
-func (x OptionType) Ord() int32           { return int32(x) }
-func (x *OptionType) FromOrd(value int32) { *x = OptionType(value) }
-func (x OptionType) String() string {
-	switch x {
-	case OPT_ALLOW_CACHEREAD:
-		return "ALLOW_CACHEREAD"
-	case OPT_ALLOW_CACHEWRITE:
-		return "ALLOW_CACHEWRITE"
-	case OPT_ALLOW_DISTRIBUTION:
-		return "ALLOW_DISTRIBUTION"
-	case OPT_ALLOW_RELATIVEPATH:
-		return "ALLOW_RELATIVEPATH"
-	case OPT_ALLOW_RESPONSEFILE:
-		return "ALLOW_RESPONSEFILE"
-	case OPT_ALLOW_SOURCECONTROL:
-		return "ALLOW_SOURCECONTROL"
-	case OPT_PROPAGATE_INPUTS:
-		return "PROPAGATE_INPUTS"
-	default:
-		base.UnexpectedValue(x)
-		return ""
-	}
-}
-func (x *OptionType) Set(in string) (err error) {
-	switch strings.ToUpper(in) {
-	case OPT_ALLOW_CACHEREAD.String():
-		*x = OPT_ALLOW_CACHEREAD
-	case OPT_ALLOW_CACHEWRITE.String():
-		*x = OPT_ALLOW_CACHEWRITE
-	case OPT_ALLOW_DISTRIBUTION.String():
-		*x = OPT_ALLOW_DISTRIBUTION
-	case OPT_ALLOW_RELATIVEPATH.String():
-		*x = OPT_ALLOW_RELATIVEPATH
-	case OPT_ALLOW_RESPONSEFILE.String():
-		*x = OPT_ALLOW_RESPONSEFILE
-	case OPT_ALLOW_SOURCECONTROL.String():
-		*x = OPT_ALLOW_SOURCECONTROL
-	case OPT_PROPAGATE_INPUTS.String():
-		*x = OPT_PROPAGATE_INPUTS
-	default:
-		err = base.MakeUnexpectedValueError(x, in)
-	}
-	return err
-}
-func (x *OptionType) Serialize(ar base.Archive) {
-	ar.Byte((*byte)(x))
-}
-func (x OptionType) MarshalText() ([]byte, error) {
-	return base.UnsafeBytesFromString(x.String()), nil
-}
-func (x *OptionType) UnmarshalText(data []byte) error {
-	return x.Set(base.UnsafeStringFromBytes(data))
 }
