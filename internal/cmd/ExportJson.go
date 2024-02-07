@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"io"
 
 	compile "github.com/poppolopoppo/ppb/compile"
@@ -13,8 +12,7 @@ func completeJsonExport[T base.Comparable[T], P completionArgsTraits[T], OUTPUT 
 	return openCompletion(args, func(w io.Writer) error {
 		return filterCompletion(args, func(it T) error {
 			if output, err := factory(it); err == nil {
-				_, err = fmt.Fprint(w, base.PrettyPrint(output))
-				return err
+				return base.JsonSerialize(output, w, base.OptionJsonPrettyPrint(true))
 			} else {
 				return err
 			}
