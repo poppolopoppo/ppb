@@ -11,11 +11,11 @@ import (
  ***************************************/
 
 func (x *Directory) Alias() BuildAlias {
-	return BuildAlias(x.String())
+	return MakeBuildAlias("UFS", x.Path)
 }
 
 func (x *Filename) Alias() BuildAlias {
-	return BuildAlias(x.String())
+	return MakeBuildAlias("UFS", x.Dirname.Path, x.Basename)
 }
 
 /***************************************

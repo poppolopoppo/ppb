@@ -91,6 +91,9 @@ func (x InheritableString) Equals(y InheritableString) bool {
 func (x InheritableString) Compare(y InheritableString) int {
 	return strings.Compare(x.Get(), y.Get())
 }
+func (x InheritableString) GetHashValue(basis uint64) uint64 {
+	return Fnv1a(x.Get(), basis)
+}
 func (x *InheritableString) Serialize(ar Archive) {
 	ar.String((*string)(x))
 }

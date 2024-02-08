@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/poppolopoppo/ppb/internal/base"
@@ -10,7 +11,13 @@ import (
  * Build Alias
  ***************************************/
 
-type BuildAlias string
+type BuildAlias struct {
+	Domain string
+	Name   string
+}
+
+const BUILD_DOMAIN_SEPARATOR = `://`
+
 type BuildAliases = base.SetT[BuildAlias]
 
 type BuildAliasable interface {
@@ -25,96 +32,53 @@ func MakeBuildAliases[T BuildAliasable](targets ...T) (result BuildAliases) {
 	return
 }
 
-/***************************************
- * Build Alias Builder
- ***************************************/
+func MakeBuildAlias(domain string, names ...string) BuildAlias {
+	nameSet := base.StringSet(names)
 
-type BuildAliasBuilder struct {
-	sb strings.Builder
-}
+	var builder BuildAliasBuilder
+	MakeBuildAliasBuilder(&builder, domain, nameSet.TotalContentLen()+nameSet.Len() /* separators */)
 
-func MakeBuildAliasBuilder(result *BuildAliasBuilder, category string, capacity int) {
-	result.sb.Grow(capacity + len(category) + len(":/") + 10 /* additional reserve for multi-byte chars */)
-	result.sb.WriteString(category)
-	result.sb.WriteString(":/")
-}
-func (x *BuildAliasBuilder) Alias() BuildAlias {
-	return BuildAlias(x.sb.String())
-}
-func (x *BuildAliasBuilder) ReserveString(strs ...string) {
-	capacity := 0
-	for _, it := range strs {
-		capacity += 1 + len(it)
-	}
-	x.sb.Grow(capacity)
-}
-func (x *BuildAliasBuilder) WriteString(sep rune, strs ...string) {
-	for _, it := range strs {
-		x.sb.WriteRune(sep)
-		BuildSanitizedPath(&x.sb, it, '/')
-	}
-}
-
-func MakeBuildAlias(category string, names ...string) BuildAlias {
-	sb := strings.Builder{}
-	sep := "://"
-
-	capacity := len(category)
-	i := 0
-	for _, it := range names {
+	for _, it := range nameSet {
 		if len(it) == 0 {
 			continue
 		}
-		if i > 0 {
-			capacity++
-		} else {
-			capacity += len(sep)
-		}
-		capacity += len(it)
-		i++
-	}
-	sb.Grow(capacity)
-
-	sb.WriteString(category)
-	i = 0
-	for _, it := range names {
-		if len(it) == 0 {
-			continue
-		}
-		if i > 0 {
-			sb.WriteRune('/')
-		} else {
-			sb.WriteString(sep)
-		}
-		BuildSanitizedPath(&sb, it, '/')
-		i++
+		builder.WriteString('/', it)
 	}
 
-	return BuildAlias(sb.String())
+	return builder.Alias()
 }
 func (x BuildAlias) Alias() BuildAlias { return x }
-func (x BuildAlias) Valid() bool       { return len(x) > 3 /* check for "---" */ }
-func (x BuildAlias) HasCategory(category string) bool {
-	return strings.HasPrefix(x.String(), category) &&
-		strings.HasPrefix(x.String()[len(category):], "://")
-}
-func (x BuildAlias) Equals(o BuildAlias) bool {
-	return (string)(x) == (string)(o)
-}
-func (x BuildAlias) Compare(o BuildAlias) int {
-	return strings.Compare((string)(x), (string)(o))
+func (x BuildAlias) Valid() bool {
+	base.AssertNotIn(len(x.Domain), 0)
+	return len(x.Name) > 0
 }
 func (x BuildAlias) String() string {
-	base.Assert(func() bool { return x.Valid() })
-	return (string)(x)
+	return fmt.Sprint(x.Domain, BUILD_DOMAIN_SEPARATOR, x.Name)
+}
+func (x BuildAlias) Equals(o BuildAlias) bool {
+	return x.Name == o.Name && x.Domain == o.Domain
+}
+func (x BuildAlias) Compare(o BuildAlias) int {
+	if cmp := strings.Compare(x.Domain, o.Domain); cmp != 0 {
+		return cmp
+	} else {
+		return strings.Compare(x.Name, o.Name)
+	}
+}
+func (x BuildAlias) GetHashValue(basis uint64) uint64 {
+	return base.Fnv1a(x.Name, base.Fnv1a(x.Domain, basis))
 }
 func (x *BuildAlias) Set(in string) error {
-	*x = BuildAlias(in)
-	base.Assert(func() bool { return x.Valid() })
-	return nil
+	parts := strings.SplitN(in, BUILD_DOMAIN_SEPARATOR, 2)
+	if len(parts) == 2 {
+		x.Domain, x.Name = parts[0], parts[1]
+		return nil
+	}
+	return fmt.Errorf("invalid build alias: %q", in)
 }
 func (x *BuildAlias) Serialize(ar base.Archive) {
-	ar.String((*string)(x))
+	ar.String(&x.Domain)
+	ar.String(&x.Name)
 }
 func (x *BuildAlias) MarshalText() ([]byte, error) {
 	return base.UnsafeBytesFromString(x.String()), nil
@@ -126,5 +90,39 @@ func (x BuildAlias) AutoComplete(in base.AutoComplete) {
 	bg := CommandEnv.BuildGraph()
 	for _, a := range bg.Aliases() {
 		in.Add(a.String(), "")
+	}
+}
+
+/***************************************
+ * Build Alias Builder
+ ***************************************/
+
+type BuildAliasBuilder struct {
+	domain string
+	sb     strings.Builder
+}
+
+func MakeBuildAliasBuilder(result *BuildAliasBuilder, domain string, capacity int) {
+	result.domain = domain
+	result.sb.Grow(capacity + 10 /* additional reserve for multi-byte chars */)
+}
+func (x *BuildAliasBuilder) Alias() BuildAlias {
+	return BuildAlias{
+		Domain: x.domain,
+		Name:   x.sb.String()}
+}
+func (x *BuildAliasBuilder) ReserveString(strs ...string) {
+	capacity := 0
+	for _, it := range strs {
+		capacity += 1 + len(it)
+	}
+	x.sb.Grow(capacity)
+}
+func (x *BuildAliasBuilder) WriteString(sep rune, strs ...string) {
+	for _, it := range strs {
+		if x.sb.Len() > 0 {
+			x.sb.WriteRune(sep)
+		}
+		BuildSanitizedPath(&x.sb, it, '/')
 	}
 }

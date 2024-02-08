@@ -87,7 +87,7 @@ func ComputeSha256(path string, seed base.Fingerprint) ([]byte, error) {
  * Cleaning path to get the correct case is terribly expansive on Windows
  ***************************************/
 
-var cleanPathCache = base.NewSharedStringMap[string](128)
+var cleanPathCache = base.NewShardedMap[StringVar, string](128)
 
 // normVolumeName is like VolumeName, but makes drive letter upper case.
 // result of EvalSymlinks must be unique, so we have
@@ -185,12 +185,12 @@ func cacheCleanPath(in, dirty string) (string, error) {
 	// first look for a prefix directory which was already cleaned
 	dirtyOffset := len(dirty)
 	for {
-		var query string
+		var query StringVar
 		separator, ok := lastIndexOfPathSeparator(dirty[:dirtyOffset])
 
 		if ok && separator > len(volName) {
 			dirtyOffset = separator
-			query = dirty[:separator]
+			query.Assign(dirty[:separator])
 		} else {
 			dirtyOffset = len(volName)
 			cleaned.WriteString(volName)
@@ -224,20 +224,20 @@ func cacheCleanPath(in, dirty string) (string, error) {
 		}
 
 		if err == nil {
-			query := dirty[:dirtyOffset]
+			var query = StringVar(dirty[:dirtyOffset])
 
 			if realpath, ok := cleanPathCache.Get(query); ok { // some other thread might have allocated the string already
 				cleaned.Reset()
 				cleaned.WriteString(realpath)
 
-			} else if realname, er := normBase(query); er == nil {
+			} else if realname, er := normBase(query.Get()); er == nil {
 				cleaned.WriteRune(OSPathSeparator)
 				cleaned.WriteString(realname)
 
 				// store in cache for future queries, avoid querying all files all paths all the time
 				cleanPathCache.Add(
 					// need string copies for caching here
-					strings.ToLower(query),
+					StringVar(strings.ToLower(query.Get())),
 					filepath.Clean(cleaned.String()))
 
 			} else {
@@ -266,7 +266,7 @@ func CleanPath(in string) string {
 	in = filepath.Clean(in)
 
 	// Maximize cache usage by always convert to lower-case on Windows
-	query := strings.ToLower(in)
+	var query = StringVar(strings.ToLower(in))
 
 	// /!\ EvalSymlinks() is **SUPER** expansive !
 	// Try to mitigate with an ad-hoc concurrent cache
@@ -275,7 +275,7 @@ func CleanPath(in string) string {
 	}
 
 	// result, err := filepath.EvalSymlinks(in)
-	result, err := cacheCleanPath(in, query)
+	result, err := cacheCleanPath(in, query.Get())
 	if err != nil {
 		// result = in
 		err = nil // if path does not exist yet

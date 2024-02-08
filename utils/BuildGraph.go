@@ -45,7 +45,7 @@ type BuildNodeEvent struct {
 }
 
 type BuildGraph interface {
-	Aliases() []BuildAlias
+	Aliases() BuildAliases
 	Range(each func(BuildAlias, BuildNode) error) error
 
 	Dirty() bool
@@ -99,7 +99,7 @@ type BuildGraph interface {
 
 type buildGraph struct {
 	flags   *CommandFlags
-	nodes   *base.SharedStringMapT[*buildNode]
+	nodes   *base.ShardedMapT[BuildAlias, *buildNode]
 	options BuildOptions
 	stats   BuildStats
 
@@ -112,7 +112,7 @@ type buildGraph struct {
 func NewBuildGraph(flags *CommandFlags, options ...BuildOptionFunc) BuildGraph {
 	result := &buildGraph{
 		flags:       flags,
-		nodes:       base.NewSharedStringMap[*buildNode](1000),
+		nodes:       base.NewShardedMap[BuildAlias, *buildNode](1000),
 		options:     NewBuildOptions(options...),
 		revision:    0,
 		buildEvents: newBuildEvents(),
@@ -120,16 +120,16 @@ func NewBuildGraph(flags *CommandFlags, options ...BuildOptionFunc) BuildGraph {
 	return result
 }
 
-func (g *buildGraph) Aliases() []BuildAlias {
-	keys := g.nodes.Keys()
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i] < keys[j]
+func (g *buildGraph) Aliases() (result BuildAliases) {
+	result = g.nodes.Keys()
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Compare(result[j]) < 0
 	})
-	return base.Map(func(in string) BuildAlias { return BuildAlias(in) }, keys...)
+	return
 }
 func (g *buildGraph) Range(each func(BuildAlias, BuildNode) error) error {
-	return g.nodes.Range(func(key string, node *buildNode) error {
-		return each(BuildAlias(key), node)
+	return g.nodes.Range(func(key BuildAlias, node *buildNode) error {
+		return each(key, node)
 	})
 }
 
@@ -144,7 +144,7 @@ func (g *buildGraph) GlobalContext(options ...BuildOptionFunc) BuildContext {
 }
 
 func (g *buildGraph) findNode(alias BuildAlias) (*buildNode, error) {
-	if node, ok := g.nodes.Get(alias.String()); ok {
+	if node, ok := g.nodes.Get(alias); ok {
 		base.Assert(func() bool { return node.Alias().Equals(alias) })
 		return node, nil
 	} else {
@@ -173,16 +173,16 @@ func (g *buildGraph) Create(buildable Buildable, static BuildAliases, options ..
 	})
 	base.LogTrace(LogBuildGraph, "create <%T> node %q (force: %v, dirty: %v)", buildable, alias, bo.Force, bo.Dirty)
 
-	if node, loaded = g.nodes.Get(alias.String()); !loaded {
+	if node, loaded = g.nodes.Get(alias); !loaded {
 		base.Assert(func() bool {
 			makeCaseInsensitive := func(in string) string {
 				return SanitizePath(strings.ToLower(in), '/')
 			}
 			lowerAlias := makeCaseInsensitive(alias.String())
 			for _, key := range g.nodes.Keys() {
-				lowerKey := makeCaseInsensitive(key)
+				lowerKey := makeCaseInsensitive(key.String())
 				if lowerKey == lowerAlias {
-					if key != alias.String() {
+					if key != alias {
 						base.LogError(LogBuildGraph, "alias already registered with different case:\n\t add: %v\n\tfound: %v", alias, key)
 						return false
 					}
@@ -193,7 +193,7 @@ func (g *buildGraph) Create(buildable Buildable, static BuildAliases, options ..
 		})
 
 		// first optimistic Get() to avoid newBuildNode() bellow
-		node, loaded = g.nodes.FindOrAdd(alias.String(), newBuildNode(alias, buildable))
+		node, loaded = g.nodes.FindOrAdd(alias, newBuildNode(alias, buildable))
 	}
 
 	// quick reject if a node with same alias already exists
@@ -295,7 +295,7 @@ func (g *buildGraph) BuildMany(targets BuildAliases, options ...BuildOptionFunc)
 
 func (g *buildGraph) Join() (lastErr error) {
 	for lastErr == nil && g.hasRunningTasks() {
-		lastErr = g.nodes.Range(func(_ string, node *buildNode) error {
+		lastErr = g.nodes.Range(func(_ BuildAlias, node *buildNode) error {
 			if node != nil {
 				if future := node.future.Load(); future != nil {
 					return future.Join().Failure()
@@ -336,7 +336,7 @@ func (g *buildGraph) Serialize(ar base.Archive) {
 	if ar.Flags().IsLoading() && ar.Error() == nil {
 		g.nodes.Clear()
 		for _, node := range pinned {
-			g.nodes.Add(node.Alias().String(), node)
+			g.nodes.Add(node.Alias(), node)
 		}
 	}
 }
@@ -500,7 +500,7 @@ func (g *buildGraph) GetDependencyChain(src, dst BuildAlias, weight func(BuildDe
 		dstIndex  = INDEX_NONE
 		srcIndex  = INDEX_NONE
 		previous  = make([]int32, len(vertices))
-		visiteds  = make(map[string]int32, len(vertices))
+		visiteds  = make(map[BuildAlias]int32, len(vertices))
 		distances = make([]float32, len(vertices))
 		linkTypes = make([]BuildDependencyType, len(vertices))
 	)
@@ -511,10 +511,10 @@ func (g *buildGraph) GetDependencyChain(src, dst BuildAlias, weight func(BuildDe
 		previous[i] = INDEX_NONE
 		linkTypes[i] = DEPENDENCY_ROOT
 
-		if a == src.String() {
+		if a == src {
 			distances[i] = 0
 			srcIndex = int32(i)
-		} else if a == dst.String() {
+		} else if a == dst {
 			dstIndex = int32(i)
 		}
 	}
@@ -534,7 +534,7 @@ func (g *buildGraph) GetDependencyChain(src, dst BuildAlias, weight func(BuildDe
 		u := vertices[min]
 		delete(visiteds, u)
 
-		if u == dst.String() {
+		if u == dst {
 			break // destination found, guaranteed with shortest path
 		}
 
@@ -545,7 +545,7 @@ func (g *buildGraph) GetDependencyChain(src, dst BuildAlias, weight func(BuildDe
 
 		for _, l := range links {
 			v := l.Alias
-			if j, ok := visiteds[v.String()]; ok {
+			if j, ok := visiteds[v]; ok {
 				if alt := distances[min] + 1; alt < distances[j] {
 					distances[j] = alt
 					previous[j] = min
@@ -589,7 +589,7 @@ func (g *buildGraph) GetCriticalPathNodes() []BuildNode {
 	var critical criticalPath
 
 	base.LogPanicIfFailed(LogBuildGraph,
-		g.nodes.Range(func(_ string, rootNode *buildNode) error {
+		g.nodes.Range(func(_ BuildAlias, rootNode *buildNode) error {
 			if rootNode.GetBuildStats().Count == 0 ||
 				critical.Nodes.Contains(rootNode) {
 				return nil
@@ -652,7 +652,7 @@ func (g *buildGraph) GetMostExpansiveNodes(n int, inclusive bool) (results []Bui
 		}
 	}
 
-	err := g.nodes.Range(func(key string, node *buildNode) error {
+	err := g.nodes.Range(func(key BuildAlias, node *buildNode) error {
 		if node.state.stats.Count != 0 {
 			results = base.AppendBoundedSort(results, n, BuildNode(node), predicate)
 		}

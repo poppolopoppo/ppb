@@ -802,46 +802,56 @@ func Fnv1a(s string, basis uint64) (h uint64) {
 
 // lower contentions using mutiple shards
 
-type SharedStringMapT[V any] struct {
+type Hashable interface {
+	GetHashValue(basis uint64) uint64
+}
+
+type ShardedMapT[K interface {
+	comparable
+	Hashable
+}, V any] struct {
 	basis  uint64
-	shards []*SharedMapT[string, V]
+	shards []*SharedMapT[K, V]
 }
 
-func NewSharedStringMap[V any](numShards int) *SharedStringMapT[V] {
-	shards := make([]*SharedMapT[string, V], numShards)
+func NewShardedMap[K interface {
+	comparable
+	Hashable
+}, V any](numShards int) *ShardedMapT[K, V] {
+	shards := make([]*SharedMapT[K, V], numShards)
 	for i := range shards {
-		shards[i] = NewSharedMapT[string, V]()
+		shards[i] = NewSharedMapT[K, V]()
 	}
-	return &SharedStringMapT[V]{basis: rand.Uint64() + 14695981039346656037, shards: shards}
+	return &ShardedMapT[K, V]{basis: rand.Uint64() + 14695981039346656037, shards: shards}
 }
 
-func (x *SharedStringMapT[V]) getShard(key string) *SharedMapT[string, V] {
-	return x.shards[Fnv1a(key, x.basis)%uint64(len(x.shards))]
+func (x *ShardedMapT[K, V]) getShard(key K) *SharedMapT[K, V] {
+	return x.shards[key.GetHashValue(x.basis)%uint64(len(x.shards))]
 }
-func (x *SharedStringMapT[V]) Len() (count int) {
+func (x *ShardedMapT[K, V]) Len() (count int) {
 	for _, shard := range x.shards {
 		count += shard.Len()
 	}
 	return
 }
-func (x *SharedStringMapT[V]) Clear() {
+func (x *ShardedMapT[K, V]) Clear() {
 	for _, shard := range x.shards {
 		shard.Clear()
 	}
 }
-func (x *SharedStringMapT[V]) Keys() (result []string) {
+func (x *ShardedMapT[K, V]) Keys() (result []K) {
 	for _, shard := range x.shards {
 		result = append(result, shard.Keys()...)
 	}
 	return
 }
-func (x *SharedStringMapT[V]) Values() (result []V) {
+func (x *ShardedMapT[K, V]) Values() (result []V) {
 	for _, shard := range x.shards {
 		result = append(result, shard.Values()...)
 	}
 	return
 }
-func (x *SharedStringMapT[V]) Range(each func(string, V) error) error {
+func (x *ShardedMapT[K, V]) Range(each func(K, V) error) error {
 	for _, shard := range x.shards {
 		if err := shard.Range(each); err != nil {
 			return err
@@ -849,15 +859,15 @@ func (x *SharedStringMapT[V]) Range(each func(string, V) error) error {
 	}
 	return nil
 }
-func (x *SharedStringMapT[V]) Add(key string, value V) V {
+func (x *ShardedMapT[K, V]) Add(key K, value V) V {
 	return x.getShard(key).Add(key, value)
 }
-func (x *SharedStringMapT[V]) FindOrAdd(key string, value V) (V, bool) {
+func (x *ShardedMapT[K, V]) FindOrAdd(key K, value V) (V, bool) {
 	return x.getShard(key).FindOrAdd(key, value)
 }
-func (x *SharedStringMapT[V]) Get(key string) (result V, ok bool) {
+func (x *ShardedMapT[K, V]) Get(key K) (result V, ok bool) {
 	return x.getShard(key).Get(key)
 }
-func (x *SharedStringMapT[V]) Delete(key string) {
+func (x *ShardedMapT[K, V]) Delete(key K) {
 	x.getShard(key).Delete(key)
 }
