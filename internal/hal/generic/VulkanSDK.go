@@ -135,7 +135,7 @@ func (g VulkanGeneratedHeader) Generate(bc utils.BuildContext, generated *compil
 					if x.HasReturn() {
 						funcRes = "NODISCARD " + funcRes
 					}
-					cpp.Func(x.Name, funcRes, base.Stringize(x.Args...), "const", func() {
+					cpp.Func(x.Name, funcRes, base.MakeStringerSet(x.Args...), "const", func() {
 						argNames := base.Map(func(a VkFunctionArg) string { return re_vkIdentifier.FindString(a.Name) }, x.Args...)
 						argList := strings.Join(argNames, ", ")
 						funCall := fmt.Sprintf("%s->%s(%s)", ptr, x.Name, argList)

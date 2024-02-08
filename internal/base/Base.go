@@ -256,14 +256,6 @@ func MakeString(x any) string {
 	}
 }
 
-func Stringize[T fmt.Stringer](it ...T) []string {
-	result := make([]string, len(it))
-	for i, x := range it {
-		result[i] = x.String()
-	}
-	return result
-}
-
 /***************************************
  * FourCC
  ***************************************/

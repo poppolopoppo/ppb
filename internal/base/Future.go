@@ -3,7 +3,6 @@ package base
 import (
 	"fmt"
 	"reflect"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -67,7 +66,7 @@ func make_sync_future[T any](f func() (T, error), debug ...fmt.Stringer) Future[
 		if f != nil {
 			return nil
 		}
-		return fmt.Errorf("invalid future!\n%s", strings.Join(Stringize(debug...), "\n"))
+		return fmt.Errorf("invalid future!\n%s", MakeStringerSet(debug...).Join("\n"))
 	})
 	return &sync_future[T]{
 		await:  f,
@@ -92,7 +91,7 @@ func (future *sync_future[T]) Join() Result[T] {
 			if await != nil {
 				return nil
 			}
-			return fmt.Errorf("future reentrancy!\n%s", strings.Join(Stringize(future.debug...), "\n"))
+			return fmt.Errorf("future reentrancy!\n%s", MakeStringerSet(future.debug...).Join("\n"))
 		})
 		future.await = nil
 		value, err := await()

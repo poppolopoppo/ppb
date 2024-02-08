@@ -70,7 +70,7 @@ func (x *RunCommand) Run(cc utils.CommandContext) error {
 		base.LogVeryVerbose(LogRun, "capturing output")
 	}
 
-	return internal_io.RunProcess(unit.OutputFile, base.Stringize(x.Arguments...),
+	return internal_io.RunProcess(unit.OutputFile, base.MakeStringerSet(x.Arguments...),
 		internal_io.OptionProcessAttachDebuggerIf(x.Debug.Get()),
 		internal_io.OptionProcessCaptureOutputIf(x.ShowOutput.Get()),
 		internal_io.OptionProcessWorkingDir(utils.UFS.Binaries))

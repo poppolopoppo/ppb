@@ -42,17 +42,6 @@ func CompressionOptionDictionary(dict []byte) CompressionOptionFunc {
 	}
 }
 
-/*
-func CompressionOptionDictionaryFile(f Filename) CompressionOptionFunc {
-	return func(co *CompressionOptions) {
-		defer base.LogBenchmark(LogCompression, "load zstd dictionary located at %q", f).Close()
-		dict, err := UFS.ReadAll(UFS.Internal.Folder("zstd").File("ppb-message-dict.zstd"))
-		base.LogPanicIfFailed(LogCompression, err)
-		co.Dictionary = dict
-	}
-}
-*/
-
 func NewCompressionOptions(options ...CompressionOptionFunc) (result CompressionOptions) {
 	// Lz4 is almost as fast as uncompressed, but with fewer IO: when using Fast speed it is almost always a free win
 	result.Format = COMPRESSION_FORMAT_LZ4

@@ -67,7 +67,7 @@ func (x *BuildCommand) Run(cc utils.CommandContext) error {
 			return err
 		}
 
-		re := utils.MakeGlobRegexp(base.Stringize(x.Targets...)...)
+		re := utils.MakeGlobRegexp(base.MakeStringerSet(x.Targets...)...)
 
 		// overwrite user input with matching targets found
 		for _, unit := range units {

@@ -9,7 +9,7 @@ import (
 var CommandConfigure = utils.NewCommand(
 	"Configure",
 	"configure",
-	"parse json input files and generate compilation graph",
+	"parse project configuration files and prepare build graph",
 	compile.OptionCommandAllCompilationFlags(),
 	utils.OptionCommandRun(func(cc utils.CommandContext) error {
 		base.LogClaim(utils.LogCommand, "configure compilation graph with %q as root", utils.CommandEnv.RootFile())
