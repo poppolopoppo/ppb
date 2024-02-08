@@ -8,12 +8,12 @@ import (
 	"github.com/poppolopoppo/ppb/utils"
 )
 
-var CommandDistClean = newCompletionCommand[utils.BuildAlias, *utils.BuildAlias](
+var CommandDistClean = newCompletionCommand(
 	"Compilation",
 	"distclean",
 	"erase generated artifacts",
-	func(cc utils.CommandContext, ca *CompletionArgs[utils.BuildAlias, *utils.BuildAlias]) error {
-		if len(ca.Inputs) == 0 {
+	func(cc utils.CommandContext, args *CompletionArgs) error {
+		if len(args.GlobPatterns) == 0 {
 			base.LogClaim(utils.LogCommand, "dist-clean all output folders and database")
 
 			distCleanDir(utils.UFS.Binaries)
@@ -27,7 +27,7 @@ var CommandDistClean = newCompletionCommand[utils.BuildAlias, *utils.BuildAlias]
 			distCleanFile(utils.CommandEnv.DatabasePath())
 
 		} else {
-			re := utils.MakeGlobRegexp(base.Stringize(ca.Inputs...)...)
+			re := utils.MakeGlobRegexp(base.MakeStringerSet(args.GlobPatterns...)...)
 			base.LogClaim(utils.LogCommand, "dist-clean all targets matching /%v/", re)
 
 			units, err := compile.NeedAllBuildUnits(utils.CommandEnv.BuildGraph().GlobalContext())

@@ -15,18 +15,6 @@ import (
 	"github.com/poppolopoppo/ppb/utils"
 )
 
-var CommandCheckBuild = newCompletionCommand[utils.BuildAlias, *utils.BuildAlias](
-	"Debug",
-	"check-build",
-	"build graph aliases passed as input parameters",
-	func(cc utils.CommandContext, ca *CompletionArgs[utils.BuildAlias, *utils.BuildAlias]) error {
-		bg := utils.CommandEnv.BuildGraph()
-
-		// build all nodes found
-		_, err := bg.BuildMany(ca.Inputs, utils.OptionBuildForceIf(utils.GetCommandFlags().Force.Get()))
-		return err
-	})
-
 var CommandCheckCache = utils.NewCommand(
 	"Debug",
 	"check-cache",
@@ -139,56 +127,6 @@ var CommandCheckCache = utils.NewCommand(
 		}, cacheGlob)
 	}))
 
-var CheckFingerprint = newCompletionCommand[utils.BuildAlias, *utils.BuildAlias](
-	"Debug",
-	"check-fingerprint",
-	"recompute nodes fingerprint and see if they match with the stamp stored in build graph",
-	func(cc utils.CommandContext, ca *CompletionArgs[utils.BuildAlias, *utils.BuildAlias]) error {
-		bg := utils.CommandEnv.BuildGraph()
-
-		for _, a := range ca.Inputs {
-			base.LogVerbose(utils.LogCommand, "find build graph node named %q", a)
-
-			// find the node associated with this alias
-			node, err := bg.Expect(a)
-			if err != nil {
-				return err
-			}
-
-			// compute buildable fingerprint and check wether it matches save build stamp or not
-			buildable := node.GetBuildable()
-			checksum := utils.MakeBuildFingerprint(buildable)
-			original := node.GetBuildStamp().Content
-
-			// if save build stamp do not match, we will try to find which property is not stable by rebuilding it
-			if original == checksum {
-				base.LogInfo(utils.LogCommand, "%q -> OK\n\told: %v\n\tnew: %v", a, original, checksum)
-			} else {
-				base.LogWarning(utils.LogCommand, "%q -> KO\n\told: %v\n\tnew: %v", a, original, checksum)
-			}
-
-			// duplicate original buildable, so we can make a diff after the build
-			copy := base.DuplicateObjectForDebug(buildable)
-
-			// build the node and check for errors
-			_, future := bg.Build(node, utils.OptionBuildForce)
-			result := future.Join()
-			if err := result.Failure(); err != nil {
-				return err
-			}
-
-			base.LogInfo(utils.LogCommand, "%q ->\n\tbuild: %v", a, result.Success().BuildStamp)
-
-			// finally make a diff between the original backup and the updated node after the build
-			// -> the diff should issue an error on the property causing the desynchronization
-			if err := base.SerializableDiff(copy, result.Success().Buildable); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-
 var CheckSerialize = utils.NewCommand(
 	"Debug",
 	"check-serialize",
@@ -300,99 +238,6 @@ var CheckSerialize = utils.NewCommand(
 
 		return nil
 	}))
-
-var DependencyChain = newCompletionCommand[utils.BuildAlias, *utils.BuildAlias](
-	"Debug",
-	"dependency-chain",
-	"find shortest dependency chain between 2 nodes",
-	func(cc utils.CommandContext, ca *CompletionArgs[utils.BuildAlias, *utils.BuildAlias]) error {
-		if len(ca.Inputs) < 2 {
-			return fmt.Errorf("dependency-chain: must pass at least 2 targets")
-		}
-
-		// print the dependency chain found
-		return openCompletion(ca, func(w io.Writer) error {
-
-			for i := 1; i < len(ca.Inputs); i++ {
-				// build graph will use Dijkstra to find the shortest path between the 2 nodes
-				buildGraph := utils.CommandEnv.BuildGraph()
-				chain, err := buildGraph.GetDependencyChain(
-					utils.BuildAlias(ca.Inputs[0]),
-					utils.BuildAlias(ca.Inputs[i]),
-					// weight by link type, favor output > static > dynamic
-					func(bdl utils.BuildDependencyLink) float32 { return float32(bdl.Type) })
-				if err != nil {
-					return err
-				}
-
-				indent := ""
-				for i, link := range chain {
-					fmt.Fprintf(w, "%s[%d] %s: %s", indent, i, link.Type, link.Alias)
-
-					if base.IsLogLevelActive(base.LOG_VERBOSE) {
-						node, err := buildGraph.Expect(link.Alias)
-						if err != nil {
-							return err
-						}
-						fmt.Fprintf(w, " -> %v", node.GetBuildStamp())
-					}
-
-					fmt.Fprintln(w)
-					indent += "  "
-				}
-			}
-
-			return nil
-		})
-	})
-
-var DependencyFiles = newCompletionCommand[utils.BuildAlias, *utils.BuildAlias](
-	"Debug",
-	"dependency-files",
-	"list all file dependencies for input nodes",
-	func(cc utils.CommandContext, ca *CompletionArgs[utils.BuildAlias, *utils.BuildAlias]) error {
-		return openCompletion(ca, func(w io.Writer) error {
-			bg := utils.CommandEnv.BuildGraph()
-
-			files, err := bg.GetDependencyInputFiles(true, ca.Inputs...)
-			if err != nil {
-				return err
-			}
-
-			files.Sort()
-
-			for _, filename := range files {
-				if err := printFileCompletion(w, filename, ca.Detailed.Get()); err != nil {
-					return err
-				}
-			}
-			return nil
-		})
-	})
-
-var OutputFiles = newCompletionCommand[utils.BuildAlias, *utils.BuildAlias](
-	"Debug",
-	"output-files",
-	"list all output files for input nodes",
-	func(cc utils.CommandContext, ca *CompletionArgs[utils.BuildAlias, *utils.BuildAlias]) error {
-		return openCompletion(ca, func(w io.Writer) error {
-			bg := utils.CommandEnv.BuildGraph()
-
-			files, err := bg.GetDependencyOutputFiles(ca.Inputs...)
-			if err != nil {
-				return err
-			}
-
-			files.Sort()
-
-			for _, filename := range files {
-				if err := printFileCompletion(w, filename, ca.Detailed.Get()); err != nil {
-					return err
-				}
-			}
-			return nil
-		})
-	})
 
 var ProgressBar = utils.NewCommand(
 	"Debug",
@@ -507,3 +352,169 @@ var ProgressBar = utils.NewCommand(
 			pbar.Close()
 		}
 	}))
+
+type BuildAliasesArgs struct {
+	Aliases  utils.BuildAliases
+	Detailed utils.BoolVar
+}
+
+func (x *BuildAliasesArgs) Flags(cfv utils.CommandFlagsVisitor) {
+	cfv.Variable("l", "add more details to completion output", &x.Detailed)
+}
+
+func newBuildAliasesCommand(category, name, description string, run func(utils.CommandContext, *BuildAliasesArgs) error) func() utils.CommandItem {
+	args := new(BuildAliasesArgs)
+	return utils.NewCommand(category, name, description,
+		utils.OptionCommandConsumeMany("Aliases", "select build nodes by their build aliases", args.Aliases.Ref()),
+		utils.OptionCommandParsableAccessor("BuildAliasesArgs", "options for commands operating on build graph", func() *BuildAliasesArgs { return args }),
+		utils.OptionCommandRun(func(cc utils.CommandContext) error {
+			return run(cc, args)
+		}))
+}
+
+var CommandCheckBuild = newBuildAliasesCommand(
+	"Debug",
+	"check-build",
+	"build graph aliases passed as input parameters",
+	func(cc utils.CommandContext, args *BuildAliasesArgs) error {
+		_, err := utils.CommandEnv.BuildGraph().BuildMany(args.Aliases,
+			utils.OptionBuildForceIf(utils.GetCommandFlags().Force.Get()))
+		return err
+	})
+
+var CheckFingerprint = newBuildAliasesCommand(
+	"Debug",
+	"check-fingerprint",
+	"recompute nodes fingerprint and see if they match with the stamp stored in build graph",
+	func(cc utils.CommandContext, args *BuildAliasesArgs) error {
+		bg := utils.CommandEnv.BuildGraph()
+
+		for _, a := range args.Aliases {
+			base.LogVerbose(utils.LogCommand, "find build graph node named %q", a)
+
+			// find the node associated with this alias
+			node, err := bg.Expect(a)
+			if err != nil {
+				return err
+			}
+
+			// compute buildable fingerprint and check wether it matches save build stamp or not
+			buildable := node.GetBuildable()
+			checksum := utils.MakeBuildFingerprint(buildable)
+			original := node.GetBuildStamp().Content
+
+			// if save build stamp do not match, we will try to find which property is not stable by rebuilding it
+			if original == checksum {
+				base.LogInfo(utils.LogCommand, "%q -> OK\n\told: %v\n\tnew: %v", a, original, checksum)
+			} else {
+				base.LogWarning(utils.LogCommand, "%q -> KO\n\told: %v\n\tnew: %v", a, original, checksum)
+			}
+
+			// duplicate original buildable, so we can make a diff after the build
+			copy := base.DuplicateObjectForDebug(buildable)
+
+			// build the node and check for errors
+			_, future := bg.Build(node, utils.OptionBuildForce)
+			result := future.Join()
+			if err := result.Failure(); err != nil {
+				return err
+			}
+
+			base.LogInfo(utils.LogCommand, "%q ->\n\tbuild: %v", a, result.Success().BuildStamp)
+
+			// finally make a diff between the original backup and the updated node after the build
+			// -> the diff should issue an error on the property causing the desynchronization
+			if err := base.SerializableDiff(copy, result.Success().Buildable); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+var DependencyChain = newBuildAliasesCommand(
+	"Debug",
+	"dependency-chain",
+	"find shortest dependency chain between 2 nodes",
+	func(cc utils.CommandContext, args *BuildAliasesArgs) error {
+		if len(args.Aliases) < 2 {
+			return fmt.Errorf("dependency-chain: must pass at least 2 targets")
+		}
+
+		// print the dependency chain found
+
+		for i := 1; i < len(args.Aliases); i++ {
+			// build graph will use Dijkstra to find the shortest path between the 2 nodes
+			buildGraph := utils.CommandEnv.BuildGraph()
+			chain, err := buildGraph.GetDependencyChain(args.Aliases[0], args.Aliases[i],
+				// weight by link type, favor output > static > dynamic
+				func(bdl utils.BuildDependencyLink) float32 { return float32(bdl.Type) })
+			if err != nil {
+				return err
+			}
+
+			indent := ""
+			for i, link := range chain {
+				base.LogForwardf("%s[%d] %s: %s", indent, i, link.Type, link.Alias)
+
+				if args.Detailed.Get() {
+					node, err := buildGraph.Expect(link.Alias)
+					if err != nil {
+						return err
+					}
+					base.LogForwardf(" -> %v", node.GetBuildStamp())
+				}
+
+				base.LogForwardln()
+				indent += "  "
+			}
+		}
+
+		return nil
+	})
+
+var DependencyFiles = newBuildAliasesCommand(
+	"Debug",
+	"dependency-files",
+	"list all file dependencies for input nodes",
+	func(cc utils.CommandContext, args *BuildAliasesArgs) error {
+		bg := utils.CommandEnv.BuildGraph()
+
+		files, err := bg.GetDependencyInputFiles(true, args.Aliases...)
+		if err != nil {
+			return err
+		}
+
+		files.Sort()
+
+		var w io.Writer = base.GetLogger()
+		for _, filename := range files {
+			if err := printFileCompletion(w, filename, args.Detailed.Get()); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+var OutputFiles = newBuildAliasesCommand(
+	"Debug",
+	"output-files",
+	"list all output files for input nodes",
+	func(cc utils.CommandContext, args *BuildAliasesArgs) error {
+		bg := utils.CommandEnv.BuildGraph()
+
+		files, err := bg.GetDependencyOutputFiles(args.Aliases...)
+		if err != nil {
+			return err
+		}
+
+		files.Sort()
+
+		var w io.Writer = base.GetLogger()
+		for _, filename := range files {
+			if err := printFileCompletion(w, filename, args.Detailed.Get()); err != nil {
+				return err
+			}
+		}
+		return nil
+	})

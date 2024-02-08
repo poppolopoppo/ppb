@@ -50,7 +50,7 @@ type ImportActionsCommand struct {
 
 var CommandImportActions = utils.NewCommandable(
 	"Interop",
-	"import-actions",
+	"import-action",
 	"imports actions from external json file(s), ignoring project configuration",
 	&ImportActionsCommand{
 		Build: base.INHERITABLE_FALSE,
@@ -163,83 +163,77 @@ func (x *ImportActionsCommand) Run(cc utils.CommandContext) error {
  * Export Actions
  ***************************************/
 
-var ExportActions = newCompletionCommand[action.ActionAlias, *action.ActionAlias](
+var CommandExportActions = newJsonExportCommand(
 	"Interop",
-	"export-actions",
+	"export-action",
 	"export selection compilation actions to Json",
-	func(cc utils.CommandContext, ca *CompletionArgs[action.ActionAlias, *action.ActionAlias]) error {
+	func(cc utils.CommandContext, args *ExportNodeArgs[action.ActionAlias, *action.ActionAlias], yield jsonExportYieldFunc) error {
 		bg := utils.CommandEnv.BuildGraph()
-		actions := make(map[action.ActionAlias]utils.BuildNode)
-		if err := action.ForeachBuildAction(bg, func(bn utils.BuildNode, a action.Action) error {
-			actions[a.GetAction().GetActionAlias()] = bn
-			return nil
-		}); err != nil {
-			return err
+
+		var filteredActions action.ActionSet
+		for _, a := range args.Aliases {
+			ba, err := action.FindBuildAction(a)
+			if err != nil {
+				return err
+			}
+			filteredActions.Append(ba)
 		}
 
-		return openCompletion(ca, func(w io.Writer) error {
-			var filteredActions action.ActionSet
+		if args.Minify.Get() {
+			var err error
+			if filteredActions, err = filteredActions.ExpandDependencies(bg); err != nil {
+				return err
+			}
+		}
 
-			if err := filterCompletion(ca, func(alias action.ActionAlias) error {
-				node := actions[alias]
-				filteredActions.Append(node.GetBuildable().(action.Action))
-				return nil
-			}, base.Keys(actions)...); err != nil {
+		for _, it := range filteredActions {
+			node, err := bg.Expect(it.Alias())
+			if err != nil {
 				return err
 			}
 
-			if ca.Detailed.Get() {
-				var err error
-				if filteredActions, err = filteredActions.ExpandDependencies(bg); err != nil {
-					return err
+			rules := it.GetAction()
+
+			imported := ImportedAction{
+				Command:    rules.CommandRules,
+				ExportFile: rules.GetGeneratedFile(),
+				ExtraFiles: utils.NewFileSet(rules.OutputFiles...),
+				Options:    rules.Options,
+			}
+			imported.ExtraFiles.Delete(int(rules.ExportIndex))
+
+			outputFileBasename := imported.ExportFile.TrimExt()
+			for i, it := range imported.ExtraFiles {
+				if it.TrimExt() == outputFileBasename {
+					imported.OutputFile = it
+					imported.ExtraFiles.Delete(i)
+					break
 				}
 			}
 
-			importedActions := make([]ImportedAction, len(filteredActions))
-			for i, it := range filteredActions {
-				node := actions[it.GetAction().GetActionAlias()]
-				rules := node.GetBuildable().(action.Action).GetAction()
-
-				imported := ImportedAction{
-					Command:    rules.CommandRules,
-					ExportFile: rules.GetGeneratedFile(),
-					ExtraFiles: utils.NewFileSet(rules.OutputFiles...),
-					Options:    rules.Options,
-				}
-				imported.ExtraFiles.Delete(int(rules.ExportIndex))
-
-				outputFileBasename := imported.ExportFile.TrimExt()
-				for i, it := range imported.ExtraFiles {
-					if it.TrimExt() == outputFileBasename {
-						imported.OutputFile = it
-						imported.ExtraFiles.Delete(i)
-						break
-					}
-				}
-
-				if !imported.OutputFile.Valid() {
-					imported.OutputFile = imported.ExportFile
-				}
-
-				bg := utils.CommandEnv.BuildGraph()
-				for _, it := range bg.GetStaticDependencies(node) {
-					switch buildable := it.GetBuildable().(type) {
-					case *utils.FileDependency:
-						if buildable.Filename != rules.Executable {
-							imported.StaticInputFiles.Append(buildable.Filename)
-						}
-					case action.Action:
-						imported.StaticDependencies.Append(buildable.GetAction().GetActionAlias())
-						imported.DynamicInputFiles.Append(buildable.GetAction().GetGeneratedFile())
-						imported.DynamicDependencies.Append(buildable.GetAction().Prerequisites...)
-					}
-				}
-
-				importedActions[i] = imported
+			if !imported.OutputFile.Valid() {
+				imported.OutputFile = imported.ExportFile
 			}
 
-			return base.JsonSerialize(importedActions, w, base.OptionJsonPrettyPrint(true))
-		})
+			for _, it := range bg.GetStaticDependencies(node) {
+				switch buildable := it.GetBuildable().(type) {
+				case *utils.FileDependency:
+					if buildable.Filename != rules.Executable {
+						imported.StaticInputFiles.Append(buildable.Filename)
+					}
+				case action.Action:
+					imported.StaticDependencies.Append(buildable.GetAction().GetActionAlias())
+					imported.DynamicInputFiles.Append(buildable.GetAction().GetGeneratedFile())
+					imported.DynamicDependencies.Append(buildable.GetAction().Prerequisites...)
+				}
+			}
+
+			if err := yield(imported); err != nil {
+				return err
+			}
+		}
+
+		return nil
 	})
 
 /***************************************

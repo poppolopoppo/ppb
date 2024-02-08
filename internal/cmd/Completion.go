@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"slices"
 	"sort"
 	"time"
 
@@ -13,79 +12,59 @@ import (
 	"github.com/poppolopoppo/ppb/utils"
 )
 
-type completionArgsTraits[T base.Comparable[T]] interface {
-	*T
-	utils.PersistentVar
+type CompletionArgs struct {
+	GlobPatterns []utils.StringVar
+	Output       utils.Filename
+	Detailed     utils.BoolVar
 }
 
-type CompletionArgs[T base.Comparable[T], P completionArgsTraits[T]] struct {
-	Inputs   []T
-	Output   utils.Filename
-	Detailed utils.BoolVar
-}
-
-func (flags *CompletionArgs[T, P]) Flags(cfv utils.CommandFlagsVisitor) {
+func (flags *CompletionArgs) Flags(cfv utils.CommandFlagsVisitor) {
 	cfv.Variable("Output", "optional output file", &flags.Output)
 	cfv.Variable("l", "add more details to completion output", &flags.Detailed)
 }
 
-func openCompletion[T base.Comparable[T], P completionArgsTraits[T]](args *CompletionArgs[T, P], closure func(io.Writer) error) error {
-	base.LogVerbose(utils.LogCommand, "completion input parameters = %v", args.Inputs)
-	if args.Output.Basename != "" {
+func openCompletion(args *CompletionArgs, closure func(io.Writer) error) error {
+	base.LogVerbose(utils.LogCommand, "completion input parameters = %v", args.GlobPatterns)
+	if args.Output.Valid() {
 		base.LogInfo(utils.LogCommand, "export completion results to %q...", args.Output)
 		return utils.UFS.CreateBuffered(args.Output, closure)
 	} else {
 		return closure(base.GetLogger())
 	}
 }
-func printCompletion[T base.Comparable[T], P completionArgsTraits[T]](args *CompletionArgs[T, P], in []T) error {
+func printCompletion(args *CompletionArgs, in base.StringSet) error {
 	return openCompletion(args, func(w io.Writer) error {
-		return filterCompletion(args, func(it T) (err error) {
-			if args.Detailed.Get() {
-				_, err = fmt.Fprint(w, base.PrettyPrint(P(&it)))
-			} else {
-				_, err = fmt.Fprintln(w, P(&it).String())
-			}
+		return filterCompletion(args, func(it string) (err error) {
+			_, err = fmt.Fprintln(w, it)
 			return
 		}, in...)
 	})
 }
-func filterCompletion[T base.Comparable[T], P completionArgsTraits[T]](completionArgs *CompletionArgs[T, P], output func(T) error, values ...T) error {
-	args := completionArgs.Inputs
+func filterCompletion(args *CompletionArgs, output func(string) error, values ...string) error {
+	sort.Strings(values)
 
-	sort.Slice(values, func(i, j int) bool {
-		return values[i].Compare(values[j]) < 0
-	})
-
-	if len(args) > 0 {
-		pbar := base.LogProgress(0, int64(len(values)), "filter-completion")
-		defer pbar.Close()
-
-		keys := make(base.StringSet, len(args))
-		for i, it := range args {
-			keys[i] = P(&it).String()
-		}
+	if len(args.GlobPatterns) > 0 {
+		keys := base.MakeStringerSet(args.GlobPatterns...)
 		keys.Sort()
 
+		globRE := utils.MakeGlobRegexp(keys...)
+		if globRE == nil {
+			return fmt.Errorf("invalid regular expression: %q", keys)
+		}
+
 		for _, it := range values {
-			name := P(&it).String()
-			if _, ok := slices.BinarySearch(keys, name); ok {
+			if globRE.MatchString(it) {
 				if err := output(it); err != nil {
 					return err
 				}
 			}
-			pbar.Inc()
 		}
 
 	} else {
-		pbar := base.LogProgress(0, int64(len(values)), "filter-completion")
-		defer pbar.Close()
-
 		for _, it := range values {
 			if err := output(it); err != nil {
 				return err
 			}
-			pbar.Inc()
 		}
 	}
 
@@ -134,15 +113,15 @@ func printFileCompletion(w io.Writer, path utils.Filename, detailed bool) error 
 	}
 }
 
-func newCompletionCommand[T base.Comparable[T], P completionArgsTraits[T]](
+func newCompletionCommand(
 	category, name, description string,
-	run func(utils.CommandContext, *CompletionArgs[T, P]) error,
+	run func(utils.CommandContext, *CompletionArgs) error,
 ) func() utils.CommandItem {
-	completionArgs := &CompletionArgs[T, P]{}
+	completionArgs := &CompletionArgs{}
 	return utils.NewCommand(
 		category, name, description,
-		utils.OptionCommandParsableAccessor("CompletionArgs", "control completion command output", func() *CompletionArgs[T, P] { return completionArgs }),
-		utils.OptionCommandConsumeMany[T, P]("Input", fmt.Sprintf("multiple [%s] command input", base.GetTypenameT[T]()), &completionArgs.Inputs, utils.COMMANDARG_OPTIONAL),
+		utils.OptionCommandParsableAccessor("CompletionArgs", "control completion command output", func() *CompletionArgs { return completionArgs }),
+		utils.OptionCommandConsumeMany("GlobPatterns", "multiple command input", &completionArgs.GlobPatterns, utils.COMMANDARG_OPTIONAL),
 		utils.OptionCommandRun(func(cc utils.CommandContext) error {
 			return run(cc, completionArgs)
 		}))
@@ -152,13 +131,16 @@ var ListArtifacts = newCompletionCommand(
 	"Metadata",
 	"list-artifacts",
 	"list all known artifacts",
-	func(cc utils.CommandContext, args *CompletionArgs[utils.BuildAlias, *utils.BuildAlias]) error {
+	func(cc utils.CommandContext, args *CompletionArgs) error {
 		bg := utils.CommandEnv.BuildGraph()
 		return openCompletion(args, func(w io.Writer) error {
-			return filterCompletion(args, func(a utils.BuildAlias) error {
+			return filterCompletion(args, func(in string) error {
+				var a utils.BuildAlias
+				if err := a.Set(in); err != nil {
+					return err
+				}
 				if args.Detailed.Get() {
 					if node, err := bg.Expect(a); err == nil {
-
 						_, err = fmt.Fprintf(w, "%v --> %v (%T)\n", node.GetBuildStamp(), a, node.GetBuildable())
 						return err
 					} else {
@@ -168,7 +150,7 @@ var ListArtifacts = newCompletionCommand(
 					_, err := fmt.Fprintln(w, a)
 					return err
 				}
-			}, bg.Aliases()...)
+			}, base.MakeStringerSet(bg.Aliases()...)...)
 		})
 	})
 
@@ -176,20 +158,24 @@ var ListSourceFiles = newCompletionCommand(
 	"Metadata",
 	"list-source-files",
 	"list all known source files",
-	func(cc utils.CommandContext, args *CompletionArgs[utils.BuildAlias, *utils.BuildAlias]) error {
+	func(cc utils.CommandContext, args *CompletionArgs) error {
 		bg := utils.CommandEnv.BuildGraph()
 		return openCompletion(args, func(w io.Writer) error {
-			return filterCompletion(args, func(a utils.BuildAlias) error {
-				if node, err := bg.Expect(a); err == nil {
-					switch buildable := node.GetBuildable().(type) {
-					case utils.BuildableSourceFile:
-						err = printFileCompletion(w, buildable.GetSourceFile(), args.Detailed.Get())
-					}
-					return err
-				} else {
+			var files utils.FileSet
+			bg.Range(func(ba utils.BuildAlias, bn utils.BuildNode) error {
+				if it, ok := bn.GetBuildable().(utils.BuildableSourceFile); ok {
+					files.AppendUniq(it.GetSourceFile())
+				}
+				return nil
+			})
+
+			return filterCompletion(args, func(in string) error {
+				var file utils.Filename
+				if err := file.Set(in); err != nil {
 					return err
 				}
-			}, bg.Aliases()...)
+				return printFileCompletion(w, file, args.Detailed.Get())
+			}, base.MakeStringerSet(files...)...)
 		})
 	})
 
@@ -197,73 +183,98 @@ var ListGeneratedFiles = newCompletionCommand(
 	"Metadata",
 	"list-generated-files",
 	"list all known generated files",
-	func(cc utils.CommandContext, args *CompletionArgs[utils.BuildAlias, *utils.BuildAlias]) error {
+	func(cc utils.CommandContext, args *CompletionArgs) error {
 		bg := utils.CommandEnv.BuildGraph()
 		return openCompletion(args, func(w io.Writer) error {
-			return filterCompletion(args, func(a utils.BuildAlias) error {
-				if node, err := bg.Expect(a); err == nil {
-					switch buildable := node.GetBuildable().(type) {
-					case utils.BuildableGeneratedFile:
-						err = printFileCompletion(w, buildable.GetGeneratedFile(), args.Detailed.Get())
-					}
-					return err
-				} else {
+			var files utils.FileSet
+			bg.Range(func(ba utils.BuildAlias, bn utils.BuildNode) error {
+				if it, ok := bn.GetBuildable().(utils.BuildableGeneratedFile); ok {
+					files.AppendUniq(it.GetGeneratedFile())
+				}
+				return nil
+			})
+
+			return filterCompletion(args, func(in string) error {
+				var file utils.Filename
+				if err := file.Set(in); err != nil {
 					return err
 				}
-			}, bg.Aliases()...)
+				return printFileCompletion(w, file, args.Detailed.Get())
+			}, base.MakeStringerSet(files...)...)
 		})
 	})
 
-var ListCommands = newCompletionCommand[utils.CommandName, *utils.CommandName](
+var ListModifiedFiles = newCompletionCommand(
+	"Metadata",
+	"list-modified-files",
+	"list modified files from source control",
+	func(cc utils.CommandContext, ca *CompletionArgs) error {
+		var repo utils.SourceControlRepositoryStatus
+		if err := utils.GetSourceControlProvider().GetRepositoryStatus(&repo); err != nil {
+			return err
+		}
+
+		return openCompletion(ca, func(w io.Writer) error {
+			return filterCompletion(ca, func(in string) error {
+				var file utils.Filename
+				if err := file.Set(in); err != nil {
+					return err
+				}
+				return printFileCompletion(w, file, ca.Detailed.Get())
+			}, base.MakeStringerSet(base.Keys(repo.Files)...)...)
+		})
+	})
+
+var ListCommands = newCompletionCommand(
 	"Metadata",
 	"list-commands",
 	"list all available commands",
-	func(cc utils.CommandContext, ca *CompletionArgs[utils.CommandName, *utils.CommandName]) error {
-		return printCompletion(ca, utils.GetAllCommandNames())
+	func(cc utils.CommandContext, ca *CompletionArgs) error {
+		return printCompletion(ca, base.MakeStringerSet(utils.GetAllCommandNames()...))
 	})
 
-var ListPlatforms = newCompletionCommand[compile.PlatformAlias, *compile.PlatformAlias](
+var ListPlatforms = newCompletionCommand(
 	"Metadata",
 	"list-platforms",
 	"list all available platforms",
-	func(cc utils.CommandContext, ca *CompletionArgs[compile.PlatformAlias, *compile.PlatformAlias]) error {
-		return printCompletion(ca, compile.GetAllPlatformAliases())
+	func(cc utils.CommandContext, ca *CompletionArgs) error {
+		return printCompletion(ca, base.MakeStringerSet(compile.GetAllPlatformAliases()...))
 	})
 
-var ListConfigs = newCompletionCommand[compile.ConfigurationAlias, *compile.ConfigurationAlias](
+var ListConfigs = newCompletionCommand(
 	"Metadata",
 	"list-configs",
 	"list all available configurations",
-	func(cc utils.CommandContext, ca *CompletionArgs[compile.ConfigurationAlias, *compile.ConfigurationAlias]) error {
-		return printCompletion(ca, compile.GetAllConfigurationAliases())
+	func(cc utils.CommandContext, ca *CompletionArgs) error {
+		return printCompletion(ca, base.MakeStringerSet(compile.GetAllConfigurationAliases()...))
 	})
 
-var ListCompilers = newCompletionCommand[compile.CompilerName, *compile.CompilerName](
+var ListCompilers = newCompletionCommand(
 	"Metadata",
 	"list-compilers",
 	"list all available compilers",
-	func(cc utils.CommandContext, ca *CompletionArgs[compile.CompilerName, *compile.CompilerName]) error {
-		return printCompletion(ca, compile.AllCompilerNames.Slice())
+	func(cc utils.CommandContext, ca *CompletionArgs) error {
+		return printCompletion(ca, base.MakeStringerSet(compile.AllCompilerNames.Slice()...))
 	})
 
-var ListModules = newCompletionCommand[compile.ModuleAlias, *compile.ModuleAlias](
+var ListModules = newCompletionCommand(
 	"Metadata",
 	"list-modules",
 	"list all available modules",
-	func(cc utils.CommandContext, ca *CompletionArgs[compile.ModuleAlias, *compile.ModuleAlias]) error {
+	func(cc utils.CommandContext, ca *CompletionArgs) error {
 		bc := utils.CommandEnv.BuildGraph().GlobalContext()
 		if moduleAliases, err := compile.NeedAllModuleAliases(bc); err == nil {
-			return printCompletion(ca, moduleAliases)
+			return printCompletion(ca, base.MakeStringerSet(moduleAliases...))
 		} else {
 			return err
 		}
 	})
 
-var ListNamespaces = newCompletionCommand[compile.NamespaceAlias, *compile.NamespaceAlias](
+var ListNamespaces = newCompletionCommand(
 	"Metadata",
 	"list-namespaces",
 	"list all available namespaces",
-	func(cc utils.CommandContext, ca *CompletionArgs[compile.NamespaceAlias, *compile.NamespaceAlias]) error {
+	func(cc utils.CommandContext, ca *CompletionArgs) error {
 		bc := utils.CommandEnv.BuildGraph().GlobalContext()
 		moduleAliases, err := compile.NeedAllModuleAliases(bc)
 		if err != nil {
@@ -275,35 +286,35 @@ var ListNamespaces = newCompletionCommand[compile.NamespaceAlias, *compile.Names
 			namespaceAliases.AppendUniq(moduleAlias.NamespaceAlias)
 		}
 
-		return printCompletion(ca, namespaceAliases)
+		return printCompletion(ca, base.MakeStringerSet(namespaceAliases...))
 	})
 
-var ListEnvironments = newCompletionCommand[compile.EnvironmentAlias, *compile.EnvironmentAlias](
+var ListEnvironments = newCompletionCommand(
 	"Metadata",
 	"list-environments",
 	"list all compilation environments",
-	func(cc utils.CommandContext, ca *CompletionArgs[compile.EnvironmentAlias, *compile.EnvironmentAlias]) error {
-		return printCompletion(ca, compile.GetEnvironmentAliases())
+	func(cc utils.CommandContext, ca *CompletionArgs) error {
+		return printCompletion(ca, base.MakeStringerSet(compile.GetEnvironmentAliases()...))
 	})
 
-var ListTargets = newCompletionCommand[compile.TargetAlias, *compile.TargetAlias](
+var ListTargets = newCompletionCommand(
 	"Metadata",
 	"list-targets",
 	"list all translated targets",
-	func(cc utils.CommandContext, ca *CompletionArgs[compile.TargetAlias, *compile.TargetAlias]) error {
+	func(cc utils.CommandContext, ca *CompletionArgs) error {
 		units, err := compile.NeedAllBuildUnits(utils.CommandEnv.BuildGraph().GlobalContext())
 		if err != nil {
 			return err
 		}
 		aliases := base.Map(func(u *compile.Unit) compile.TargetAlias { return u.TargetAlias }, units...)
-		return printCompletion(ca, aliases)
+		return printCompletion(ca, base.MakeStringerSet(aliases...))
 	})
 
-var ListPrograms = newCompletionCommand[compile.TargetAlias, *compile.TargetAlias](
+var ListPrograms = newCompletionCommand(
 	"Metadata",
 	"list-programs",
 	"list all executable targets",
-	func(cc utils.CommandContext, ca *CompletionArgs[compile.TargetAlias, *compile.TargetAlias]) error {
+	func(cc utils.CommandContext, ca *CompletionArgs) error {
 		units, err := compile.NeedAllBuildUnits(utils.CommandEnv.BuildGraph().GlobalContext())
 		if err != nil {
 			return err
@@ -314,39 +325,19 @@ var ListPrograms = newCompletionCommand[compile.TargetAlias, *compile.TargetAlia
 		}, units...)
 
 		aliases := base.Map(func(u *compile.Unit) compile.TargetAlias { return u.TargetAlias }, executables...)
-		return printCompletion(ca, aliases)
+		return printCompletion(ca, base.MakeStringerSet(aliases...))
 	})
 
-var ListPersistentData = newCompletionCommand[utils.StringVar, *utils.StringVar](
+var ListPersistentData = newCompletionCommand(
 	"Metadata",
 	"list-persistents",
 	"list all persistent data",
-	func(cc utils.CommandContext, ca *CompletionArgs[base.InheritableString, *base.InheritableString]) error {
+	func(cc utils.CommandContext, ca *CompletionArgs) error {
 		data := utils.CommandEnv.Persistent().PinData()
 		return openCompletion(ca, func(w io.Writer) error {
-			return filterCompletion(ca, func(is base.InheritableString) error {
-				_, err := fmt.Fprintf(w, "%v=%v\n", is, data[is.Get()])
+			return filterCompletion(ca, func(is string) error {
+				_, err := fmt.Fprintf(w, "%v=%v\n", is, data[is])
 				return err
-			}, base.Map(func(it string) (result utils.StringVar) {
-				result.Assign(it)
-				return
-			}, base.Keys(data)...)...)
-		})
-	})
-
-var ListModifiedFiles = newCompletionCommand[utils.Filename, *utils.Filename](
-	"Metadata",
-	"list-modified-files",
-	"list modified files from source control",
-	func(cc utils.CommandContext, ca *CompletionArgs[utils.Filename, *utils.Filename]) error {
-		var repo utils.SourceControlRepositoryStatus
-		if err := utils.GetSourceControlProvider().GetRepositoryStatus(&repo); err != nil {
-			return err
-		}
-
-		return openCompletion(ca, func(w io.Writer) error {
-			return filterCompletion(ca, func(file utils.Filename) error {
-				return printFileCompletion(w, file, ca.Detailed.Get())
-			}, base.Keys(repo.Files)...)
+			}, base.Keys(data)...)
 		})
 	})
