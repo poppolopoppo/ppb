@@ -108,6 +108,10 @@ func (x *ProcessSafeBuildGraph) saveBuildGraph(env *CommandEnvT) (err error) {
 func (x *ProcessSafeBuildGraph) loadBuildGraph(env *CommandEnvT) (err error) {
 	base.AssertIn(x.globalLock, nil)
 
+	if err := UFS.MkdirEx(env.databasePath.Dirname); err != nil {
+		return err
+	}
+
 	base.LogTrace(LogBuildGraph, "locking database file %q", env.databasePath)
 	x.globalLock, err = fslock.Lock(env.databasePath.String() + ".lock")
 	if err != nil {
