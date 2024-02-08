@@ -33,6 +33,16 @@ type persistentData struct {
 	Data     map[string]map[string]string
 }
 
+type PersistentDataNotFoundErr struct {
+	Message  string
+	Name     string
+	Property string
+}
+
+func (x PersistentDataNotFoundErr) Error() string {
+	return fmt.Sprintf("%s: %q.%q", x.Message, x.Name, x.Property)
+}
+
 func NewPersistentMap(name string) *persistentData {
 	return &persistentData{
 		Data: make(map[string]map[string]string),
@@ -59,15 +69,18 @@ func (pmp *persistentData) LoadData(name string, property string, dst Persistent
 			base.LogDebug(LogPersistent, "load object property %s.%s = %v", name, property, value)
 			return dst.Set(value)
 		} else {
-			err := fmt.Errorf("object %q has no property %q", name, property)
-			base.LogWarningVerbose(LogPersistent, "load(%s.%s): %v", name, property, err)
-			return err
+			return PersistentDataNotFoundErr{
+				Message:  "property not found",
+				Name:     name,
+				Property: property,
+			}
 		}
-
 	} else {
-		err := fmt.Errorf("object '%s' not found", name)
-		base.LogWarningVerbose(LogPersistent, "load(%s.%s): %v", name, property, err)
-		return err
+		return PersistentDataNotFoundErr{
+			Message:  "object not found",
+			Name:     name,
+			Property: property,
+		}
 	}
 }
 func (pmp *persistentData) StoreData(name string, property string, dst PersistentVar) {

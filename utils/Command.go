@@ -11,7 +11,7 @@ import (
 
 var LogCommand = base.NewLogCategory("Command")
 
-var AllCommands = base.SharedMapT[string, func() *commandItem]{}
+var AllCommands = base.SharedMapT[string, func() CommandItem]{}
 
 var GlobalParsableFlags commandItem
 
@@ -28,8 +28,8 @@ func (x CommandName) Compare(o CommandName) int {
 }
 func (x CommandName) AutoComplete(in base.AutoComplete) {
 	for _, ci := range AllCommands.Values() {
-		cmd := ci()
-		in.Add(cmd.Details().Name, cmd.Description)
+		details := ci().Details()
+		in.Add(details.Name, details.Description)
 	}
 }
 
@@ -39,7 +39,7 @@ func (x CommandName) AutoComplete(in base.AutoComplete) {
 
 type CommandLine interface {
 	PeekArg(int) (string, bool)
-	ConsumeArg(int) (string, error)
+	ConsumeArg(int) (string, bool)
 	fmt.Stringer
 	PersistentData
 }
@@ -104,13 +104,13 @@ func (x *commandLine) PeekArg(i int) (string, bool) {
 	}
 	return x.args[i], true
 }
-func (x *commandLine) ConsumeArg(i int) (string, error) {
+func (x *commandLine) ConsumeArg(i int) (string, bool) {
 	if i >= len(x.args) {
-		return "", fmt.Errorf("missing argument(s)")
+		return "", false
 	}
 	consumed := x.args[i]
-	x.args = append(x.args[:i], x.args[i+1:]...)
-	return consumed, nil
+	x.args = base.Delete(x.args, i)
+	return consumed, true
 }
 
 /***************************************
@@ -165,9 +165,9 @@ func (x *CommandEvents) Run() (err error) {
 	return
 }
 func (x *CommandEvents) Parse(cl CommandLine) (err error) {
-	var name string
-	if name, err = cl.ConsumeArg(0); err != nil {
-		return
+	name, ok := cl.ConsumeArg(0)
+	if !ok {
+		return fmt.Errorf("missing command name, use `help` to learn about command usage")
 	}
 
 	var cmd CommandItem
@@ -363,12 +363,9 @@ func (x *commandConsumeOneArgument[T, P]) Parse(cl CommandLine) error {
 
 	*x.Value = x.Default
 
-	arg, err := cl.ConsumeArg(0)
-	if err != nil {
-		if x.HasFlag(COMMANDARG_OPTIONAL) {
-			err = nil
-		}
-		return err
+	arg, ok := cl.ConsumeArg(0)
+	if ok && !x.HasFlag(COMMANDARG_OPTIONAL) {
+		return fmt.Errorf("missing required argument for %q, check command usage with `help`", x.Name())
 	}
 
 	return P(x.Value).Set(arg)
@@ -411,18 +408,15 @@ func (x *commandConsumeManyArguments[T, P]) Parse(cl CommandLine) (err error) {
 
 	*x.Value = []T{}
 
-	var arg string
 	for loop := 0; ; loop++ {
-		if arg, err = cl.ConsumeArg(0); err == nil {
+		if arg, ok := cl.ConsumeArg(0); ok {
 			var it T
 			if err = P(&it).Set(arg); err == nil {
 				*x.Value = append(*x.Value, it)
 				continue
 			}
-		}
-
-		if x.HasFlag(COMMANDARG_OPTIONAL) || loop > 0 {
-			err = nil
+		} else if !x.HasFlag(COMMANDARG_OPTIONAL) && loop == 0 {
+			return fmt.Errorf("missing at least one argument for %q list, check command usage with `help`", x.Name())
 		}
 		break
 	}
@@ -572,12 +566,11 @@ func (x *commandParsableArgument) Help(w *base.StructuredFile) {
 		autocomplete := base.NewAutoComplete("", 8)
 
 		for _, v := range x.Variables {
-			colorFG, colorBG := base.ANSI_FG0_CYAN, base.ANSI_BG0_CYAN
+			colorFG := base.ANSI_FG0_CYAN
 			if v.Flags.Has(COMMANDARG_PERSISTENT) {
-				colorFG, colorBG = base.ANSI_FG1_MAGENTA, base.ANSI_BG0_RED
+				colorFG = base.ANSI_FG1_MAGENTA
 			}
 
-			printCommandBullet(w, colorBG)
 			w.Print("%v%v-%s%v", base.ANSI_ITALIC, colorFG, v.Name, base.ANSI_RESET)
 
 			if w.Minify() {
@@ -749,7 +742,7 @@ func NewCommandParsableFactory[T any, P interface {
 }
 
 /***************************************
- * CommandItem
+ * CommandDetails
  ***************************************/
 
 type CommandDetails struct {
@@ -765,6 +758,17 @@ func (x CommandDetails) GetCommandName() (result CommandName) {
 func (x CommandDetails) IsNaked() bool {
 	return len(x.Name) == 0
 }
+func (x CommandDetails) Compare(o CommandDetails) int {
+	if c := strings.Compare(x.Category, o.Category); c != 0 {
+		return c
+	} else {
+		return strings.Compare(x.Name, o.Name)
+	}
+}
+
+/***************************************
+ * CommandItem
+ ***************************************/
 
 type CommandItem interface {
 	Details() CommandDetails
@@ -897,7 +901,6 @@ func (x *commandItem) Help(w *base.StructuredFile) {
 
 			w.ScopeIndent(func() {
 				for _, a := range x.arguments {
-					printCommandBullet(w, base.ANSI_BG0_YELLOW)
 					a.Help(w)
 					w.LineBreak()
 					w.Println("")
@@ -905,10 +908,6 @@ func (x *commandItem) Help(w *base.StructuredFile) {
 			})
 		})
 	}
-}
-
-func printCommandBullet(w *base.StructuredFile, color base.AnsiCode) {
-	// w.Print("%v*%v ", color, ANSI_RESET)
 }
 
 /***************************************
@@ -953,31 +952,30 @@ func OptionCommandItem(fn func(CommandItem)) CommandOptionFunc {
 	}
 }
 
+func NewCommandItem(
+	category, name, description string,
+	options ...CommandOptionFunc,
+) CommandItem {
+	result := &commandItem{
+		CommandDetails: CommandDetails{
+			Category:    category,
+			Name:        name,
+			Description: description,
+		},
+	}
+	result.Options(options...)
+	return result
+}
+
 func NewCommand(
 	category, name, description string,
 	options ...CommandOptionFunc,
-) func() CommandItem {
-	result := base.Memoize(func() *commandItem {
-		result := &commandItem{
-			CommandDetails: CommandDetails{
-				Category:    category,
-				Name:        name,
-				Description: description,
-			},
-		}
-		result.Options(options...)
-		return result
+) (factory func() CommandItem) {
+	factory = base.Memoize(func() CommandItem {
+		return NewCommandItem(category, name, description, options...)
 	})
-	key := strings.ToUpper(name)
-	AllCommands.FindOrAdd(key, result)
-	return func() CommandItem {
-		if factory, ok := AllCommands.Get(key); ok {
-			return factory()
-		} else {
-			base.LogPanic(LogCommand, "command %q not found", name)
-			return nil
-		}
-	}
+	AllCommands.FindOrAdd(strings.ToUpper(name), factory)
+	return
 }
 
 /***************************************
@@ -1027,17 +1025,14 @@ func NewCommandable[T any, P interface {
  ***************************************/
 
 func GetAllCommands() []CommandItem {
-	cmds := base.Map(func(it func() *commandItem) *commandItem {
+	cmds := base.Map(func(it func() CommandItem) CommandItem {
 		return it()
 	}, AllCommands.Values()...)
 	sort.Slice(cmds, func(i, j int) bool {
-		if c := strings.Compare(cmds[i].Category, cmds[j].Category); c == 0 {
-			return strings.Compare(cmds[i].Name, cmds[j].Name) < 0
-		} else {
-			return c < 0
-		}
+		lhs, rhs := cmds[i].Details(), cmds[j].Details()
+		return lhs.Compare(rhs) < 0
 	})
-	return base.Map(func(it *commandItem) CommandItem { return it }, cmds...)
+	return cmds
 }
 func GetAllCommandNames() []CommandName {
 	keys := AllCommands.Keys()
@@ -1115,6 +1110,9 @@ build-system for PoPpOlOpPoPo Engine`,
 
 		f.Println("")
 	}
+
+	f.Println("%v%vMultiple commands can be executed by using `-and` to join them.", base.ANSI_FG0_MAGENTA, base.ANSI_FAINT)
+	f.Println("ex: %s configure -and vscode -and vcxproj -Summary%v", pi.Path, base.ANSI_RESET)
 }
 
 /***************************************
@@ -1132,9 +1130,9 @@ func PrepareCommands(cls []CommandLine, events *CommandEvents) error {
 }
 
 func ParseCommand(cl CommandLine, events *CommandEvents) (err error) {
-	var name string
-	if name, err = cl.ConsumeArg(0); err != nil {
-		return
+	name, ok := cl.ConsumeArg(0)
+	if !ok {
+		return fmt.Errorf("missing command name, use `help` to learn about command usage")
 	}
 
 	var cmd CommandItem
@@ -1215,9 +1213,9 @@ func (x *AutoCompleteCommand) Run(cc CommandContext) error {
 	var autocomplete base.BasicAutoComplete
 
 	command := x.Command.Get()
-	inputs := base.StringSet(base.Stringize(base.RemoveUnless(func(is StringVar) bool {
-		return is != "--"
-	}, x.Inputs...)...))
+
+	inputs := base.MakeStringerSet(x.Inputs...)
+	inputs.RemoveAll("--")
 
 	for i := len(inputs); i > 0; i-- {
 		if inputs[i-1] == `-and` {
