@@ -1,6 +1,8 @@
 package ppb
 
 import (
+	"os"
+
 	"github.com/poppolopoppo/ppb/action"
 	"github.com/poppolopoppo/ppb/app"
 	"github.com/poppolopoppo/ppb/compile"
@@ -23,7 +25,14 @@ func LaunchCommand(prefix string) error {
 		return err
 	}
 
-	return app.WithCommandEnv(prefix, source, func(env *utils.CommandEnvT) error {
+	// exit process with non-zero code to notify of failure outside of this program
+	defer func() {
+		if err != nil {
+			os.Exit(2)
+		}
+	}()
+
+	err = app.WithCommandEnv(prefix, source, func(env *utils.CommandEnvT) error {
 		io.InitIO()
 		hal.InitCompile()
 		action.InitAction()
@@ -41,4 +50,5 @@ func LaunchCommand(prefix string) error {
 
 		return err
 	})
+	return err
 }
