@@ -338,6 +338,7 @@ func getGitRepositoryStatus(git *GitSourceControl) (repo SourceControlRepository
 			status = SOURCECONTROL_RENAMED
 		case " D":
 			status = SOURCECONTROL_DELETED
+			continue // deleted files are ignored by the build system, since they are now invalid
 		case "??":
 			status = SOURCECONTROL_UNTRACKED
 		default:
