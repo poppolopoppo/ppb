@@ -280,9 +280,13 @@ func (x *buildActionGenerator) CreateActions() error {
 	})
 
 	if base.IsLogLevelActive(base.LOG_VERYVERBOSE) {
-		allActions, err := targetOutputs.ExpandDependencies(bg)
-		base.LogPanicIfFailed(LogCompile, err)
-		base.LogVeryVerbose(LogCompile, "%q outputs %v payload with %d artifacts (%d total actions)", x.Unit, x.Unit.Payload, len(targetOutputs), len(allActions))
+		x.BuildContext.OnBuilt(func(bn BuildNode) error {
+			allActions, err := targetOutputs.ExpandDependencies(CommandEnv.BuildGraph())
+			if err == nil {
+				base.LogVeryVerbose(LogCompile, "%q outputs %v payload with %d artifacts (%d total actions)", x.Unit, x.Unit.Payload, len(targetOutputs), len(allActions))
+			}
+			return err
+		})
 	}
 
 	return nil
