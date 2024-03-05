@@ -39,16 +39,7 @@ func LaunchCommand(prefix string) error {
 		compile.InitCompile()
 		cmd.InitCmd()
 
-		env.LoadConfig()
-
-		err := env.Run()
-
-		env.SaveConfig()
-		if er := env.SaveBuildGraph(); er != nil && err == nil {
-			err = er
-		}
-
-		return err
+		return env.Run()
 	})
 	return err
 }

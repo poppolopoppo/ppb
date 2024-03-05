@@ -18,6 +18,7 @@ func WithCommandEnv(prefix string, caller utils.Filename, scope func(*utils.Comm
 	utils.UFS.Caller = caller
 
 	env := utils.InitCommandEnv(prefix, os.Args[1:], startedAt)
+	defer env.Close()
 
 	defer utils.StartProfiling()()
 

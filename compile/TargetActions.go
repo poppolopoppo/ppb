@@ -141,7 +141,7 @@ func (x *TargetActions) Build(bc BuildContext) error {
 		BuildContext:  bc,
 	}
 
-	if err := generator.CreateActions(bc.BuildGraph()); err != nil {
+	if err := generator.CreateActions(); err != nil {
 		return err
 	}
 
@@ -193,7 +193,7 @@ type buildActionGenerator struct {
 	BuildContext
 }
 
-func (x *buildActionGenerator) CreateActions(bg BuildGraph) error {
+func (x *buildActionGenerator) CreateActions() error {
 	var targetOutputs action.ActionSet
 	x.OutputType = x.Unit.Payload
 

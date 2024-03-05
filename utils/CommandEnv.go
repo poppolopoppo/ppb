@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -169,7 +168,7 @@ func (flags *CommandFlags) Apply() {
 
 type CommandEnvT struct {
 	prefix     string
-	buildGraph ProcessSafeBuildGraph
+	buildGraph GlobalBuildGraph
 	persistent *persistentData
 	rootFile   Filename
 	startedAt  time.Time
@@ -217,10 +216,6 @@ func InitCommandEnv(prefix string, args []string, startedAt time.Time) *CommandE
 		return FileInfos.PrintStats(base.GetLogger())
 	})
 
-	runtime.SetFinalizer(CommandEnv, func(env *CommandEnvT) {
-		env.onExit.FireAndForget(env)
-	})
-
 	// creates a 'listener' on a new goroutine which will notify the
 	// program if it receives an interrupt from the OS. We then handle this by calling
 	// our clean up procedure and exiting the program.
@@ -243,7 +238,7 @@ func InitCommandEnv(prefix string, args []string, startedAt time.Time) *CommandE
 	return CommandEnv
 }
 func (env *CommandEnvT) Prefix() string             { return env.prefix }
-func (env *CommandEnvT) BuildGraph() BuildGraph     { return env.buildGraph.Get() }
+func (env *CommandEnvT) BuildGraph() BuildGraph     { return env.buildGraph.Get(env) }
 func (env *CommandEnvT) Persistent() PersistentData { return env.persistent }
 func (env *CommandEnvT) ConfigPath() Filename       { return env.configPath }
 func (env *CommandEnvT) DatabasePath() Filename     { return env.databasePath }
@@ -262,10 +257,10 @@ func (env *CommandEnvT) OnBuildGraphLoaded(e base.EventDelegate[BuildGraph]) err
 func (env *CommandEnvT) OnBuildGraphSaved(e base.EventDelegate[BuildGraph]) error {
 	return env.buildGraph.OnBuildGraphSaved(e)
 }
+
 func (env *CommandEnvT) OnExit(e base.EventDelegate[*CommandEnvT]) base.DelegateHandle {
 	return env.onExit.Add(e)
 }
-
 func (env *CommandEnvT) RemoveOnExit(h base.DelegateHandle) bool {
 	return env.onExit.Remove(h)
 }
@@ -286,7 +281,20 @@ func (env *CommandEnvT) OnPanic(err error) base.PanicResult {
 	return base.PANIC_REENTRANCY // a fatal error was already reported
 }
 
+func (env *CommandEnvT) Abort() {
+	env.buildGraph.Abort()
+}
+
+func (env *CommandEnvT) Close() error {
+	defer base.PurgePinnedLogs()
+	return env.buildGraph.Close()
+}
+
 func (env *CommandEnvT) Run() error {
+	if err := env.loadConfig(); err != nil {
+		base.LogWarning(LogCommand, "failed to load config: %v", err)
+	}
+
 	// prepare specified commands
 	for _, cl := range env.commandLines {
 		if err := env.commandEvents.Parse(cl); err != nil {
@@ -297,7 +305,6 @@ func (env *CommandEnvT) Run() error {
 	defer func() {
 		base.JoinAllThreadPools()
 		env.onExit.FireAndForget(env)
-		base.PurgePinnedLogs()
 	}()
 
 	// check if any command was successfully parsed
@@ -311,15 +318,23 @@ func (env *CommandEnvT) Run() error {
 	if er := env.buildGraph.Join(); err != nil && err == nil {
 		err = er
 	}
+
+	if err == nil {
+		err = env.saveConfig()
+	}
+	if err == nil {
+		err = env.buildGraph.Save(env)
+	}
 	return err
 }
-func (env *CommandEnvT) LoadConfig() error {
+
+func (env *CommandEnvT) loadConfig() error {
 	benchmark := base.LogBenchmark(LogCommand, "loading config from '%v'...", env.configPath)
 	defer benchmark.Close()
 
 	return UFS.OpenBuffered(env.configPath, env.persistent.Deserialize)
 }
-func (env *CommandEnvT) SaveConfig() error {
+func (env *CommandEnvT) saveConfig() error {
 	if !env.persistent.Dirty() {
 		base.LogTrace(LogCommand, "skipped saving unmodified config")
 		return nil
@@ -328,13 +343,4 @@ func (env *CommandEnvT) SaveConfig() error {
 	defer benchmark.Close()
 
 	return UFS.SafeCreate(env.configPath, env.persistent.Serialize)
-}
-func (env *CommandEnvT) SaveBuildGraph() error {
-	return env.buildGraph.Save(env)
-}
-
-func (env *CommandEnvT) Abort() {
-	if env.buildGraph.Available() {
-		env.buildGraph.buildGraph.Abort()
-	}
 }

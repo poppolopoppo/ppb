@@ -30,11 +30,6 @@ func main() {
 	source, _ := utils.UFS.GetCallerFile(0)
 
 	app.WithCommandEnv("worker", source, func(env *utils.CommandEnvT) error {
-		env.LoadConfig()
-
-		err := env.Run()
-
-		env.SaveConfig()
-		return err
+		return env.Run()
 	})
 }
