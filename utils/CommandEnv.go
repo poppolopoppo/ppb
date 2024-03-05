@@ -315,15 +315,14 @@ func (env *CommandEnvT) Run() error {
 
 	err := env.commandEvents.Run()
 
-	if er := env.buildGraph.Join(); err != nil && err == nil {
+	if er := env.buildGraph.Join(); er != nil && err == nil {
 		err = er
 	}
-
-	if err == nil {
-		err = env.saveConfig()
+	if er := env.saveConfig(); er != nil && err == nil {
+		err = er
 	}
-	if err == nil {
-		err = env.buildGraph.Save(env)
+	if er := env.buildGraph.Save(env); er != nil && err == nil {
+		err = er
 	}
 	return err
 }
