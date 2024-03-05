@@ -16,7 +16,7 @@ import (
 
 var LogBase = NewLogCategory("Base")
 
-var StartedAt = Memoize[time.Time](func() time.Time {
+var StartedAt = Memoize(func() time.Time {
 	return time.Now()
 })
 
