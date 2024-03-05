@@ -27,6 +27,7 @@ func (x ProcessInfo) String() string {
 
 var GetProcessInfo = base.Memoize[*ProcessInfo](func() *ProcessInfo {
 	pi := getExecutableInfo()
+	base.LogTrace(LogCommand, "process info: %q v%v [%v] %v", pi.Path, pi.Version, pi.Checksum, pi.Timestamp)
 	return &pi
 })
 
@@ -47,7 +48,7 @@ func getExecutableInfo_FromFile() (result ProcessInfo) {
 		if base.DEBUG_ENABLED {
 			// do not invalidate database checksum when building in DEBUG to ease bug reproduction
 			result.Timestamp = time.Date(1985, 4, 5, 8, 30, 45, 100, time.UTC)
-			result.Checksum = base.StringFingerprint(result.Path)
+			result.Checksum = base.StringFingerprint("static fingerprint for debug builds")
 
 		} else {
 			result.Timestamp = UFS.MTime(UFS.Executable)
