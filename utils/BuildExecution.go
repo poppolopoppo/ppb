@@ -185,8 +185,8 @@ func (x *buildExecuteContext) needToBuild_assumeLocked() (bool, error) {
 	// check if a dynamic was updated
 	if results, err := dynamic.Join().Get(); err == nil {
 		rebuild = rebuild || x.node.Dynamic.updateBuild(x.node, DEPENDENCY_DYNAMIC, results)
-	} else {
-		rebuild = false // wont't rebuild if a dynamic dependency failed
+	} else if !rebuild {
+		// wont't rebuild if a dynamic dependency failed and static are oks
 		lastError = buildDependencyError{alias: x.Alias(), link: DEPENDENCY_DYNAMIC, inner: err}
 	}
 
