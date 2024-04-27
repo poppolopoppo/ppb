@@ -260,6 +260,7 @@ func (clang *ClangCompiler) Build(bc BuildContext) error {
 			"-Wno-unused-local-typedef",          // ignore les typedefs locaux non utilisés (nécessaire pour STATIC_ASSERT(x))
 			"-Wno-#pragma-messages",              // don't consider #pragma message as warnings
 			"-Wno-unneeded-internal-declaration", // ignore unused internal functions beeing stripped)
+			"-Wno-nan-infinity-disabled",         // ignore fp fast mast disabling NaN/InF support
 		)
 	}
 
