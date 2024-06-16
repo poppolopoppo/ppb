@@ -4,7 +4,6 @@
 package utils
 
 import (
-	"os/exec"
 	"runtime"
 	"strings"
 
@@ -207,13 +206,13 @@ func StartProfiling() func() {
 func PurgeProfiling() {
 	if running_profiler != nil {
 		running_profiler.Stop()
-		if GetProflingFlags().Profiling == PROFILING_CPU {
-			proc := exec.Command("sh", UFS.Scripts.File("flamegraph.sh").String())
-			proc.Dir = UFS.Root.String()
-			output, err := proc.Output()
-			base.LogForward(base.UnsafeStringFromBytes(output))
-			base.LogPanicIfFailed(LogProfiling, err)
-		}
+		// if GetProflingFlags().Profiling == PROFILING_CPU {
+		// 	proc := exec.Command("sh", UFS.Scripts.File("flamegraph.sh").String())
+		// 	proc.Dir = UFS.Root.String()
+		// 	output, err := proc.Output()
+		// 	base.LogForward(base.UnsafeStringFromBytes(output))
+		// 	base.LogPanicIfFailed(LogProfiling, err)
+		// }
 		running_profiler = nil
 	}
 }
