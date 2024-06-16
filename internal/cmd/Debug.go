@@ -61,7 +61,7 @@ var CommandCheckCache = utils.NewCommand(
 					}
 					numDeletedEntries++
 
-					base.LogWarning(utils.LogCommand, "remove %q cache entry")
+					base.LogWarning(utils.LogCommand, "remove %q cache entry", f)
 					for _, bulk := range entry.Bulks {
 						utils.UFS.Remove(bulk.Path)
 					}
@@ -106,7 +106,7 @@ var CommandCheckCache = utils.NewCommand(
 					if removeBulk {
 						numDeletedBulks++
 
-						base.LogWarning(utils.LogCommand, "remove cache bulk %q: %v", bulk, err)
+						base.LogWarning(utils.LogCommand, "remove cache bulk %q: %v", bulk.Path, err)
 
 						utils.UFS.Remove(bulk.Path)
 

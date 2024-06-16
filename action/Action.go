@@ -98,13 +98,12 @@ func (x *ActionRules) GetActionAlias() ActionAlias {
 }
 func (x *ActionRules) GetGeneratedFile() utils.Filename { return x.OutputFiles[x.ExportIndex] }
 
-func (x *ActionRules) GetDependentActions(bg utils.BuildGraph) (ActionSet, error) {
+func (x *ActionRules) AppendDependentActions(bg utils.BuildGraph, result *ActionSet) error {
 	buildNode, err := bg.Expect(x.Alias())
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	var result ActionSet
 	for _, it := range bg.GetStaticDependencies(buildNode) {
 		switch buildable := it.GetBuildable().(type) {
 		case Action:
@@ -115,10 +114,10 @@ func (x *ActionRules) GetDependentActions(bg utils.BuildGraph) (ActionSet, error
 	if prerequisites, err := GetBuildActions(x.Prerequisites...); err == nil {
 		result.AppendUniq(prerequisites...)
 	} else {
-		return nil, err
+		return err
 	}
 
-	return result, nil
+	return nil
 }
 
 func (x *ActionRules) GetStaticInputFiles(bg utils.BuildGraph) (results utils.FileSet) {
@@ -433,14 +432,25 @@ func (x ActionSet) ExpandDependencies(bg utils.BuildGraph) (ActionSet, error) {
 	var result ActionSet = base.CopySlice(x...)
 
 	for i := 0; i < len(result); i++ {
-		if actions, err := result[i].GetAction().GetDependentActions(bg); err == nil {
-			result.AppendUniq(actions...)
-		} else {
+		if err := result[i].GetAction().AppendDependentActions(bg, &result); err != nil {
 			return nil, err
 		}
 	}
 
 	return base.ReverseSlice(result...), nil
+}
+func (x ActionSet) AppendDependencies(bg utils.BuildGraph, result *ActionSet) error {
+	before := len(*result)
+	result.AppendUniq(x...)
+
+	for i := before; i < len(*result); i++ {
+		if err := (*result)[i].GetAction().AppendDependentActions(bg, result); err != nil {
+			return err
+		}
+	}
+
+	base.ReverseSlice((*result)[before:]...)
+	return nil
 }
 func (x ActionSet) GetOutputFiles() (result utils.FileSet) {
 	for _, action := range x {

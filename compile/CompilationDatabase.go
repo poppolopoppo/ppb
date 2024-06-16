@@ -9,6 +9,8 @@ import (
 	"github.com/poppolopoppo/ppb/utils"
 )
 
+var LogCompileDb = base.NewLogCategory("CompileDb")
+
 /***************************************
  * Compilation Database
  ***************************************/
@@ -27,13 +29,13 @@ func (x *CompilationDatabase) Append(cmd CompileCommand) {
 	base.Assert(func() bool {
 		for _, it := range *x {
 			if it.File == cmd.File {
-				base.LogError(LogCompile, "input file already present in compiledb: %v\n\told output: %v\n\tnew output: %v", cmd.File, it.Output, cmd.Output)
+				base.LogError(LogCompileDb, "input file already present in compiledb: %v\n\told output: %v\n\tnew output: %v", cmd.File, it.Output, cmd.Output)
 				return false
 			}
 		}
 		return true
 	})
-	base.LogTrace(LogCompile, "append %v to compiledb (%v)", cmd.File, cmd.Output)
+	base.LogTrace(LogCompileDb, "append %v to compiledb (%v)", cmd.File, cmd.Output)
 	*x = append(*x, cmd)
 }
 
@@ -60,14 +62,14 @@ func (x *CompilationDatabaseBuilder) Alias() utils.BuildAlias {
 	return utils.MakeBuildAlias("CompileDb", x.EnvironmentAlias.PlatformName, x.EnvironmentAlias.ConfigName)
 }
 func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
-	base.LogVerbose(utils.LogCommand, "generate compilation database for %v in %q...", x.EnvironmentAlias, x.OutputFile)
+	base.LogVerbose(LogCompileDb, "generate compilation database for %v in %q...", x.EnvironmentAlias, x.OutputFile)
 
 	moduleAliases, err := NeedAllModuleAliases(bc)
 	if err != nil {
 		return err
 	}
 
-	base.LogTrace(LogCompile, "retrieved %q modules", moduleAliases)
+	base.LogTrace(LogCompileDb, "retrieved %q modules", moduleAliases)
 
 	// need to depends from the compiler
 	if _, err := GetCompileEnvironment(x.EnvironmentAlias).Need(bc); err != nil {
@@ -81,16 +83,16 @@ func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
 			return err
 		}
 
-		base.LogTrace(LogCompile, "retrieved target actions %q with %d payloads", targetActions.Alias(), targetActions.PresentPayloads.Len())
+		base.LogTrace(LogCompileDb, "retrieved target actions %q with %d payloads", targetActions.Alias(), targetActions.PresentPayloads.Len())
 
 		actions, err := targetActions.GetOutputActions()
 		if err != nil {
 			return err
 		}
 
-		base.LogTrace(LogCompile, "retrieved %d output actions for target %q", len(actions), targetActions.Alias())
+		base.LogTrace(LogCompileDb, "retrieved %d output actions for target %q", len(actions), targetActions.Alias())
 
-		if expandedActions, err = actions.ExpandDependencies(bc.BuildGraph()); err != nil {
+		if err := actions.AppendDependencies(bc.BuildGraph(), &expandedActions); err != nil {
 			return err
 		}
 
@@ -127,7 +129,7 @@ func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
 
 		for _, input := range inputFiles {
 			if unityFile, err := FindUnityFile(input); err == nil {
-				base.LogVerbose(LogCompile, "expand unity file %q action inputs for compilation database", unityFile.Alias())
+				base.LogVerbose(LogCompileDb, "expand unity file %q action inputs for compilation database", unityFile.Alias())
 
 				for _, source := range unityFile.Inputs {
 					if !unityFile.Excludeds.Contains(source) {
