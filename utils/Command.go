@@ -1194,11 +1194,13 @@ type AutoCompleteCommand struct {
 	Command     CommandName
 	Inputs      []StringVar
 	CompleteArg BoolVar
+	Json        BoolVar
 	MaxResults  IntVar
 }
 
 func (x *AutoCompleteCommand) Flags(cfv CommandFlagsVisitor) {
 	cfv.Variable("CompleteArg", "specify that we want to complete a new argument, not command name (even no arguments were given)", &x.CompleteArg)
+	cfv.Variable("Json", "output completion results as json, instead of raw text", &x.Json)
 	cfv.Variable("MaxResults", "override maximum number of auto-complete results which can be outputed [Default="+x.MaxResults.String()+"]", &x.MaxResults)
 }
 func (x *AutoCompleteCommand) Init(cc CommandContext) error {
@@ -1256,16 +1258,25 @@ func (x *AutoCompleteCommand) Run(cc CommandContext) error {
 	base.LogDebug(LogCommand, "auto-complete arguments [%v](%v), complete argument = %v", x.Command, strings.Join(inputs, ", "), x.CompleteArg)
 	base.LogVeryVerbose(LogCommand, "auto-complete %q on command-line", autocomplete.Input())
 
-	if base.EnableInteractiveShell() {
-		for _, match := range autocomplete.Results() {
-			highlighted := autocomplete.Highlight(match.Text, func(r rune) string {
-				return fmt.Sprint(base.ANSI_UNDERLINE, base.ANSI_FG1_GREEN, string(r), base.ANSI_RESET)
-			})
-			base.LogForwardf("%s\t%v%s%v", highlighted, base.ANSI_FG0_CYAN, match.Description, base.ANSI_RESET)
-		}
+	if x.Json.Get() {
+		// output autocomplete results as json
+		results := autocomplete.Results()
+		base.JsonSerialize(results, base.GetLogger(), base.OptionJsonPrettyPrint(false))
+
 	} else {
-		for _, match := range autocomplete.Results() {
-			base.LogForwardln(match.Text, "\t", match.Description)
+		// output autocomplete results as raw-text
+		if base.EnableInteractiveShell() {
+			// highlight the matching part of each result if called from an interactive shell
+			for _, match := range autocomplete.Results() {
+				highlighted := autocomplete.Highlight(match.Text, func(r rune) string {
+					return fmt.Sprint(base.ANSI_UNDERLINE, base.ANSI_FG1_GREEN, string(r), base.ANSI_RESET)
+				})
+				base.LogForwardf("%s\t%v%s%v", highlighted, base.ANSI_FG0_CYAN, match.Description, base.ANSI_RESET)
+			}
+		} else {
+			for _, match := range autocomplete.Results() {
+				base.LogForwardln(match.Text, "\t", match.Description)
+			}
 		}
 	}
 

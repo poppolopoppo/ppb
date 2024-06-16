@@ -236,9 +236,9 @@ func (x JaroWinklerLevenshteinSimilarity) Score(candidate string) float32 {
  ***************************************/
 
 type AutoCompleteResult struct {
-	Text        string
-	Description string
-	Score       float32
+	Text        string  `json:"value"`
+	Description string  `json:"description"`
+	Score       float32 `json:"score"`
 }
 
 func (x *AutoCompleteResult) Compare(o *AutoCompleteResult) int {
