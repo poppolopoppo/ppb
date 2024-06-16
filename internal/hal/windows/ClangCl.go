@@ -209,6 +209,11 @@ func (clang *ClangCompiler) Build(bc BuildContext) error {
 		"-o", "%2",
 	)
 
+	// https://blog.llvm.org/posts/2021-04-05-constructor-homing-for-debug-info/
+	rules.HeaderUnitOptions.Append( /*"-Xclang", already added above */ "-fuse-ctor-homing")
+	rules.PrecompiledHeaderOptions.Append("-Xclang", "-fuse-ctor-homing")
+	rules.CompilerOptions.Append("-Xclang", "-fuse-ctor-homing")
+
 	rules.Executable = llvm.ClangCl_exe
 	rules.ExtraFiles = FileSet{
 		llvm.InstallDir.Folder("bin").File("msvcp140.dll"),
@@ -273,9 +278,6 @@ func (clang *ClangCompiler) Build(bc BuildContext) error {
 		llvm.InstallDir.Folder("lib"),
 		llvm.InstallDir.Folder("lib", "clang", llvm.Version, "lib", "windows"),
 	)
-
-	// https://blog.llvm.org/posts/2021-04-05-constructor-homing-for-debug-info/
-	rules.AddCompilationFlag_NoPreprocessor("-Xclang", "-fuse-ctor-homing")
 
 	return nil
 }
