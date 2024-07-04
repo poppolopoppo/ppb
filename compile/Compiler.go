@@ -110,8 +110,8 @@ type Compiler interface {
 
 	AllowCaching(*Unit, PayloadType) action.CacheModeType
 	AllowDistribution(*Unit, PayloadType) action.DistModeType
-	AllowResponseFile(*Unit, PayloadType) CompilerSupportType
-	AllowEditAndContinue(*Unit, PayloadType) CompilerSupportType
+	AllowResponseFile(*Unit, PayloadType) SupportType
+	AllowEditAndContinue(*Unit, PayloadType) SupportType
 
 	FacetDecorator
 	Buildable

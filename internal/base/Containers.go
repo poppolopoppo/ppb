@@ -311,19 +311,16 @@ type EnumFlag interface {
 	fmt.Stringer
 }
 
-type EnumSet[T EnumFlag, E interface {
+type EnumValue[T EnumFlag] interface {
 	*T
 	FromOrd(int32)
 	EnumFlag
 	flag.Value
-}] int32
+}
 
-func MakeEnumSet[T EnumFlag, E interface {
-	*T
-	FromOrd(int32)
-	EnumFlag
-	flag.Value
-}](list ...T) EnumSet[T, E] {
+type EnumSet[T EnumFlag, E EnumValue[T]] int32
+
+func MakeEnumSet[T EnumFlag, E EnumValue[T]](list ...T) EnumSet[T, E] {
 	var mask int32
 	for _, it := range list {
 		mask |= (1 << it.Ord())
@@ -331,14 +328,18 @@ func MakeEnumSet[T EnumFlag, E interface {
 	return EnumSet[T, E](mask)
 }
 
-func (x EnumSet[T, E]) Ord() int32       { return int32(x) }
-func (x *EnumSet[T, E]) FromOrd(v int32) { *x = EnumSet[T, E](v) }
-func (x EnumSet[T, E]) Empty() bool      { return x == 0 }
+func (x EnumSet[T, E]) Ord() int32          { return int32(x) }
+func (x *EnumSet[T, E]) FromOrd(v int32)    { *x = EnumSet[T, E](v) }
+func (x EnumSet[T, E]) IsInheritable() bool { return x.Empty() }
+func (x EnumSet[T, E]) Empty() bool         { return x == 0 }
 func (x *EnumSet[T, E]) Has(it T) bool {
 	// mask := EnumSet[T, E](1 << it.Ord())
 	// return x.Intersect(mask) == mask
 	mask := (int32(1) << it.Ord()) // faster than above ^^^
 	return (int32(*x) & mask) == mask
+}
+func (x EnumSet[T, E]) Intersect(other EnumSet[T, E]) EnumSet[T, E] {
+	return EnumSet[T, E](x.Ord() & other.Ord())
 }
 func (x EnumSet[T, E]) Any(list ...T) bool {
 	return !x.Intersect(MakeEnumSet[T, E](list...)).Empty()
@@ -346,6 +347,18 @@ func (x EnumSet[T, E]) Any(list ...T) bool {
 func (x EnumSet[T, E]) All(list ...T) bool {
 	other := MakeEnumSet[T, E](list...)
 	return x.Intersect(other) == other
+}
+func (x EnumSet[T, E]) GreaterThan(pivot T) EnumSet[T, E] {
+	return EnumSet[T, E](x.Ord() & ^((int32(1) << (pivot.Ord() + 1)) - int32(1)))
+}
+func (x EnumSet[T, E]) GreaterThanEqual(pivot T) EnumSet[T, E] {
+	return EnumSet[T, E](x.Ord() & ^((int32(1) << pivot.Ord()) - int32(1)))
+}
+func (x EnumSet[T, E]) LessThan(pivot T) EnumSet[T, E] {
+	return EnumSet[T, E](x.Ord() & ((int32(1) << pivot.Ord()) - int32(1)))
+}
+func (x EnumSet[T, E]) LessThanEqual(pivot T) EnumSet[T, E] {
+	return EnumSet[T, E](x.Ord() & ((int32(1) << (pivot.Ord() + 1)) - int32(1)))
 }
 func (x EnumSet[T, E]) Len() (total int) {
 	return bits.OnesCount32(uint32(x.Ord()))
@@ -373,9 +386,6 @@ func (x EnumSet[T, E]) Range(each func(int, T) error) error {
 		}
 	}
 	return nil
-}
-func (x EnumSet[T, E]) Intersect(other EnumSet[T, E]) EnumSet[T, E] {
-	return EnumSet[T, E](x.Ord() & other.Ord())
 }
 func (x *EnumSet[T, E]) Clear() {
 	*x = EnumSet[T, E](0)
@@ -445,7 +455,7 @@ func (x *EnumSet[T, E]) Serialize(ar Archive) {
 // 	return fastJson.Marshal(x.Elements())
 // }
 
-// serialize as a Json string
+// serialize as a Json string (faster than array above)
 func (x EnumSet[T, E]) MarshalText() ([]byte, error) {
 	return UnsafeBytesFromString(x.String()), nil
 }

@@ -35,7 +35,7 @@ const (
 	PROFILING_TRACE
 )
 
-func ProfilingModes() []ProfilingMode {
+func GetProfilingModes() []ProfilingMode {
 	return []ProfilingMode{
 		PROFILING_BLOCK,
 		PROFILING_CPU,
@@ -161,7 +161,7 @@ func (x *ProfilingMode) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *ProfilingMode) AutoComplete(in base.AutoComplete) {
-	for _, it := range ProfilingModes() {
+	for _, it := range GetProfilingModes() {
 		in.Add(it.String(), it.Description())
 	}
 }

@@ -37,7 +37,7 @@ const (
 	PEERMODE_PROPORTIONAL
 )
 
-func PeerModes() []PeerMode {
+func GetPeerModes() []PeerMode {
 	return []PeerMode{
 		PEERMODE_DISABLED,
 		PEERMODE_IDLE,
@@ -103,7 +103,7 @@ func (x *PeerMode) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *PeerMode) AutoComplete(in base.AutoComplete) {
-	for _, it := range PeerModes() {
+	for _, it := range GetPeerModes() {
 		in.Add(it.String(), it.Description())
 	}
 }

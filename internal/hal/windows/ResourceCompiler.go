@@ -34,11 +34,11 @@ func (res *ResourceCompiler) AllowCaching(*compile.Unit, compile.PayloadType) ac
 func (res *ResourceCompiler) AllowDistribution(*compile.Unit, compile.PayloadType) action.DistModeType {
 	return action.DIST_NONE
 }
-func (res *ResourceCompiler) AllowResponseFile(*compile.Unit, compile.PayloadType) compile.CompilerSupportType {
-	return compile.COMPILERSUPPORT_UNSUPPORTED
+func (res *ResourceCompiler) AllowResponseFile(*compile.Unit, compile.PayloadType) compile.SupportType {
+	return compile.SUPPORT_UNAVAILABLE
 }
-func (res *ResourceCompiler) AllowEditAndContinue(*compile.Unit, compile.PayloadType) compile.CompilerSupportType {
-	return compile.COMPILERSUPPORT_UNSUPPORTED
+func (res *ResourceCompiler) AllowEditAndContinue(*compile.Unit, compile.PayloadType) compile.SupportType {
+	return compile.SUPPORT_UNAVAILABLE
 }
 
 func (res *ResourceCompiler) Define(facet *compile.Facet, def ...string) {

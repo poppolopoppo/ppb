@@ -25,8 +25,8 @@ func InitUtils() {
 
 type Archive = base.Archive
 
-var CurrentHost = base.CurrentHost
-var HostIds = base.HostIds
+var GetCurrentHost = base.GetCurrentHost
+var GetHostIds = base.GetHostIds
 var IfDarwin = base.IfDarwin
 var IfLinux = base.IfLinux
 var IfWindows = base.IfWindows

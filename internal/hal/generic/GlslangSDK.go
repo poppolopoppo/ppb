@@ -118,7 +118,7 @@ func getGlslangExtractor(download *internal_io.Downloader, extractDir Directory)
 
 func getGlslangConfig(debug bool) string {
 	var config string
-	switch CurrentHost().Id {
+	switch GetCurrentHost().Id {
 	case base.HOST_WINDOWS:
 		config = "windows-x64"
 	case base.HOST_LINUX:
@@ -126,7 +126,7 @@ func getGlslangConfig(debug bool) string {
 	case base.HOST_DARWIN:
 		config = "osx"
 	default:
-		base.NotImplemented("glslang: no support available for platform '%s'", CurrentHost().Id)
+		base.NotImplemented("glslang: no support available for platform '%s'", GetCurrentHost().Id)
 	}
 	if debug {
 		config += "-Debug"

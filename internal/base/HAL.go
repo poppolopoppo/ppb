@@ -17,7 +17,7 @@ const (
 	HOST_DARWIN  HostId = "DARWIN"
 )
 
-func HostIds() []HostId {
+func GetHostIds() []HostId {
 	return []HostId{
 		HOST_WINDOWS,
 		HOST_LINUX,
@@ -65,27 +65,27 @@ func (x HostPlatform) String() string {
 	return fmt.Sprint(x.Id, x.Name)
 }
 
-var currentHost *HostPlatform
+var gCurrentHost *HostPlatform
 
-func CurrentHost() *HostPlatform {
-	return currentHost
+func GetCurrentHost() *HostPlatform {
+	return gCurrentHost
 }
 func SetCurrentHost(host *HostPlatform) {
-	currentHost = host
+	gCurrentHost = host
 }
 
 func IfWindows(block func()) {
-	if CurrentHost().Id == HOST_WINDOWS {
+	if GetCurrentHost().Id == HOST_WINDOWS {
 		block()
 	}
 }
 func IfLinux(block func()) {
-	if CurrentHost().Id == HOST_LINUX {
+	if GetCurrentHost().Id == HOST_LINUX {
 		block()
 	}
 }
 func IfDarwin(block func()) {
-	if CurrentHost().Id == HOST_DARWIN {
+	if GetCurrentHost().Id == HOST_DARWIN {
 		block()
 	}
 }

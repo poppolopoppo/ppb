@@ -38,7 +38,7 @@ var CurrentArch = base.Memoize(func() ArchType {
 	}
 })
 
-func ArchTypes() []ArchType {
+func GetArchTypes() []ArchType {
 	return []ArchType{
 		ARCH_X86,
 		ARCH_X64,
@@ -104,7 +104,7 @@ func (x *ArchType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *ArchType) AutoComplete(in base.AutoComplete) {
-	for _, it := range ArchTypes() {
+	for _, it := range GetArchTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -125,7 +125,7 @@ const (
 	COMPILER_ALLOW_EDITANDCONTINUE
 )
 
-func CompilerFeatures() []CompilerFeature {
+func GetCompilerFeatures() []CompilerFeature {
 	return []CompilerFeature{
 		COMPILER_ALLOW_CACHING,
 		COMPILER_ALLOW_DISTRIBUTION,
@@ -197,7 +197,7 @@ func (x *CompilerFeature) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *CompilerFeature) AutoComplete(in base.AutoComplete) {
-	for _, it := range CompilerFeatures() {
+	for _, it := range GetCompilerFeatures() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -286,7 +286,7 @@ const (
 	CPPRTTI_DISABLED
 )
 
-func CppRttiTypes() []CppRttiType {
+func GetCppRttiTypes() []CppRttiType {
 	return []CppRttiType{
 		CPPRTTI_INHERIT,
 		CPPRTTI_ENABLED,
@@ -345,7 +345,7 @@ func (x *CppRttiType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *CppRttiType) AutoComplete(in base.AutoComplete) {
-	for _, it := range CppRttiTypes() {
+	for _, it := range GetCppRttiTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -366,7 +366,7 @@ const (
 	CPPSTD_23
 )
 
-func CppStdTypes() []CppStdType {
+func GetCppStdTypes() []CppStdType {
 	return []CppStdType{
 		CPPSTD_INHERIT,
 		CPPSTD_LATEST,
@@ -453,99 +453,99 @@ func (x *CppStdType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *CppStdType) AutoComplete(in base.AutoComplete) {
-	for _, it := range CppStdTypes() {
+	for _, it := range GetCppStdTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }
 
 /***************************************
- * DebugType
+ * DebugInfoType
  ***************************************/
 
-type DebugType byte
+type DebugInfoType byte
 
 const (
-	DEBUG_INHERIT DebugType = iota
-	DEBUG_DISABLED
-	DEBUG_EMBEDDED
-	DEBUG_SYMBOLS
-	DEBUG_HOTRELOAD
+	DEBUGINFO_INHERIT DebugInfoType = iota
+	DEBUGINFO_DISABLED
+	DEBUGINFO_EMBEDDED
+	DEBUGINFO_SYMBOLS
+	DEBUGINFO_HOTRELOAD
 )
 
-func DebugTypes() []DebugType {
-	return []DebugType{
-		DEBUG_INHERIT,
-		DEBUG_DISABLED,
-		DEBUG_EMBEDDED,
-		DEBUG_SYMBOLS,
-		DEBUG_HOTRELOAD,
+func GetDebugInfoTypes() []DebugInfoType {
+	return []DebugInfoType{
+		DEBUGINFO_INHERIT,
+		DEBUGINFO_DISABLED,
+		DEBUGINFO_EMBEDDED,
+		DEBUGINFO_SYMBOLS,
+		DEBUGINFO_HOTRELOAD,
 	}
 }
-func (x DebugType) Description() string {
+func (x DebugInfoType) Description() string {
 	switch x {
-	case DEBUG_INHERIT:
+	case DEBUGINFO_INHERIT:
 		return "inherit default value from configuration"
-	case DEBUG_DISABLED:
+	case DEBUGINFO_DISABLED:
 		return "disable debugging symbols generation"
-	case DEBUG_EMBEDDED:
+	case DEBUGINFO_EMBEDDED:
 		return "debugging symbols are embedded inside each compilation unit"
-	case DEBUG_SYMBOLS:
+	case DEBUGINFO_SYMBOLS:
 		return "debugging symbols are stored in a Program Debugging Batabase (PDB)"
-	case DEBUG_HOTRELOAD:
+	case DEBUGINFO_HOTRELOAD:
 		return "debugging symbols are stored in a Program Debugging Batabase (PDB) with hot-reload support"
 	default:
 		base.UnexpectedValue(x)
 		return ""
 	}
 }
-func (x DebugType) String() string {
+func (x DebugInfoType) String() string {
 	switch x {
-	case DEBUG_INHERIT:
+	case DEBUGINFO_INHERIT:
 		return "INHERIT"
-	case DEBUG_DISABLED:
+	case DEBUGINFO_DISABLED:
 		return "DISABLED"
-	case DEBUG_EMBEDDED:
+	case DEBUGINFO_EMBEDDED:
 		return "EMBEDDED"
-	case DEBUG_SYMBOLS:
+	case DEBUGINFO_SYMBOLS:
 		return "SYMBOLS"
-	case DEBUG_HOTRELOAD:
+	case DEBUGINFO_HOTRELOAD:
 		return "HOTRELOAD"
 	default:
 		base.UnexpectedValue(x)
 		return ""
 	}
 }
-func (x DebugType) IsInheritable() bool {
-	return x == DEBUG_INHERIT
+func (x DebugInfoType) IsInheritable() bool {
+	return x == DEBUGINFO_INHERIT
 }
-func (x *DebugType) Set(in string) (err error) {
+func (x *DebugInfoType) Set(in string) (err error) {
 	switch strings.ToUpper(in) {
-	case DEBUG_INHERIT.String():
-		*x = DEBUG_INHERIT
-	case DEBUG_DISABLED.String():
-		*x = DEBUG_DISABLED
-	case DEBUG_EMBEDDED.String():
-		*x = DEBUG_EMBEDDED
-	case DEBUG_SYMBOLS.String():
-		*x = DEBUG_SYMBOLS
-	case DEBUG_HOTRELOAD.String():
-		*x = DEBUG_HOTRELOAD
+	case DEBUGINFO_INHERIT.String():
+		*x = DEBUGINFO_INHERIT
+	case DEBUGINFO_DISABLED.String():
+		*x = DEBUGINFO_DISABLED
+	case DEBUGINFO_EMBEDDED.String():
+		*x = DEBUGINFO_EMBEDDED
+	case DEBUGINFO_SYMBOLS.String():
+		*x = DEBUGINFO_SYMBOLS
+	case DEBUGINFO_HOTRELOAD.String():
+		*x = DEBUGINFO_HOTRELOAD
 	default:
 		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *DebugType) Serialize(ar base.Archive) {
+func (x *DebugInfoType) Serialize(ar base.Archive) {
 	ar.Byte((*byte)(x))
 }
-func (x DebugType) MarshalText() ([]byte, error) {
+func (x DebugInfoType) MarshalText() ([]byte, error) {
 	return base.UnsafeBytesFromString(x.String()), nil
 }
-func (x *DebugType) UnmarshalText(data []byte) error {
+func (x *DebugInfoType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *DebugType) AutoComplete(in base.AutoComplete) {
-	for _, it := range DebugTypes() {
+func (x *DebugInfoType) AutoComplete(in base.AutoComplete) {
+	for _, it := range GetDebugInfoTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -562,7 +562,7 @@ const (
 	EXCEPTION_ENABLED
 )
 
-func ExceptionTypes() []ExceptionType {
+func GetExceptionTypes() []ExceptionType {
 	return []ExceptionType{
 		EXCEPTION_INHERIT,
 		EXCEPTION_DISABLED,
@@ -638,7 +638,7 @@ const (
 	LINK_DYNAMIC
 )
 
-func LinkTypes() []LinkType {
+func GetLinkTypes() []LinkType {
 	return []LinkType{
 		LINK_INHERIT,
 		LINK_STATIC,
@@ -697,7 +697,7 @@ func (x *LinkType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *LinkType) AutoComplete(in base.AutoComplete) {
-	for _, it := range LinkTypes() {
+	for _, it := range GetLinkTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -716,7 +716,7 @@ const (
 	MODULE_HEADERS
 )
 
-func ModuleTypes() []ModuleType {
+func GetModuleTypes() []ModuleType {
 	return []ModuleType{
 		MODULE_PROGRAM,
 		MODULE_LIBRARY,
@@ -788,7 +788,7 @@ func (x *ModuleType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *ModuleType) AutoComplete(in base.AutoComplete) {
-	for _, it := range ModuleTypes() {
+	for _, it := range GetModuleTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -807,7 +807,7 @@ const (
 	PCH_HEADERUNIT
 )
 
-func PrecompiledHeaderTypes() []PrecompiledHeaderType {
+func GetPrecompiledHeaderTypes() []PrecompiledHeaderType {
 	return []PrecompiledHeaderType{
 		PCH_INHERIT,
 		PCH_DISABLED,
@@ -880,7 +880,7 @@ func (x *PrecompiledHeaderType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *PrecompiledHeaderType) AutoComplete(in base.AutoComplete) {
-	for _, it := range PrecompiledHeaderTypes() {
+	for _, it := range GetPrecompiledHeaderTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -906,7 +906,7 @@ const (
 	NumPayloadTypes int32 = (int32(PAYLOAD_DEPENDENCIES) + 1)
 )
 
-func PayloadTypes() []PayloadType {
+func GetPayloadTypes() []PayloadType {
 	return []PayloadType{
 		PAYLOAD_EXECUTABLE,
 		PAYLOAD_OBJECTLIST,
@@ -1026,7 +1026,7 @@ func (x *PayloadType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *PayloadType) AutoComplete(in base.AutoComplete) {
-	for _, it := range PayloadTypes() {
+	for _, it := range GetPayloadTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -1068,83 +1068,83 @@ func (x PayloadType) HasMultipleInput() bool {
  * CompilerSupportType
  ***************************************/
 
-type CompilerSupportType byte
+type SupportType byte
 
 const (
-	COMPILERSUPPORT_INHERIT CompilerSupportType = iota
-	COMPILERSUPPORT_ALLOWED
-	COMPILERSUPPORT_UNSUPPORTED
+	SUPPORT_INHERIT SupportType = iota
+	SUPPORT_ALLOWED
+	SUPPORT_UNAVAILABLE
 )
 
-func CompilerSupportTypes() []CompilerSupportType {
-	return []CompilerSupportType{
-		COMPILERSUPPORT_INHERIT,
-		COMPILERSUPPORT_ALLOWED,
-		COMPILERSUPPORT_UNSUPPORTED,
+func GetSupportTypes() []SupportType {
+	return []SupportType{
+		SUPPORT_INHERIT,
+		SUPPORT_ALLOWED,
+		SUPPORT_UNAVAILABLE,
 	}
 }
-func (x CompilerSupportType) Description() string {
+func (x SupportType) Description() string {
 	switch x {
-	case COMPILERSUPPORT_INHERIT:
+	case SUPPORT_INHERIT:
 		return "inherit default value from configuration"
-	case COMPILERSUPPORT_ALLOWED:
-		return "compiler supports this feature"
-	case COMPILERSUPPORT_UNSUPPORTED:
-		return "compiler do not support this feature"
+	case SUPPORT_ALLOWED:
+		return "feature is supported"
+	case SUPPORT_UNAVAILABLE:
+		return "feature has no support"
 	default:
 		base.UnexpectedValue(x)
 		return ""
 	}
 }
-func (x CompilerSupportType) String() string {
+func (x SupportType) String() string {
 	switch x {
-	case COMPILERSUPPORT_INHERIT:
+	case SUPPORT_INHERIT:
 		return "INHERIT"
-	case COMPILERSUPPORT_ALLOWED:
+	case SUPPORT_ALLOWED:
 		return "ALLOWED"
-	case COMPILERSUPPORT_UNSUPPORTED:
+	case SUPPORT_UNAVAILABLE:
 		return "UNSUPPORTED"
 	default:
 		base.UnexpectedValue(x)
 		return ""
 	}
 }
-func (x CompilerSupportType) IsInheritable() bool {
-	return x == COMPILERSUPPORT_INHERIT
+func (x SupportType) IsInheritable() bool {
+	return x == SUPPORT_INHERIT
 }
-func (x *CompilerSupportType) Set(in string) (err error) {
+func (x *SupportType) Set(in string) (err error) {
 	switch strings.ToUpper(in) {
-	case COMPILERSUPPORT_INHERIT.String():
-		*x = COMPILERSUPPORT_INHERIT
-	case COMPILERSUPPORT_ALLOWED.String():
-		*x = COMPILERSUPPORT_ALLOWED
-	case COMPILERSUPPORT_UNSUPPORTED.String():
-		*x = COMPILERSUPPORT_UNSUPPORTED
+	case SUPPORT_INHERIT.String():
+		*x = SUPPORT_INHERIT
+	case SUPPORT_ALLOWED.String():
+		*x = SUPPORT_ALLOWED
+	case SUPPORT_UNAVAILABLE.String():
+		*x = SUPPORT_UNAVAILABLE
 	default:
 		err = base.MakeUnexpectedValueError(x, in)
 	}
 	return err
 }
-func (x *CompilerSupportType) Serialize(ar base.Archive) {
+func (x *SupportType) Serialize(ar base.Archive) {
 	ar.Byte((*byte)(x))
 }
-func (x CompilerSupportType) MarshalText() ([]byte, error) {
+func (x SupportType) MarshalText() ([]byte, error) {
 	return base.UnsafeBytesFromString(x.String()), nil
 }
-func (x *CompilerSupportType) UnmarshalText(data []byte) error {
+func (x *SupportType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *CompilerSupportType) AutoComplete(in base.AutoComplete) {
-	for _, it := range CompilerSupportTypes() {
+func (x *SupportType) AutoComplete(in base.AutoComplete) {
+	for _, it := range GetSupportTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }
 
-func (x CompilerSupportType) Enabled() bool {
+func (x SupportType) Enabled() bool {
 	switch x {
-	case COMPILERSUPPORT_ALLOWED:
+	case SUPPORT_ALLOWED:
 		return true
-	case COMPILERSUPPORT_UNSUPPORTED, COMPILERSUPPORT_INHERIT:
+	case SUPPORT_UNAVAILABLE, SUPPORT_INHERIT:
 	default:
 		base.UnexpectedValuePanic(x, x)
 	}
@@ -1165,7 +1165,7 @@ const (
 	SANITIZER_UNDEFINED_BEHAVIOR
 )
 
-func SanitizerTypes() []SanitizerType {
+func GetSanitizerTypes() []SanitizerType {
 	return []SanitizerType{
 		SANITIZER_INHERIT,
 		SANITIZER_NONE,
@@ -1241,7 +1241,7 @@ func (x *SanitizerType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *SanitizerType) AutoComplete(in base.AutoComplete) {
-	for _, it := range SanitizerTypes() {
+	for _, it := range GetSanitizerTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -1264,7 +1264,7 @@ const (
 	TAG_FASTDEBUG
 )
 
-func TagTypes() []TagType {
+func GetTagTypes() []TagType {
 	return []TagType{
 		TAG_DEBUG,
 		TAG_NDEBUG,
@@ -1350,7 +1350,7 @@ func (x *TagType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *TagType) AutoComplete(in base.AutoComplete) {
-	for _, it := range TagTypes() {
+	for _, it := range GetTagTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -1370,7 +1370,7 @@ const (
 func (x UnityType) Ord() int32 {
 	return int32(x)
 }
-func UnityTypes() []UnityType {
+func GetUnityTypes() []UnityType {
 	return []UnityType{
 		UNITY_INHERIT,
 		UNITY_AUTOMATIC,
@@ -1437,7 +1437,7 @@ func (x *UnityType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *UnityType) AutoComplete(in base.AutoComplete) {
-	for _, it := range UnityTypes() {
+	for _, it := range GetUnityTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -1454,7 +1454,7 @@ const (
 	RUNTIME
 )
 
-func VisibilityTypes() []VisibilityType {
+func GetVisibilityTypes() []VisibilityType {
 	return []VisibilityType{
 		PRIVATE,
 		PUBLIC,

@@ -202,13 +202,13 @@ func (vsc *VscodeBuilder) c_cpp_properties(bc BuildContext, moduleAliases []comp
 }
 func (vsc *VscodeBuilder) tasks(moduleAliases compile.ModuleAliases, outputFile Filename) error {
 	var problemMatcher string
-	switch base.CurrentHost().Id {
+	switch base.GetCurrentHost().Id {
 	case base.HOST_LINUX, base.HOST_DARWIN:
 		problemMatcher = "$gcc"
 	case base.HOST_WINDOWS:
 		problemMatcher = "$msCompile"
 	default:
-		return base.MakeUnexpectedValueError(problemMatcher, base.CurrentHost().Id)
+		return base.MakeUnexpectedValueError(problemMatcher, base.GetCurrentHost().Id)
 	}
 
 	const buildCommand = "build"
@@ -245,13 +245,13 @@ func (vsc *VscodeBuilder) tasks(moduleAliases compile.ModuleAliases, outputFile 
 }
 func (vsc *VscodeBuilder) launch_configs(programAliases compile.ModuleAliases, compiler compile.Compiler, outputFile Filename) error {
 	var debuggerType string
-	switch base.CurrentHost().Id {
+	switch base.GetCurrentHost().Id {
 	case base.HOST_LINUX, base.HOST_DARWIN:
 		debuggerType = "cppdbg"
 	case base.HOST_WINDOWS:
 		debuggerType = "cppvsdbg"
 	default:
-		base.UnexpectedValue(base.CurrentHost().Id)
+		base.UnexpectedValue(base.GetCurrentHost().Id)
 	}
 
 	// create a launch single launch configuration per executable

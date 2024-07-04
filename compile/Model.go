@@ -502,7 +502,7 @@ func (src *ExtensionModel) applyArchetypes(rules *ModuleRules, name ModuleAlias)
 	})
 }
 func (src *ExtensionModel) applyHAL(model *ModuleModel, name ModuleAlias) {
-	hostId := base.CurrentHost().Id
+	hostId := base.GetCurrentHost().Id
 	for id, other := range src.HAL {
 		var hal base.HostId
 		if err := hal.Set(id.String()); err == nil && hal == hostId {

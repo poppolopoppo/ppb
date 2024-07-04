@@ -48,7 +48,7 @@ type LinuxFlags struct {
 	StackSize         IntVar
 }
 
-var GetLinuxFlags = compile.NewCompilationFlags("LinuxCompilation", "linux-specific compilation flags", &LinuxFlags{
+var GetLinuxFlags = compile.NewCompilationFlags("LinuxCompilation", "linux-specific compilation flags", LinuxFlags{
 	Compiler:          COMPILER_CLANG,
 	LlvmVer:           llvm_any,
 	DumpRecordLayouts: DUMPRECORDLAYOUTS_NONE,
@@ -72,7 +72,11 @@ type LinuxPlatform struct {
 }
 
 func (linux *LinuxPlatform) Build(bc BuildContext) (err error) {
-	linux.CompilerType = GetLinuxFlags().Compiler
+	if linuxFlags, err := GetLinuxFlags(bc); err == nil {
+		linux.CompilerType = linuxFlags.Compiler
+	} else {
+		return err
+	}
 	return linux.PlatformRules.Build(bc)
 }
 func (linux *LinuxPlatform) Serialize(ar base.Archive) {

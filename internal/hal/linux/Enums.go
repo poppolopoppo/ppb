@@ -21,7 +21,7 @@ const (
 	COMPILER_GCC
 )
 
-func CompilerTypes() []CompilerType {
+func GetCompilerTypes() []CompilerType {
 	return []CompilerType{
 		COMPILER_CLANG,
 		COMPILER_GCC,
@@ -70,7 +70,7 @@ func (x *CompilerType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *CompilerType) AutoComplete(in base.AutoComplete) {
-	for _, it := range CompilerTypes() {
+	for _, it := range GetCompilerTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -94,7 +94,7 @@ const (
 	LLVM_9      LlvmVersion = 9
 )
 
-func LlvmVersions() []LlvmVersion {
+func GetLlvmVersions() []LlvmVersion {
 	return []LlvmVersion{
 		LLVM_16,
 		LLVM_15,
@@ -165,7 +165,7 @@ func (x *LlvmVersion) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x *LlvmVersion) AutoComplete(in base.AutoComplete) {
-	for _, it := range LlvmVersions() {
+	for _, it := range GetLlvmVersions() {
 		in.Add(it.String(), fmt.Sprintf("LLVM compiler version %v", it))
 	}
 }

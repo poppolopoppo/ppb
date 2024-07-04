@@ -111,7 +111,7 @@ var spirvToolsFrozenArtifactUris = map[string]string{
 
 func getSpirvToolsConfig(debug bool) string {
 	var config string
-	switch utils.CurrentHost().Id {
+	switch utils.GetCurrentHost().Id {
 	case base.HOST_WINDOWS:
 		config = "windows_vs2017"
 	case base.HOST_LINUX:
@@ -119,7 +119,7 @@ func getSpirvToolsConfig(debug bool) string {
 	case base.HOST_DARWIN:
 		config = "macos_clang"
 	default:
-		base.NotImplemented("SPIRV-Tools: no support available for platform '%s'", utils.CurrentHost().Id)
+		base.NotImplemented("SPIRV-Tools: no support available for platform '%s'", utils.GetCurrentHost().Id)
 	}
 	if debug {
 		config += "_debug"

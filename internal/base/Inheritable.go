@@ -350,7 +350,8 @@ func (x *InheritableBool) AsInt() *InheritableInt {
 	return (*InheritableInt)(x)
 }
 
-func (x InheritableBool) Get() bool { return x == INHERITABLE_TRUE }
+func (x InheritableBool) Get() bool       { return x == INHERITABLE_TRUE }
+func (x InheritableBool) IsEnabled() bool { return x == INHERITABLE_TRUE }
 func (x *InheritableBool) Assign(in bool) {
 	if in {
 		x.Enable()

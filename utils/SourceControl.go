@@ -56,7 +56,7 @@ const (
 	SOURCECONTROL_RENAMED
 )
 
-func SourceControlStates() []SourceControlState {
+func GetSourceControlStates() []SourceControlState {
 	return []SourceControlState{
 		SOURCECONTROL_IGNORED,
 		SOURCECONTROL_UNTRACKED,
@@ -141,7 +141,7 @@ func (x *SourceControlState) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *SourceControlState) AutoComplete(in base.AutoComplete) {
-	for _, it := range SourceControlStates() {
+	for _, it := range GetSourceControlStates() {
 		in.Add(it.String(), it.Description())
 	}
 }

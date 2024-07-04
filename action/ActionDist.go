@@ -200,7 +200,7 @@ const (
 	DIST_FORCE
 )
 
-func DistModeTypes() []DistModeType {
+func GetDistModeTypes() []DistModeType {
 	return []DistModeType{
 		DIST_INHERIT,
 		DIST_NONE,
@@ -266,7 +266,7 @@ func (x *DistModeType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *DistModeType) AutoComplete(in base.AutoComplete) {
-	for _, it := range DistModeTypes() {
+	for _, it := range GetDistModeTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }

@@ -157,7 +157,7 @@ const TUNNEL_RSA_KEYSIZE = 2048 // The size of this RSA key should be at least 2
 const TUNNEL_QUIC_PROTOCOL = "quic-ppb-task-distribution"
 
 var getTunnelQuicProtocol = base.Memoize[string](func() string {
-	return fmt.Sprint(TUNNEL_QUIC_PROTOCOL, `-`, base.CurrentHost().String())
+	return fmt.Sprint(TUNNEL_QUIC_PROTOCOL, `-`, base.GetCurrentHost().String())
 })
 
 func generateClientTLSConfig() *tls.Config {

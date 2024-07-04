@@ -645,7 +645,7 @@ const (
 	CACHE_READWRITE
 )
 
-func CacheModeTypes() []CacheModeType {
+func GetCacheModeTypes() []CacheModeType {
 	return []CacheModeType{
 		CACHE_INHERIT,
 		CACHE_NONE,
@@ -711,7 +711,7 @@ func (x *CacheModeType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *CacheModeType) AutoComplete(in base.AutoComplete) {
-	for _, it := range CacheModeTypes() {
+	for _, it := range GetCacheModeTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }

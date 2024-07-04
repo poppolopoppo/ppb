@@ -839,7 +839,7 @@ func (vk *VulkanHeaders) Alias() utils.BuildAlias {
 func (vk *VulkanHeaders) Build(bc utils.BuildContext) error {
 	vk.Headers = utils.FileSet{vk.Src.File("vulkan_core.h")}
 
-	switch base.CurrentHost().Id {
+	switch base.GetCurrentHost().Id {
 	case base.HOST_DARWIN:
 		vk.Headers.Append(vk.Src.File("vulkan_macos.h"))
 	case base.HOST_LINUX:
@@ -847,7 +847,7 @@ func (vk *VulkanHeaders) Build(bc utils.BuildContext) error {
 	case base.HOST_WINDOWS:
 		vk.Headers.Append(vk.Src.File("vulkan_win32.h"))
 	default:
-		base.UnexpectedValue(base.CurrentHost().Id)
+		base.UnexpectedValue(base.GetCurrentHost().Id)
 	}
 
 	if err := bc.NeedFiles(vk.Headers...); err != nil {

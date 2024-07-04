@@ -343,7 +343,7 @@ func (x *buildActionGenerator) CreateAction(
 
 	// check if compiler supports response files
 	responseFile := x.Compiler.AllowResponseFile(x.Unit, payload)
-	base.AssertNotIn(responseFile, COMPILERSUPPORT_INHERIT)
+	base.AssertNotIn(responseFile, SUPPORT_INHERIT)
 	if responseFile.Enabled() {
 		model.Options.Add(action.OPT_ALLOW_RESPONSEFILE)
 	}

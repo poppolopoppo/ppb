@@ -61,7 +61,6 @@ type WindowsFlags struct {
 	PerfSDK          BoolVar
 	Permissive       BoolVar
 	StackSize        IntVar
-	StaticCRT        BoolVar
 	TranslateInclude BoolVar
 	WindowsSDK       Directory
 }
@@ -76,7 +75,6 @@ var GetWindowsFlags = NewCompilationFlags("WindowsCompilation", "windows-specifi
 	PerfSDK:          base.INHERITABLE_FALSE,
 	Permissive:       base.INHERITABLE_FALSE,
 	StackSize:        2000000,
-	StaticCRT:        base.INHERITABLE_FALSE,
 	TranslateInclude: base.INHERITABLE_TRUE,
 })
 
@@ -90,7 +88,6 @@ func (flags *WindowsFlags) Flags(cfv CommandFlagsVisitor) {
 	cfv.Persistent("PerfSDK", "enable/disable Visual Studio Performance SDK", &flags.PerfSDK)
 	cfv.Persistent("Permissive", "enable/disable MSCV permissive", &flags.Permissive)
 	cfv.Persistent("StackSize", "set default thread stack size in bytes", &flags.StackSize)
-	cfv.Persistent("StaticCRT", "use static CRT libraries instead of dynamic (/MT vs /MD)", &flags.StaticCRT)
 	cfv.Persistent("TranslateInclude", "convert PCH to header units for C++20 units if enabled ", &flags.TranslateInclude)
 	cfv.Persistent("WindowsSDK", "override Windows SDK install path (use latest otherwise)", &flags.WindowsSDK)
 }

@@ -17,7 +17,7 @@ const (
 	COMPILER_CLANGCL
 )
 
-func CompilerTypes() []CompilerType {
+func GetCompilerTypes() []CompilerType {
 	return []CompilerType{
 		COMPILER_MSVC,
 		COMPILER_CLANGCL,
@@ -66,7 +66,7 @@ func (x *CompilerType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *CompilerType) AutoComplete(in base.AutoComplete) {
-	for _, it := range CompilerTypes() {
+	for _, it := range GetCompilerTypes() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -87,7 +87,7 @@ const (
 	MSC_VER_2013   MsvcVersion = 1800
 )
 
-func MsvcVersions() []MsvcVersion {
+func GetMsvcVersions() []MsvcVersion {
 	return []MsvcVersion{
 		MSC_VER_2022,
 		MSC_VER_2019,
@@ -143,7 +143,7 @@ func (x *MsvcVersion) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x *MsvcVersion) AutoComplete(in base.AutoComplete) {
-	for _, it := range MsvcVersions() {
+	for _, it := range GetMsvcVersions() {
 		in.Add(it.String(), fmt.Sprint("Microsoft Visual Studio ", it.String()))
 	}
 }

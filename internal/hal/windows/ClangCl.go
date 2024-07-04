@@ -150,12 +150,12 @@ func (clang *ClangCompiler) Decorate(compileEnv *compile.CompileEnv, u *compile.
 	}
 
 	// flags added by msvc but not supported by clang-cl, llvm-lib or lld-link
-	u.RemoveCompilationFlag("/WX", "/JMC-")
+	u.RemoveCompilationFlag("/JMC-")
 	if !clang.UseMsvcLibrarian {
 		u.LibrarianOptions.Remove("/WX", "/SUBSYSTEM:WINDOWS", "/NODEFAULTLIB")
 	}
 	if !clang.UseMsvcLinker {
-		u.LinkerOptions.Remove("/WX", "/LTCG", "/LTCG:INCREMENTAL", "/LTCG:OFF", "/NODEFAULTLIB", "/d2:-cgsummary")
+		u.LinkerOptions.Remove("/WX", "/LTCG", "/LTCG:INCREMENTAL", "/LTCG:OFF", "/NODEFAULTLIB", "/d2:-cgsummary", "/NOEXP", "/NOIMPLIB")
 	}
 
 	// #TODO: wait for MSTL/llvm to be fixed with this optimization
@@ -231,8 +231,6 @@ func (clang *ClangCompiler) Build(bc BuildContext) error {
 
 	rules.Defines.Append("CPP_CLANG", "LLVM_FOR_WINDOWS", "_CRT_SECURE_NO_WARNINGS")
 	rules.AddCompilationFlag_NoAnalysis(
-		// compiler output
-		"-msse4.2",
 		// msvc compatibility
 		"-fmsc-version="+clang.MsvcCompiler.MSC_VER.String(),
 		"-fms-compatibility",

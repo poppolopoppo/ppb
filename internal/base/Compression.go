@@ -230,7 +230,7 @@ const (
 	COMPRESSION_LEVEL_BEST
 )
 
-func CompressionLevels() []CompressionLevel {
+func GetCompressionLevels() []CompressionLevel {
 	return []CompressionLevel{
 		COMPRESSION_LEVEL_INHERIT,
 		COMPRESSION_LEVEL_FAST,
@@ -296,7 +296,7 @@ func (x *CompressionLevel) UnmarshalText(data []byte) error {
 	return x.Set(UnsafeStringFromBytes(data))
 }
 func (x *CompressionLevel) AutoComplete(in AutoComplete) {
-	for _, it := range CompressionLevels() {
+	for _, it := range GetCompressionLevels() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -313,7 +313,7 @@ const (
 	COMPRESSION_FORMAT_ZSTD
 )
 
-func CompressionFormats() []CompressionFormat {
+func GetCompressionFormats() []CompressionFormat {
 	return []CompressionFormat{
 		COMPRESSION_FORMAT_INHERIT,
 		COMPRESSION_FORMAT_LZ4,
@@ -372,7 +372,7 @@ func (x *CompressionFormat) UnmarshalText(data []byte) error {
 	return x.Set(UnsafeStringFromBytes(data))
 }
 func (x *CompressionFormat) AutoComplete(in AutoComplete) {
-	for _, it := range CompressionFormats() {
+	for _, it := range GetCompressionFormats() {
 		in.Add(it.String(), it.Description())
 	}
 }

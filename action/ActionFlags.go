@@ -80,7 +80,7 @@ const (
 	OPT_ALLOW_CACHEREADWRITE OptionType = OPT_ALLOW_CACHEREAD | OPT_ALLOW_CACHEWRITE
 )
 
-func OptionTypes() []OptionType {
+func GetOptionTypes() []OptionType {
 	return []OptionType{
 		OPT_ALLOW_CACHEREAD,
 		OPT_ALLOW_CACHEWRITE,
