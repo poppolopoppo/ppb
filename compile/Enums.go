@@ -203,78 +203,6 @@ func (x *CompilerFeature) AutoComplete(in base.AutoComplete) {
 }
 
 /***************************************
- * ConfigType
- ***************************************/
-
-type ConfigType byte
-
-const (
-	CONFIG_DEBUG ConfigType = iota
-	CONFIG_FASTDEBUG
-	CONFIG_DEVEL
-	CONFIG_TEST
-	CONFIG_SHIPPING
-)
-
-func ConfigTypes() []ConfigType {
-	return []ConfigType{
-		CONFIG_DEBUG,
-		CONFIG_FASTDEBUG,
-		CONFIG_DEVEL,
-		CONFIG_TEST,
-		CONFIG_SHIPPING,
-	}
-}
-func (x ConfigType) String() string {
-	switch x {
-	case CONFIG_DEBUG:
-		return "DEBUG"
-	case CONFIG_FASTDEBUG:
-		return "FASTDEBUG"
-	case CONFIG_DEVEL:
-		return "DEVEL"
-	case CONFIG_TEST:
-		return "TEST"
-	case CONFIG_SHIPPING:
-		return "SHIPPING"
-	default:
-		base.UnexpectedValue(x)
-		return ""
-	}
-}
-func (x *ConfigType) Set(in string) (err error) {
-	switch strings.ToUpper(in) {
-	case CONFIG_DEBUG.String():
-		*x = CONFIG_DEBUG
-	case CONFIG_FASTDEBUG.String():
-		*x = CONFIG_FASTDEBUG
-	case CONFIG_DEVEL.String():
-		*x = CONFIG_DEVEL
-	case CONFIG_TEST.String():
-		*x = CONFIG_TEST
-	case CONFIG_SHIPPING.String():
-		*x = CONFIG_SHIPPING
-	default:
-		err = base.MakeUnexpectedValueError(x, in)
-	}
-	return err
-}
-func (x *ConfigType) Serialize(ar base.Archive) {
-	ar.Byte((*byte)(x))
-}
-func (x ConfigType) MarshalText() ([]byte, error) {
-	return base.UnsafeBytesFromString(x.String()), nil
-}
-func (x *ConfigType) UnmarshalText(data []byte) error {
-	return x.Set(base.UnsafeStringFromBytes(data))
-}
-func (x *ConfigType) AutoComplete(in base.AutoComplete) {
-	for _, it := range ConfigTypes() {
-		in.Add(it.String(), "")
-	}
-}
-
-/***************************************
  * CppRttiType
  ***************************************/
 
@@ -621,7 +549,147 @@ func (x *ExceptionType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *ExceptionType) AutoComplete(in base.AutoComplete) {
-	for _, it := range ExceptionTypes() {
+	for _, it := range GetExceptionTypes() {
+		in.Add(it.String(), it.Description())
+	}
+}
+
+/***************************************
+ * InstructionSet
+ ***************************************/
+
+type InstructionSet byte
+
+type InstructionSets = base.EnumSet[InstructionSet, *InstructionSet]
+
+const (
+	INSTRUCTIONSET_INHERIT InstructionSet = iota
+	INSTRUCTIONSET_AES
+	INSTRUCTIONSET_AVX
+	INSTRUCTIONSET_AVX2
+	INSTRUCTIONSET_AVX512
+	INSTRUCTIONSET_SSE2
+	INSTRUCTIONSET_SSE3
+	INSTRUCTIONSET_SSE4_1
+	INSTRUCTIONSET_SSE4_2
+	INSTRUCTIONSET_SSE4_a
+)
+
+func AllInstructionSets() []InstructionSet {
+	return []InstructionSet{
+		INSTRUCTIONSET_INHERIT,
+		INSTRUCTIONSET_AES,
+		INSTRUCTIONSET_AVX,
+		INSTRUCTIONSET_AVX2,
+		INSTRUCTIONSET_AVX512,
+		INSTRUCTIONSET_SSE2,
+		INSTRUCTIONSET_SSE3,
+		INSTRUCTIONSET_SSE4_1,
+		INSTRUCTIONSET_SSE4_2,
+		INSTRUCTIONSET_SSE4_a,
+	}
+}
+func (x InstructionSet) Ord() int32 {
+	return (int32)(x)
+}
+func (x *InstructionSet) FromOrd(i int32) {
+	*(*byte)(x) = byte(i)
+}
+func (x InstructionSet) IsInheritable() bool {
+	return x == INSTRUCTIONSET_INHERIT
+}
+func (x InstructionSet) Description() string {
+	switch x {
+	case INSTRUCTIONSET_INHERIT:
+		return "inherit from parent's value"
+	case INSTRUCTIONSET_AES:
+		return "Advanced Encryption Standard"
+	case INSTRUCTIONSET_AVX:
+		return "Advanced Vector Extensions"
+	case INSTRUCTIONSET_AVX2:
+		return "Advanced Vector Extensions 2"
+	case INSTRUCTIONSET_AVX512:
+		return "Advanced Vector Extensions 512"
+	case INSTRUCTIONSET_SSE2:
+		return "Streaming SIMD Extensions 2"
+	case INSTRUCTIONSET_SSE3:
+		return "Streaming SIMD Extensions 3"
+	case INSTRUCTIONSET_SSE4_1:
+		return "Streaming SIMD Extensions 4.1"
+	case INSTRUCTIONSET_SSE4_2:
+		return "Streaming SIMD Extensions 4.2"
+	case INSTRUCTIONSET_SSE4_a:
+		return "Streaming SIMD Extensions 4a"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x InstructionSet) String() string {
+	switch x {
+	case INSTRUCTIONSET_INHERIT:
+		return "INHERIT"
+	case INSTRUCTIONSET_AES:
+		return "AES"
+	case INSTRUCTIONSET_AVX:
+		return "AVX"
+	case INSTRUCTIONSET_AVX2:
+		return "AVX2"
+	case INSTRUCTIONSET_AVX512:
+		return "AVX512"
+	case INSTRUCTIONSET_SSE2:
+		return "SSE2"
+	case INSTRUCTIONSET_SSE3:
+		return "SSE3"
+	case INSTRUCTIONSET_SSE4_1:
+		return "SSE4_1"
+	case INSTRUCTIONSET_SSE4_2:
+		return "SSE4_2"
+	case INSTRUCTIONSET_SSE4_a:
+		return "SSE4_a"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x *InstructionSet) Set(in string) (err error) {
+	switch strings.ToUpper(in) {
+	case INSTRUCTIONSET_INHERIT.String():
+		*x = INSTRUCTIONSET_INHERIT
+	case INSTRUCTIONSET_AES.String():
+		*x = INSTRUCTIONSET_AES
+	case INSTRUCTIONSET_AVX.String():
+		*x = INSTRUCTIONSET_AVX
+	case INSTRUCTIONSET_AVX2.String():
+		*x = INSTRUCTIONSET_AVX2
+	case INSTRUCTIONSET_AVX512.String():
+		*x = INSTRUCTIONSET_AVX512
+	case INSTRUCTIONSET_SSE2.String():
+		*x = INSTRUCTIONSET_SSE2
+	case INSTRUCTIONSET_SSE3.String():
+		*x = INSTRUCTIONSET_SSE3
+	case INSTRUCTIONSET_SSE4_1.String():
+		*x = INSTRUCTIONSET_SSE4_1
+	case INSTRUCTIONSET_SSE4_2.String():
+		*x = INSTRUCTIONSET_SSE4_2
+	case INSTRUCTIONSET_SSE4_a.String():
+		*x = INSTRUCTIONSET_SSE4_a
+	default:
+		err = base.MakeUnexpectedValueError(x, in)
+	}
+	return err
+}
+func (x *InstructionSet) Serialize(ar base.Archive) {
+	ar.Byte((*byte)(x))
+}
+func (x InstructionSet) MarshalText() ([]byte, error) {
+	return base.UnsafeBytesFromString(x.String()), nil
+}
+func (x *InstructionSet) UnmarshalText(data []byte) error {
+	return x.Set(base.UnsafeStringFromBytes(data))
+}
+func (x *InstructionSet) AutoComplete(in base.AutoComplete) {
+	for _, it := range AllInstructionSets() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -1065,6 +1133,109 @@ func (x PayloadType) HasMultipleInput() bool {
 }
 
 /***************************************
+ * OptimizationLevel
+ ***************************************/
+
+type OptimizationLevel byte
+
+const (
+	OPTIMIZE_INHERIT OptimizationLevel = iota
+	OPTIMIZE_NONE
+	OPTIMIZE_FOR_DEBUG
+	OPTIMIZE_FOR_SIZE
+	OPTIMIZE_FOR_SPEED
+	OPTIMIZE_FOR_SHIPPING
+)
+
+func OptimizationTypes() []OptimizationLevel {
+	return []OptimizationLevel{
+		OPTIMIZE_INHERIT,
+		OPTIMIZE_NONE,
+		OPTIMIZE_FOR_DEBUG,
+		OPTIMIZE_FOR_SIZE,
+		OPTIMIZE_FOR_SPEED,
+		OPTIMIZE_FOR_SHIPPING,
+	}
+}
+func (x OptimizationLevel) Description() string {
+	switch x {
+	case OPTIMIZE_INHERIT:
+		return "inherit default value from configuration"
+	case OPTIMIZE_NONE:
+		return "disable all compiler optimizations"
+	case OPTIMIZE_FOR_DEBUG:
+		return "sets a combination of optimizations that balance between speed and ease of debugging"
+	case OPTIMIZE_FOR_SIZE:
+		return "sets a combination of optimizations that generate minimum size code"
+	case OPTIMIZE_FOR_SPEED:
+		return "sets a combination of optimizations that optimizes code for maximum speed"
+	case OPTIMIZE_FOR_SHIPPING:
+		return "sets a combination of optimizations that generate best possible code, regardless of compilation times"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x OptimizationLevel) String() string {
+	switch x {
+	case OPTIMIZE_INHERIT:
+		return "INHERIT"
+	case OPTIMIZE_NONE:
+		return "NONE"
+	case OPTIMIZE_FOR_DEBUG:
+		return "FOR_DEBUG"
+	case OPTIMIZE_FOR_SIZE:
+		return "FOR_SIZE"
+	case OPTIMIZE_FOR_SPEED:
+		return "FOR_SPEED"
+	case OPTIMIZE_FOR_SHIPPING:
+		return "FOR_SHIPPING"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x OptimizationLevel) IsEnabled() bool {
+	return x != OPTIMIZE_INHERIT && x != OPTIMIZE_NONE
+}
+func (x OptimizationLevel) IsInheritable() bool {
+	return x == OPTIMIZE_INHERIT
+}
+func (x *OptimizationLevel) Set(in string) (err error) {
+	switch strings.ToUpper(in) {
+	case OPTIMIZE_INHERIT.String():
+		*x = OPTIMIZE_INHERIT
+	case OPTIMIZE_NONE.String():
+		*x = OPTIMIZE_NONE
+	case OPTIMIZE_FOR_DEBUG.String():
+		*x = OPTIMIZE_FOR_DEBUG
+	case OPTIMIZE_FOR_SIZE.String():
+		*x = OPTIMIZE_FOR_SIZE
+	case OPTIMIZE_FOR_SPEED.String():
+		*x = OPTIMIZE_FOR_SPEED
+	case OPTIMIZE_FOR_SHIPPING.String():
+		*x = OPTIMIZE_FOR_SHIPPING
+	default:
+		err = base.MakeUnexpectedValueError(x, in)
+	}
+	return err
+}
+func (x *OptimizationLevel) Serialize(ar base.Archive) {
+	ar.Byte((*byte)(x))
+}
+func (x OptimizationLevel) MarshalText() ([]byte, error) {
+	return base.UnsafeBytesFromString(x.String()), nil
+}
+func (x *OptimizationLevel) UnmarshalText(data []byte) error {
+	return x.Set(base.UnsafeStringFromBytes(data))
+}
+func (x *OptimizationLevel) AutoComplete(in base.AutoComplete) {
+	for _, it := range OptimizationTypes() {
+		in.Add(it.String(), it.Description())
+	}
+}
+
+/***************************************
  * CompilerSupportType
  ***************************************/
 
@@ -1149,6 +1320,106 @@ func (x SupportType) Enabled() bool {
 		base.UnexpectedValuePanic(x, x)
 	}
 	return false
+}
+
+/***************************************
+ * RuntimeType
+ ***************************************/
+
+type RuntimeLibType byte
+
+const (
+	RUNTIMELIB_INHERIT RuntimeLibType = iota
+	RUNTIMELIB_DYNAMIC
+	RUNTIMELIB_DYNAMIC_DEBUG
+	RUNTIMELIB_STATIC
+	RUNTIMELIB_STATIC_DEBUG
+)
+
+func GetRuntimeLibTypes() []RuntimeLibType {
+	return []RuntimeLibType{
+		RUNTIMELIB_INHERIT,
+		RUNTIMELIB_DYNAMIC,
+		RUNTIMELIB_DYNAMIC_DEBUG,
+		RUNTIMELIB_STATIC,
+		RUNTIMELIB_STATIC_DEBUG,
+	}
+}
+func (x RuntimeLibType) Description() string {
+	switch x {
+	case RUNTIMELIB_INHERIT:
+		return "inherit default value from configuration"
+	case RUNTIMELIB_DYNAMIC:
+		return "use dynamic runtime provided by host system"
+	case RUNTIMELIB_DYNAMIC_DEBUG:
+		return "use dynamic debug runtime provided by host system"
+	case RUNTIMELIB_STATIC:
+		return "embed static runtime inside binary"
+	case RUNTIMELIB_STATIC_DEBUG:
+		return "embed static debug runtime inside binary"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x RuntimeLibType) String() string {
+	switch x {
+	case RUNTIMELIB_INHERIT:
+		return "INHERIT"
+	case RUNTIMELIB_DYNAMIC:
+		return "DYNAMIC"
+	case RUNTIMELIB_DYNAMIC_DEBUG:
+		return "DYNAMIC_DEBUG"
+	case RUNTIMELIB_STATIC:
+		return "STATIC"
+	case RUNTIMELIB_STATIC_DEBUG:
+		return "STATIC_DEBUG"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x RuntimeLibType) IsDebug() bool {
+	switch x {
+	case RUNTIMELIB_DYNAMIC_DEBUG, RUNTIMELIB_STATIC_DEBUG:
+		return true
+	default:
+		return false
+	}
+}
+func (x RuntimeLibType) IsInheritable() bool {
+	return x == RUNTIMELIB_INHERIT
+}
+func (x *RuntimeLibType) Set(in string) (err error) {
+	switch strings.ToUpper(in) {
+	case RUNTIMELIB_INHERIT.String():
+		*x = RUNTIMELIB_INHERIT
+	case RUNTIMELIB_DYNAMIC.String():
+		*x = RUNTIMELIB_DYNAMIC
+	case RUNTIMELIB_DYNAMIC_DEBUG.String():
+		*x = RUNTIMELIB_DYNAMIC_DEBUG
+	case RUNTIMELIB_STATIC.String():
+		*x = RUNTIMELIB_STATIC
+	case RUNTIMELIB_STATIC_DEBUG.String():
+		*x = RUNTIMELIB_STATIC_DEBUG
+	default:
+		err = base.MakeUnexpectedValueError(x, in)
+	}
+	return err
+}
+func (x *RuntimeLibType) Serialize(ar base.Archive) {
+	ar.Byte((*byte)(x))
+}
+func (x RuntimeLibType) MarshalText() ([]byte, error) {
+	return base.UnsafeBytesFromString(x.String()), nil
+}
+func (x *RuntimeLibType) UnmarshalText(data []byte) error {
+	return x.Set(base.UnsafeStringFromBytes(data))
+}
+func (x *RuntimeLibType) AutoComplete(in base.AutoComplete) {
+	for _, it := range GetRuntimeLibTypes() {
+		in.Add(it.String(), it.Description())
+	}
 }
 
 /***************************************
@@ -1512,7 +1783,94 @@ func (x *VisibilityType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *VisibilityType) AutoComplete(in base.AutoComplete) {
-	for _, it := range VisibilityTypes() {
+	for _, it := range GetVisibilityTypes() {
+		in.Add(it.String(), it.Description())
+	}
+}
+
+/***************************************
+ * WarningLevel
+ ***************************************/
+
+type WarningLevel byte
+
+const (
+	WARNING_INHERIT WarningLevel = iota
+	WARNING_DISABLED
+	WARNING_WARN
+	WARNING_ERROR
+)
+
+func GetWarningLevels() []WarningLevel {
+	return []WarningLevel{
+		WARNING_INHERIT,
+		WARNING_DISABLED,
+		WARNING_WARN,
+		WARNING_ERROR,
+	}
+}
+func (x WarningLevel) IsEnabled() bool {
+	return !x.IsInheritable() && x != WARNING_DISABLED
+}
+func (x WarningLevel) IsInheritable() bool {
+	return x == WARNING_INHERIT
+}
+func (x WarningLevel) Description() string {
+	switch x {
+	case WARNING_INHERIT:
+		return "inherit from parent's value"
+	case WARNING_DISABLED:
+		return "warning will be disabled"
+	case WARNING_WARN:
+		return "warning will be visible but the build will continue"
+	case WARNING_ERROR:
+		return "warning will be visible and will be considered as an error"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x WarningLevel) String() string {
+	switch x {
+	case WARNING_INHERIT:
+		return "INHERIT"
+	case WARNING_DISABLED:
+		return "DISABLED"
+	case WARNING_WARN:
+		return "WARN"
+	case WARNING_ERROR:
+		return "ERROR"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x *WarningLevel) Set(in string) (err error) {
+	switch strings.ToUpper(in) {
+	case WARNING_INHERIT.String():
+		*x = WARNING_INHERIT
+	case WARNING_DISABLED.String():
+		*x = WARNING_DISABLED
+	case WARNING_WARN.String():
+		*x = WARNING_WARN
+	case WARNING_ERROR.String():
+		*x = WARNING_ERROR
+	default:
+		err = base.MakeUnexpectedValueError(x, in)
+	}
+	return err
+}
+func (x *WarningLevel) Serialize(ar base.Archive) {
+	ar.Byte((*byte)(x))
+}
+func (x WarningLevel) MarshalText() ([]byte, error) {
+	return base.UnsafeBytesFromString(x.String()), nil
+}
+func (x *WarningLevel) UnmarshalText(data []byte) error {
+	return x.Set(base.UnsafeStringFromBytes(data))
+}
+func (x *WarningLevel) AutoComplete(in base.AutoComplete) {
+	for _, it := range GetWarningLevels() {
 		in.Add(it.String(), it.Description())
 	}
 }

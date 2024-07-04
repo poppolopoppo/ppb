@@ -95,45 +95,62 @@ type CompileFlags CppRules
 
 var GetCompileFlags = NewCompilationFlags("GenericCompilation", "cross-platform compilation flags", CompileFlags{
 	AdaptiveUnity:   base.INHERITABLE_TRUE,
-	Avx2:            base.INHERITABLE_TRUE,
 	Benchmark:       base.INHERITABLE_FALSE,
 	CompilerVerbose: base.INHERITABLE_FALSE,
 	CppRtti:         CPPRTTI_INHERIT,
 	CppStd:          CPPSTD_INHERIT,
 	DebugFastLink:   base.INHERITABLE_FALSE,
-	DebugSymbols:    DEBUG_INHERIT,
+	DebugInfo:       DEBUGINFO_INHERIT,
 	Deterministic:   base.INHERITABLE_TRUE,
 	Exceptions:      EXCEPTION_INHERIT,
 	Incremental:     base.INHERITABLE_INHERIT,
+	Instructions:    base.MakeEnumSet(INSTRUCTIONSET_AVX2, INSTRUCTIONSET_SSE3),
 	Link:            LINK_INHERIT,
 	LinkerVerbose:   base.INHERITABLE_FALSE,
 	LTO:             base.INHERITABLE_INHERIT,
+	Optimize:        OPTIMIZE_INHERIT,
 	PCH:             PCH_INHERIT,
 	RuntimeChecks:   base.INHERITABLE_INHERIT,
+	RuntimeLib:      RUNTIMELIB_INHERIT,
 	Sanitizer:       SANITIZER_NONE,
 	SizePerUnity:    150 * 1024.0, // 150 KiB
 	Unity:           UNITY_INHERIT,
+	Warnings: CppWarnings{
+		Default:        WARNING_ERROR,
+		Deprecation:    WARNING_ERROR,
+		Pedantic:       WARNING_ERROR,
+		ShadowVariable: WARNING_ERROR,
+		UndefinedMacro: WARNING_ERROR,
+		UnsafeTypeCast: WARNING_ERROR,
+	},
 })
 
 func (flags *CompileFlags) GetCpp() *CppRules { return (*CppRules)(flags) }
 func (flags *CompileFlags) Flags(cfv CommandFlagsVisitor) {
 	cfv.Persistent("AdaptiveUnity", "enable/disable adaptive unity using source control", &flags.AdaptiveUnity)
-	cfv.Persistent("Avx2", "enable/disable Advanced Vector Extensions 2 (AVX2)", &flags.Avx2)
 	cfv.Persistent("Benchmark", "enable/disable compilation benchmarks", &flags.Benchmark)
 	cfv.Persistent("CompilerVerbose", "enable/disable compiler verbose output", &flags.CompilerVerbose)
 	cfv.Persistent("CppRtti", "override C++ rtti support", &flags.CppRtti)
 	cfv.Persistent("CppStd", "override C++ standard", &flags.CppStd)
 	cfv.Persistent("DebugFastLink", "override debug symbols fastlink mode", &flags.DebugFastLink)
-	cfv.Persistent("DebugSymbols", "override debug symbols mode", &flags.DebugSymbols)
+	cfv.Persistent("DebugInfo", "override debug symbols mode", &flags.DebugInfo)
 	cfv.Persistent("Deterministic", "enable/disable deterministic compilation output", &flags.Deterministic)
 	cfv.Persistent("Exceptions", "override exceptions mode", &flags.Exceptions)
+	cfv.Persistent("Instructions", "enable/disable CPU instruction sets", &flags.Instructions)
 	cfv.Persistent("Incremental", "enable/disable incremental linker", &flags.Incremental)
 	cfv.Persistent("Link", "override link type", &flags.Link)
 	cfv.Persistent("LinkerVerbose", "enable/disable linker verbose output", &flags.LinkerVerbose)
 	cfv.Persistent("LTO", "enable/disable link time optimization", &flags.LTO)
+	cfv.Persistent("Optimize", "override compiler optimization level", &flags.Optimize)
 	cfv.Persistent("PCH", "override size limit for splitting unity files", &flags.PCH)
 	cfv.Persistent("RuntimeChecks", "enable/disable runtime security checks", &flags.RuntimeChecks)
+	cfv.Persistent("RuntimeLib", "override runtime library selection", &flags.RuntimeLib)
 	cfv.Persistent("Sanitizer", "override sanitizer mode", &flags.Sanitizer)
 	cfv.Persistent("SizePerUnity", "size limit for splitting unity files", &flags.SizePerUnity)
 	cfv.Persistent("Unity", "override unity build mode", &flags.Unity)
+	cfv.Persistent("Warning", "override default warning level", &flags.Warnings.Default)
+	cfv.Persistent("Warning:Deprecation", "override deprecation warning level", &flags.Warnings.Deprecation)
+	cfv.Persistent("Warning:ShadowVariable", "override shadow variable warning level", &flags.Warnings.ShadowVariable)
+	cfv.Persistent("Warning:UndefinedMacro", "override undefined macro identifier warning level", &flags.Warnings.UndefinedMacro)
+	cfv.Persistent("Warning:UnsafeTypeCast", "override unsafe type cast warning level", &flags.Warnings.UnsafeTypeCast)
 }

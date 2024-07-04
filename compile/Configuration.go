@@ -62,7 +62,6 @@ var AllConfigurations base.SharedMapT[string, Configuration]
 
 type ConfigRules struct {
 	ConfigurationAlias ConfigurationAlias
-	ConfigType         ConfigType
 
 	CppRules
 	Facet
@@ -89,8 +88,6 @@ func (rules *ConfigRules) GetFacet() *Facet {
 }
 func (rules *ConfigRules) Serialize(ar base.Archive) {
 	ar.Serializable(&rules.ConfigurationAlias)
-	ar.Serializable(&rules.ConfigType)
-
 	ar.Serializable(&rules.CppRules)
 	ar.Serializable(&rules.Facet)
 }
@@ -110,17 +107,20 @@ func (rules *ConfigRules) Decorate(_ *CompileEnv, unit *Unit) error {
 
 var Configuration_Debug = &ConfigRules{
 	ConfigurationAlias: NewConfigurationAlias("Debug"),
-	ConfigType:         CONFIG_DEBUG,
 	CppRules: CppRules{
 		CppRtti:       CPPRTTI_ENABLED,
-		DebugSymbols:  DEBUG_EMBEDDED,
+		DebugInfo:     DEBUGINFO_EMBEDDED,
 		DebugFastLink: base.INHERITABLE_INHERIT,
 		Exceptions:    EXCEPTION_ENABLED,
+		Incremental:   base.INHERITABLE_TRUE,
 		Link:          LINK_STATIC,
+		LTO:           base.INHERITABLE_FALSE,
+		Optimize:      OPTIMIZE_NONE,
 		PCH:           PCH_MONOLITHIC,
+		RuntimeChecks: base.INHERITABLE_TRUE,
+		RuntimeLib:    RUNTIMELIB_DYNAMIC_DEBUG,
 		Sanitizer:     SANITIZER_NONE,
 		Unity:         UNITY_AUTOMATIC,
-		LTO:           base.INHERITABLE_FALSE,
 	},
 	Facet: Facet{
 		Defines: []string{"DEBUG", "_DEBUG"},
@@ -129,18 +129,20 @@ var Configuration_Debug = &ConfigRules{
 }
 var Configuration_FastDebug = &ConfigRules{
 	ConfigurationAlias: NewConfigurationAlias("FastDebug"),
-	ConfigType:         CONFIG_FASTDEBUG,
 	CppRules: CppRules{
 		CppRtti:       CPPRTTI_ENABLED,
-		DebugSymbols:  DEBUG_HOTRELOAD,
+		DebugInfo:     DEBUGINFO_HOTRELOAD,
 		DebugFastLink: base.INHERITABLE_TRUE,
 		Exceptions:    EXCEPTION_ENABLED,
+		Incremental:   base.INHERITABLE_TRUE,
 		Link:          LINK_DYNAMIC,
+		LTO:           base.INHERITABLE_FALSE,
+		Optimize:      OPTIMIZE_FOR_DEBUG,
 		PCH:           PCH_MONOLITHIC,
+		RuntimeChecks: base.INHERITABLE_TRUE,
+		RuntimeLib:    RUNTIMELIB_DYNAMIC_DEBUG,
 		Sanitizer:     SANITIZER_NONE,
 		Unity:         UNITY_DISABLED,
-		LTO:           base.INHERITABLE_FALSE,
-		Incremental:   base.INHERITABLE_TRUE,
 	},
 	Facet: Facet{
 		Defines: []string{"DEBUG", "_DEBUG", "FASTDEBUG"},
@@ -149,17 +151,20 @@ var Configuration_FastDebug = &ConfigRules{
 }
 var Configuration_Devel = &ConfigRules{
 	ConfigurationAlias: NewConfigurationAlias("Devel"),
-	ConfigType:         CONFIG_DEVEL,
 	CppRules: CppRules{
 		CppRtti:       CPPRTTI_DISABLED,
-		DebugSymbols:  DEBUG_EMBEDDED,
+		DebugInfo:     DEBUGINFO_EMBEDDED,
 		DebugFastLink: base.INHERITABLE_INHERIT,
 		Exceptions:    EXCEPTION_ENABLED,
+		Incremental:   base.INHERITABLE_INHERIT,
 		Link:          LINK_STATIC,
+		LTO:           base.INHERITABLE_INHERIT,
+		Optimize:      OPTIMIZE_FOR_SIZE,
 		PCH:           PCH_MONOLITHIC,
+		RuntimeChecks: base.INHERITABLE_TRUE,
+		RuntimeLib:    RUNTIMELIB_DYNAMIC,
 		Sanitizer:     SANITIZER_NONE,
 		Unity:         UNITY_AUTOMATIC,
-		LTO:           base.INHERITABLE_INHERIT,
 	},
 	Facet: Facet{
 		Defines: []string{"RELEASE", "NDEBUG"},
@@ -168,17 +173,20 @@ var Configuration_Devel = &ConfigRules{
 }
 var Configuration_Test = &ConfigRules{
 	ConfigurationAlias: NewConfigurationAlias("Test"),
-	ConfigType:         CONFIG_TEST,
 	CppRules: CppRules{
 		CppRtti:       CPPRTTI_DISABLED,
-		DebugSymbols:  DEBUG_EMBEDDED,
-		Exceptions:    EXCEPTION_ENABLED,
+		DebugInfo:     DEBUGINFO_EMBEDDED,
 		DebugFastLink: base.INHERITABLE_INHERIT,
+		Exceptions:    EXCEPTION_ENABLED,
+		Incremental:   base.INHERITABLE_INHERIT,
 		Link:          LINK_STATIC,
+		LTO:           base.INHERITABLE_TRUE,
+		Optimize:      OPTIMIZE_FOR_SPEED,
 		PCH:           PCH_MONOLITHIC,
+		RuntimeChecks: base.INHERITABLE_FALSE,
+		RuntimeLib:    RUNTIMELIB_DYNAMIC,
 		Sanitizer:     SANITIZER_NONE,
 		Unity:         UNITY_AUTOMATIC,
-		LTO:           base.INHERITABLE_TRUE,
 	},
 	Facet: Facet{
 		Defines: []string{"RELEASE", "NDEBUG", "PROFILING_ENABLED"},
@@ -187,19 +195,20 @@ var Configuration_Test = &ConfigRules{
 }
 var Configuration_Shipping = &ConfigRules{
 	ConfigurationAlias: NewConfigurationAlias("Shipping"),
-	ConfigType:         CONFIG_SHIPPING,
 	CppRules: CppRules{
 		CppRtti:       CPPRTTI_DISABLED,
-		DebugSymbols:  DEBUG_SYMBOLS,
+		DebugInfo:     DEBUGINFO_SYMBOLS,
 		DebugFastLink: base.INHERITABLE_FALSE,
+		Deterministic: base.INHERITABLE_TRUE,
 		Exceptions:    EXCEPTION_ENABLED,
+		Incremental:   base.INHERITABLE_INHERIT,
 		Link:          LINK_STATIC,
+		LTO:           base.INHERITABLE_TRUE,
 		PCH:           PCH_MONOLITHIC,
+		RuntimeChecks: base.INHERITABLE_FALSE,
+		RuntimeLib:    RUNTIMELIB_DYNAMIC,
 		Sanitizer:     SANITIZER_NONE,
 		Unity:         UNITY_AUTOMATIC,
-		LTO:           base.INHERITABLE_TRUE,
-		Deterministic: base.INHERITABLE_TRUE,
-		Incremental:   base.INHERITABLE_FALSE,
 	},
 	Facet: Facet{
 		Defines: []string{"RELEASE", "NDEBUG", "FINAL_RELEASE"},

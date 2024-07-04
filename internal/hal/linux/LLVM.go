@@ -73,12 +73,12 @@ func (llvm *LlvmCompiler) AllowDistribution(u *Unit, payload PayloadType) action
 	// #TODO: support IO detouring on Linux
 	return action.DIST_NONE
 }
-func (llvm *LlvmCompiler) AllowResponseFile(u *Unit, payload PayloadType) CompilerSupportType {
+func (llvm *LlvmCompiler) AllowResponseFile(u *Unit, payload PayloadType) SupportType {
 	// #TODO: support response files equivalent on Linux?
-	return COMPILERSUPPORT_UNSUPPORTED
+	return SUPPORT_UNAVAILABLE
 }
-func (msvc *LlvmCompiler) AllowEditAndContinue(u *Unit, payload PayloadType) (result CompilerSupportType) {
-	return COMPILERSUPPORT_UNSUPPORTED
+func (msvc *LlvmCompiler) AllowEditAndContinue(u *Unit, payload PayloadType) (result SupportType) {
+	return SUPPORT_UNAVAILABLE
 }
 func (llvm *LlvmCompiler) CppRtti(f *Facet, enabled bool) {
 	if enabled {
@@ -111,16 +111,16 @@ func (llvm *LlvmCompiler) Define(f *Facet, def ...string) {
 	}
 }
 func (llvm *LlvmCompiler) DebugSymbols(u *Unit) {
-	switch u.DebugSymbols {
-	case DEBUG_DISABLED:
+	switch u.DebugInfo {
+	case DEBUGINFO_DISABLED:
 		return
-	case DEBUG_SYMBOLS:
+	case DEBUGINFO_SYMBOLS:
 		base.LogVeryVerbose(LogLinux, "not available on linux: DEBUG_SYMBOLS")
-	case DEBUG_HOTRELOAD:
+	case DEBUGINFO_HOTRELOAD:
 		base.LogVeryVerbose(LogLinux, "not available on linux: DEBUG_HOTRELOAD")
-	case DEBUG_EMBEDDED:
+	case DEBUGINFO_EMBEDDED:
 	default:
-		base.UnexpectedValue(u.DebugSymbols)
+		base.UnexpectedValue(u.DebugInfo)
 	}
 
 	u.CompilerOptions.Append("-g") // embedded debug info
@@ -202,10 +202,10 @@ func (llvm *LlvmCompiler) LibraryPath(f *Facet, dirs ...Directory) {
 func (llvm *LlvmCompiler) GetPayloadOutput(u *compile.Unit, payload compile.PayloadType, file Filename) Filename {
 	return file.ReplaceExt(llvm.Extname(payload))
 }
-func (llvm *LlvmCompiler) CreateAction(u *Unit, _ PayloadType, obj *action.ActionRules) action.Action {
+func (llvm *LlvmCompiler) CreateAction(u *Unit, _ PayloadType, model *action.ActionModel) action.Action {
 	result := &GnuSourceDependenciesAction{
-		GnuDepFile:  llvm.GetPayloadOutput(u, compile.PAYLOAD_DEPENDENCIES, obj.GetGeneratedFile()),
-		ActionRules: *obj.GetAction(),
+		ActionRules: model.CreateActionRules(),
+		GnuDepFile:  model.ExportFile.ReplaceExt(llvm.Extname(PAYLOAD_DEPENDENCIES)),
 	}
 
 	allowRelativePath := result.Options.Has(action.OPT_ALLOW_RELATIVEPATH)
@@ -228,20 +228,38 @@ func (llvm *LlvmCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 		base.UnexpectedValue(compileEnv.GetPlatform().Arch)
 	}
 
-	switch compileEnv.GetConfig().ConfigType {
-	case CONFIG_DEBUG:
-		decorateLlvmConfig_Debug(u)
-	case CONFIG_FASTDEBUG:
-		decorateLlvmConfig_FastDebug(u)
-	case CONFIG_DEVEL:
-		decorateLlvmConfig_Devel(u)
-	case CONFIG_TEST:
-		decorateLlvmConfig_Test(u)
-	case CONFIG_SHIPPING:
-		decorateLlvmConfig_Shipping(u)
-	default:
-		base.UnexpectedValue(compileEnv.GetConfig().ConfigType)
+	// set compiler options from configuration
+	switch u.RuntimeLib {
+	case RUNTIMELIB_DYNAMIC, RUNTIMELIB_DYNAMIC_DEBUG, RUNTIMELIB_INHERIT:
+	case RUNTIMELIB_STATIC, RUNTIMELIB_STATIC_DEBUG:
+		u.AddCompilationFlag("-static", "-lc++abi")
 	}
+
+	// https://releases.llvm.org/12.0.0/projects/libcxx/docs/DesignDocs/DebugMode.html
+	if u.RuntimeLib.IsDebug() {
+		u.Defines.Append("_LIBCPP_DEBUG=1")
+	} else {
+		u.Defines.Append("_LIBCPP_DEBUG=0")
+	}
+
+	switch u.Optimize {
+	case OPTIMIZE_NONE:
+		u.AddCompilationFlag("-O0", "-fno-PIE")
+	case OPTIMIZE_FOR_DEBUG:
+		u.AddCompilationFlag("-O1", "-fno-PIE")
+	case OPTIMIZE_FOR_SIZE:
+		u.AddCompilationFlag("-O2", "-fno-PIE", "-ffast-math")
+	case OPTIMIZE_FOR_SPEED, OPTIMIZE_FOR_SHIPPING:
+		u.AddCompilationFlag("-O3", "-fPIE", "-ffast-math")
+	}
+
+	// can only enable LTCG when optimizations are enabled
+	if u.Optimize.IsEnabled() {
+		llvm_CXX_linkTimeCodeGeneration(u, u.LTO.IsEnabled(), u.Incremental.IsEnabled())
+	}
+
+	// runtime security checks
+	llvm_CXX_runtimeChecks(u, u.RuntimeChecks.IsEnabled(), !u.Optimize.IsEnabled())
 
 	return nil
 }
@@ -279,32 +297,6 @@ func llvm_CXX_runtimeChecks(u *Unit, enabled bool, strong bool) {
 		base.LogVeryVerbose(LogLinux, "%v: disable llvm stack protector", u)
 		u.AddCompilationFlag_NoPreprocessor("-fno-stack-protector")
 	}
-}
-
-func decorateLlvmConfig_Debug(u *Unit) {
-	u.AddCompilationFlag("-O0", "-fno-PIE")
-	llvm_CXX_linkTimeCodeGeneration(u, false, u.Incremental.Get())
-	llvm_CXX_runtimeChecks(u, u.RuntimeChecks.Get(), true)
-}
-func decorateLlvmConfig_FastDebug(u *Unit) {
-	u.AddCompilationFlag("-O1", "-fno-PIE")
-	llvm_CXX_linkTimeCodeGeneration(u, true, u.Incremental.Get())
-	llvm_CXX_runtimeChecks(u, u.RuntimeChecks.Get(), false)
-}
-func decorateLlvmConfig_Devel(u *Unit) {
-	u.AddCompilationFlag("-O2", "-fno-PIE", "-ffast-math")
-	llvm_CXX_linkTimeCodeGeneration(u, true, u.Incremental.Get())
-	llvm_CXX_runtimeChecks(u, false, false)
-}
-func decorateLlvmConfig_Test(u *Unit) {
-	u.AddCompilationFlag("-O3", "-fPIE", "-ffast-math")
-	llvm_CXX_linkTimeCodeGeneration(u, true, u.Incremental.Get())
-	llvm_CXX_runtimeChecks(u, false, false)
-}
-func decorateLlvmConfig_Shipping(u *Unit) {
-	u.AddCompilationFlag("-O3", "-fPIE", "-ffast-math")
-	llvm_CXX_linkTimeCodeGeneration(u, true, u.Incremental.Get())
-	llvm_CXX_runtimeChecks(u, false, false)
 }
 
 /***************************************
@@ -386,7 +378,7 @@ func (x *LlvmProductInstall) Build(bc BuildContext) error {
 	var err error
 	switch x.WantedVer {
 	case LLVM_LATEST:
-		for _, actualVer := range LlvmVersions() {
+		for _, actualVer := range GetLlvmVersions() {
 			if err = buildCompilerVer("-" + actualVer.String()); err == nil {
 				break
 			}
@@ -401,9 +393,11 @@ func (x *LlvmProductInstall) Build(bc BuildContext) error {
 }
 
 func (llvm *LlvmCompiler) Build(bc BuildContext) error {
-	linuxFlags := GetLinuxFlags()
+	linuxFlags, err := GetLinuxFlags(bc)
+	if err != nil {
+		return err
+	}
 
-	var err error
 	llvm.ProductInstall, err = GetLlvmProductInstall(LlvmProductVer{
 		Arch:    llvm.Arch,
 		LlvmVer: linuxFlags.LlvmVer,
@@ -412,7 +406,7 @@ func (llvm *LlvmCompiler) Build(bc BuildContext) error {
 		return err
 	}
 
-	err = bc.NeedBuildables(llvm.ProductInstall)
+	_, err = bc.NeedBuildable(llvm.ProductInstall)
 	if err != nil {
 		return err
 	}
@@ -450,9 +444,11 @@ func (llvm *LlvmCompiler) Build(bc BuildContext) error {
 		"-o", "%2", "%1",       // input file injection
 	)
 
-	if GetCompileFlags().Benchmark.Get() {
+	if compileFlags, err := GetCompileFlags(bc); err == nil && compileFlags.Benchmark.Get() {
 		// https: //aras-p.info/blog/2019/01/16/time-trace-timeline-flame-chart-profiler-for-Clang/
 		facet.CompilerOptions.Append("-ftime-trace")
+	} else if err != nil {
+		return err
 	}
 
 	facet.LibrarianOptions.Append("rcs", "%2", "%1")
@@ -499,8 +495,6 @@ func GetLlvmCompiler(arch ArchType) BuildFactoryTyped[*LlvmCompiler] {
 			var compiler compile.Compiler = &llvm
 			return compiler == &llvm
 		})
-		return llvm, bi.NeedFactories(
-			GetBuildableFlags(GetCompileFlags()),
-			GetBuildableFlags(GetLinuxFlags()))
+		return llvm, nil
 	})
 }

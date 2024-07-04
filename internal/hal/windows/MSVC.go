@@ -145,11 +145,11 @@ func (msvc *MsvcCompiler) AllowCaching(u *Unit, payload PayloadType) (result act
 		result = action.CACHE_NONE
 		base.LogVeryVerbose(LogWindows, "%v/%v: can't cache precompiled headers (can still cache objects compiled with PCH)", u, payload)
 	case PAYLOAD_OBJECTLIST:
-		if u.DebugSymbols == DEBUG_EMBEDDED {
+		if u.DebugInfo == DEBUGINFO_EMBEDDED {
 			result = action.CACHE_READWRITE
 		} else {
 			result = action.CACHE_NONE
-			base.LogVeryVerbose(LogWindows, "%v/%v: can't use caching with %v debug symbols", u, payload, u.DebugSymbols)
+			base.LogVeryVerbose(LogWindows, "%v/%v: can't use caching with %v debug symbols", u, payload, u.DebugInfo)
 		}
 	case PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB:
 		if u.Incremental.Get() {
@@ -178,11 +178,11 @@ func (msvc *MsvcCompiler) AllowDistribution(u *Unit, payload PayloadType) (resul
 	case PAYLOAD_PRECOMPILEDHEADER:
 		result = action.DIST_NONE
 	case PAYLOAD_OBJECTLIST:
-		if u.DebugSymbols == DEBUG_EMBEDDED {
+		if u.DebugInfo == DEBUGINFO_EMBEDDED {
 			result = action.DIST_ENABLE
 		} else {
 			result = action.DIST_NONE
-			base.LogVeryVerbose(LogWindows, "%v/%v: can't use distribution with %v debug symbols", u, payload, u.DebugSymbols)
+			base.LogVeryVerbose(LogWindows, "%v/%v: can't use distribution with %v debug symbols", u, payload, u.DebugInfo)
 		}
 	case PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB, PAYLOAD_STATICLIB, PAYLOAD_HEADERUNIT, PAYLOAD_DEBUGSYMBOLS:
 		result = action.DIST_ENABLE
@@ -192,28 +192,28 @@ func (msvc *MsvcCompiler) AllowDistribution(u *Unit, payload PayloadType) (resul
 	}
 	return result
 }
-func (msvc *MsvcCompiler) AllowResponseFile(u *Unit, payload PayloadType) (result CompilerSupportType) {
+func (msvc *MsvcCompiler) AllowResponseFile(u *Unit, payload PayloadType) (result SupportType) {
 	switch payload {
 	case PAYLOAD_OBJECTLIST, PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB, PAYLOAD_STATICLIB, PAYLOAD_DEBUGSYMBOLS:
-		result = COMPILERSUPPORT_ALLOWED
+		result = SUPPORT_ALLOWED
 	}
-	if result == COMPILERSUPPORT_INHERIT {
-		result = COMPILERSUPPORT_UNSUPPORTED
+	if result == SUPPORT_INHERIT {
+		result = SUPPORT_UNAVAILABLE
 	}
 	return result
 }
-func (msvc *MsvcCompiler) AllowEditAndContinue(u *Unit, payload PayloadType) (result CompilerSupportType) {
+func (msvc *MsvcCompiler) AllowEditAndContinue(u *Unit, payload PayloadType) (result SupportType) {
 	switch payload {
 	case PAYLOAD_OBJECTLIST:
 		if u.CompilerOptions.Contains("/ZI") {
-			return COMPILERSUPPORT_ALLOWED
+			return SUPPORT_ALLOWED
 		}
 	case PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB:
 		if u.LinkerOptions.Contains("/EDITANDCONTINUE") {
-			return COMPILERSUPPORT_ALLOWED
+			return SUPPORT_ALLOWED
 		}
 	}
-	return COMPILERSUPPORT_UNSUPPORTED
+	return SUPPORT_UNAVAILABLE
 }
 func (msvc *MsvcCompiler) Define(f *Facet, def ...string) {
 	for _, x := range def {
@@ -223,12 +223,12 @@ func (msvc *MsvcCompiler) Define(f *Facet, def ...string) {
 func (msvc *MsvcCompiler) DebugSymbols(u *Unit) {
 	artifactPDB := u.OutputFile.ReplaceExt(".pdb")
 
-	switch u.DebugSymbols {
-	case DEBUG_DISABLED:
+	switch u.DebugInfo {
+	case DEBUGINFO_DISABLED:
 		u.LinkerOptions.Append("/DEBUG:NONE")
 		return
 
-	case DEBUG_EMBEDDED:
+	case DEBUGINFO_EMBEDDED:
 		u.AddCompilationFlag_NoPreprocessor("/Z7")
 
 		if u.Payload.HasLinker() {
@@ -240,7 +240,7 @@ func (msvc *MsvcCompiler) DebugSymbols(u *Unit) {
 			}
 		}
 
-	case DEBUG_SYMBOLS:
+	case DEBUGINFO_SYMBOLS:
 		u.SymbolsFile = artifactPDB
 		if u.Payload.HasLinker() {
 			u.SymbolsFile = artifactPDB
@@ -253,7 +253,7 @@ func (msvc *MsvcCompiler) DebugSymbols(u *Unit) {
 
 		u.AddCompilationFlag_NoPreprocessor("/Zi", "/Zf", "/FS", "/Fd"+MakeLocalFilename(artifactPDB))
 
-	case DEBUG_HOTRELOAD:
+	case DEBUGINFO_HOTRELOAD:
 		u.SymbolsFile = artifactPDB
 
 		if u.Payload.HasLinker() {
@@ -277,7 +277,7 @@ func (msvc *MsvcCompiler) DebugSymbols(u *Unit) {
 			"/ZI", "/Zf", "/FS", "/Fd"+MakeLocalFilename(editAndContinuePDB))
 
 	default:
-		base.UnexpectedValue(u.DebugSymbols)
+		base.UnexpectedValue(u.DebugInfo)
 	}
 }
 func (msvc *MsvcCompiler) Link(f *Facet, lnk LinkType) {
@@ -362,7 +362,7 @@ func (msvc *MsvcCompiler) LibraryPath(f *Facet, dirs ...Directory) {
 	}
 }
 func (msvc *MsvcCompiler) GetPayloadOutput(u *Unit, payload PayloadType, file Filename) Filename {
-	if payload == PAYLOAD_OBJECTLIST && u.DebugSymbols == DEBUG_HOTRELOAD {
+	if payload == PAYLOAD_OBJECTLIST && u.DebugInfo == DEBUGINFO_HOTRELOAD {
 		// cl.exe creates a new file with all letters switched to lowercase when recompiling a TU for hot-reload, which defeats all the efforts made for conserving file case everywhere
 		// #TODO: find a better workaround, for now we will generate lower case TU when using hot-reload (should report the issue first)
 
@@ -442,17 +442,6 @@ func (msvc *MsvcCompiler) GetPathmap() string {
 	}
 }
 func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
-	if u.LinkerVerbose.Get() {
-		u.LinkerOptions.Append(
-			"/VERBOSE",
-			"/VERBOSE:LIB",
-			"/VERBOSE:ICF",
-			"/VERBOSE:REF",
-			"/VERBOSE:INCR",
-			"/VERBOSE:UNUSEDLIBS",
-		)
-	}
-
 	// set architecture options
 	switch compileEnv.GetPlatform().Arch {
 	case ARCH_X86:
@@ -462,7 +451,7 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 			msvc.VSInstallPath.Folder("VC", "Tools", "MSVC", msvc.MinorVer, "lib", "x86"),
 			msvc.VSInstallPath.Folder("VC", "Auxiliary", "VS", "lib", "x86"))
 
-		if u.DebugSymbols != DEBUG_HOTRELOAD {
+		if u.DebugInfo != DEBUGINFO_HOTRELOAD {
 			u.LinkerOptions.Append("/SAFESEH")
 		}
 
@@ -483,32 +472,82 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 	}
 
 	// hot-reload can override LTCG
-	if u.DebugSymbols == DEBUG_HOTRELOAD {
+	if u.DebugInfo == DEBUGINFO_HOTRELOAD {
 		if u.LTO.Get() {
 			base.LogWarning(LogWindows, "%v: can't enable LTO while HOTRELOAD is enabled", u)
 			u.LTO.Disable()
 		}
 		if u.LinkerOptions.Contains("/LTCG") || u.LinkerOptions.Contains("/LTCG:INCREMENTAL") {
 			base.LogWarning(LogWindows, "%v: LTCG found while HOTRELOAD is enabled, reverting to SYMBOLS", u)
-			u.DebugSymbols = DEBUG_SYMBOLS
+			u.DebugInfo = DEBUGINFO_SYMBOLS
 		}
 	}
 
 	// set compiler options from configuration
-	switch compileEnv.GetConfig().ConfigType {
-	case CONFIG_DEBUG:
-		decorateMsvcConfig_Debug(msvc, u)
-	case CONFIG_FASTDEBUG:
-		decorateMsvcConfig_FastDebug(msvc, u)
-	case CONFIG_DEVEL:
-		decorateMsvcConfig_Devel(msvc, u)
-	case CONFIG_TEST:
-		decorateMsvcConfig_Test(msvc, u)
-	case CONFIG_SHIPPING:
-		decorateMsvcConfig_Shipping(msvc, u)
-	default:
-		base.UnexpectedValue(compileEnv.GetConfig().ConfigType)
+	switch u.RuntimeLib {
+	case RUNTIMELIB_DYNAMIC, RUNTIMELIB_INHERIT:
+		msvc_CXX_runtimeLibrary(u, false, false)
+	case RUNTIMELIB_DYNAMIC_DEBUG:
+		msvc_CXX_runtimeLibrary(u, false, true)
+	case RUNTIMELIB_STATIC:
+		msvc_CXX_runtimeLibrary(u, true, false)
+	case RUNTIMELIB_STATIC_DEBUG:
+		msvc_CXX_runtimeLibrary(u, true, true)
 	}
+
+	msvc_STL_debugHeap(u, u.RuntimeLib.IsDebug())
+	msvc_STL_iteratorDebug(u, u.RuntimeLib.IsDebug())
+
+	switch u.Optimize {
+	case OPTIMIZE_NONE:
+		u.AddCompilationFlag("/Od", "/Oy-", "/Gm-", "/Gw-")
+		u.LinkerOptions.Append("/DYNAMICBASE:NO", "/HIGHENTROPYVA:NO", "/OPT:NOREF", "/OPT:NOICF")
+	case OPTIMIZE_FOR_DEBUG:
+		u.AddCompilationFlag("/Od", "/Ob1", "/Oy-", "/Gw-", "/Gm")
+		u.LinkerOptions.Append("/DYNAMICBASE:NO", "/HIGHENTROPYVA:NO")
+	case OPTIMIZE_FOR_SIZE:
+		u.AddCompilationFlag("/O2", "/Oy-", "/GA", "/Gm-", "/Zo", "/GL")
+		u.LinkerOptions.Append("/DYNAMICBASE:NO", "/HIGHENTROPYVA:NO", "/OPT:NOICF")
+	case OPTIMIZE_FOR_SPEED:
+		u.AddCompilationFlag("/O2", "/Ob3", "/Gw", "/Gm-", "/Gy", "/GL", "/GA", "/Zo")
+		u.LinkerOptions.Append("/DYNAMICBASE", "/HIGHENTROPYVA", "/PROFILE", "/OPT:REF")
+	case OPTIMIZE_FOR_SHIPPING:
+		u.AddCompilationFlag("/O2", "/Ob3", "/Gw", "/Gm-", "/Gy", "/GL", "/GA", "/Zo-")
+		u.LinkerOptions.Append("/DYNAMICBASE", "/HIGHENTROPYVA", "/OPT:REF", "/OPT:ICF=3")
+	}
+
+	// can only enable LTCG when optimizations are enabled
+	if u.Optimize.IsEnabled() {
+		msvc_CXX_linkTimeCodeGeneration(u, u.LTO.Get())
+	}
+
+	// runtime security checks
+	msvc_CXX_runtimeChecks(u, u.RuntimeChecks.IsEnabled(), !u.Optimize.IsEnabled())
+
+	// fine tune warning levels
+	switch u.Warnings.Default {
+	case WARNING_ERROR:
+		base.LogVeryVerbose(LogWindows, "%v: treat warnings as errors", u)
+		u.AddCompilationFlag("/WX")
+		fallthrough
+	case WARNING_WARN:
+		if u.Warnings.Pedantic.IsEnabled() {
+			base.LogVeryVerbose(LogWindows, "%v: enable standard and pedantic warnings", u)
+			u.AddCompilationFlag("/W4")
+		} else {
+			base.LogVeryVerbose(LogWindows, "%v: enable standard warnings", u)
+			u.AddCompilationFlag("/W3")
+		}
+	case WARNING_DISABLED, WARNING_INHERIT:
+		base.LogVeryVerbose(LogWindows, "%v: disable all warnings", u)
+		u.AddCompilationFlag("/W0", "/WX-")
+	}
+
+	msvc_CXX_set_warning_level(u, 4996, "deprecated function, class member, variable or typedef", u.Warnings.Deprecation)
+	msvc_CXX_set_warning_level(u, 4456, "identifier local declaration shadowing the previous one", u.Warnings.UndefinedMacro)
+	msvc_CXX_set_warning_level(u, 4668, "undefined preprocessor identifier of macro", u.Warnings.UndefinedMacro)
+	msvc_CXX_set_warning_level(u, 4244, "conversion of integral type to a smaller integral type", u.Warnings.UnsafeTypeCast)
+	msvc_CXX_set_warning_level(u, 4800, "implicit conversion with possible information loss", u.Warnings.UnsafeTypeCast)
 
 	// check if C++20 at least is enabled
 	if u.CppStd >= CPPSTD_20 {
@@ -524,9 +563,13 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 		}
 	}
 
-	// check AVX2 support
-	if u.Avx2.Get() {
+	// check for compile instruction sets support
+	if u.Instructions.Has(INSTRUCTIONSET_AVX512) {
+		u.AddCompilationFlag("/arch:AVX512")
+	} else if u.Instructions.Has(INSTRUCTIONSET_AVX2) {
 		u.AddCompilationFlag("/arch:AVX2")
+	} else if u.Instructions.Has(INSTRUCTIONSET_AVX) {
+		u.AddCompilationFlag("/arch:AVX")
 	}
 
 	// set default thread stack size
@@ -587,8 +630,8 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 	}
 
 	if u.Deterministic.Get() {
-		switch u.DebugSymbols {
-		case DEBUG_SYMBOLS, DEBUG_EMBEDDED, DEBUG_DISABLED:
+		switch u.DebugInfo {
+		case DEBUGINFO_SYMBOLS, DEBUGINFO_EMBEDDED, DEBUGINFO_DISABLED:
 			// https://nikhilism.com/post/2020/windows-deterministic-builds/
 			u.Incremental.Disable()
 			pathMap := msvc.GetPathmap()
@@ -599,10 +642,10 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 			if !u.Incremental.Get() {
 				u.LinkerOptions.Append("/Brepro", "/experimental:deterministic", pathMap, "/pdbaltpath:%_PDB%")
 			}
-		case DEBUG_HOTRELOAD:
-			base.LogWarning(LogWindows, "%v: can't enable determinism while %v is enabled", u, u.DebugSymbols)
+		case DEBUGINFO_HOTRELOAD:
+			base.LogWarning(LogWindows, "%v: can't enable determinism while %v is enabled", u, u.DebugInfo)
 		default:
-			base.UnexpectedValuePanic(u.DebugSymbols, u.DebugSymbols)
+			base.UnexpectedValuePanic(u.DebugInfo, u.DebugInfo)
 		}
 	}
 
@@ -634,6 +677,18 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 		}
 	}
 
+	// handle verbose levels
+	if u.LinkerVerbose.Get() {
+		u.LinkerOptions.Append(
+			"/VERBOSE",
+			"/VERBOSE:LIB",
+			"/VERBOSE:ICF",
+			"/VERBOSE:REF",
+			"/VERBOSE:INCR",
+			"/VERBOSE:UNUSEDLIBS",
+		)
+	}
+
 	// enable perfSDK if necessary
 	if msvc.WindowsFlags.PerfSDK.Get() {
 		base.LogVeryVerbose(LogWindows, "%v: using Windows PerfSDK", u)
@@ -655,8 +710,12 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 	switch u.Payload {
 	case PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB:
 		if u.Payload == PAYLOAD_SHAREDLIB {
-			u.ExtraFiles.Append(u.OutputFile.ReplaceExt(".lib"))
-			u.ExtraFiles.Append(u.OutputFile.ReplaceExt(".exp"))
+			if !u.LinkerOptions.Contains("/NOIMPLIB") {
+				u.ExtraFiles.Append(u.OutputFile.ReplaceExt(".lib"))
+			}
+			if !u.LinkerOptions.Contains("/NOEXP") {
+				u.ExtraFiles.Append(u.OutputFile.ReplaceExt(".exp"))
+			}
 		}
 		if u.LinkerOptions.Contains("/INCREMENTAL") {
 			u.ExtraFiles.Append(u.OutputFile.ReplaceExt(".ilk"))
@@ -736,6 +795,24 @@ func msvc_CXX_runtimeChecks(u *Unit, enabled bool, rtc1 bool) {
 		u.LinkerOptions.Append("/GUARD:NO")
 	}
 }
+func msvc_CXX_set_warning_level(u *Unit, warningId int, warningDesc string, level WarningLevel) {
+	var compilationFlag string
+	switch level {
+	case WARNING_DISABLED, WARNING_INHERIT:
+		base.LogVeryVerbose(LogWindows, "%v: disable warnings about %s (C%d)", u, warningDesc, warningId)
+
+		compilationFlag = "/wd"
+	case WARNING_WARN:
+		base.LogVeryVerbose(LogWindows, "%v: display warnings about %s (C%d)", u, warningDesc, warningId)
+
+		compilationFlag = "/w1"
+	case WARNING_ERROR:
+		base.LogVeryVerbose(LogWindows, "%v: display errors about %s (C%d)", u, warningDesc, warningId)
+
+		compilationFlag = "/we"
+	}
+	u.AddCompilationFlag(fmt.Sprint(compilationFlag, warningId))
+}
 func msvc_STL_debugHeap(u *Unit, enabled bool) {
 	if !enabled {
 		base.LogVeryVerbose(LogWindows, "%v: disabling msvc debug heap", u)
@@ -756,55 +833,6 @@ func msvc_STL_iteratorDebug(u *Unit, enabled bool) {
 			"_ITERATOR_DEBUG_LEVEL=0",   // https://msdn.microsoft.com/fr-fr/library/hh697468.aspx
 			"_HAS_ITERATOR_DEBUGGING=0") // https://msdn.microsoft.com/fr-fr/library/aa985939.aspx
 	}
-}
-
-func decorateMsvcConfig_Debug(msvc *MsvcCompiler, u *Unit) {
-	useSanitizer := u.Sanitizer.IsEnabled()
-	u.AddCompilationFlag("/Od", "/Oy-", "/Gm-", "/Gw-")
-	u.LinkerOptions.Append("/DYNAMICBASE:NO", "/HIGHENTROPYVA:NO", "/OPT:NOREF", "/OPT:NOICF")
-	msvc_CXX_runtimeLibrary(u, msvc.WindowsFlags.StaticCRT.Get(), !useSanitizer)
-	msvc_CXX_linkTimeCodeGeneration(u, u.LTO.Get())
-	msvc_CXX_runtimeChecks(u, u.RuntimeChecks.Get() && !useSanitizer, !useSanitizer)
-	msvc_STL_debugHeap(u, !useSanitizer)
-	msvc_STL_iteratorDebug(u, !useSanitizer)
-}
-func decorateMsvcConfig_FastDebug(msvc *MsvcCompiler, u *Unit) {
-	useSanitizer := u.Sanitizer.IsEnabled()
-	u.AddCompilationFlag("/Od", "/Ob1", "/Oy-", "/Gw-", "/Gm")
-	u.LinkerOptions.Append("/DYNAMICBASE:NO", "/HIGHENTROPYVA:NO")
-	msvc_CXX_runtimeLibrary(u, msvc.WindowsFlags.StaticCRT.Get(), !useSanitizer)
-	msvc_CXX_linkTimeCodeGeneration(u, u.LTO.Get())
-	msvc_CXX_runtimeChecks(u, false, false)
-	msvc_STL_debugHeap(u, !useSanitizer)
-	msvc_STL_iteratorDebug(u, !useSanitizer)
-}
-func decorateMsvcConfig_Devel(msvc *MsvcCompiler, u *Unit) {
-	useSanitizer := u.Sanitizer.IsEnabled()
-	u.AddCompilationFlag("/O2", "/Oy-", "/GA", "/Gm-", "/Zo", "/GL")
-	u.LinkerOptions.Append("/DYNAMICBASE:NO", "/HIGHENTROPYVA:NO", "/OPT:NOICF")
-	msvc_CXX_runtimeLibrary(u, msvc.WindowsFlags.StaticCRT.Get(), false)
-	msvc_CXX_linkTimeCodeGeneration(u, u.LTO.Get())
-	msvc_CXX_runtimeChecks(u, u.RuntimeChecks.Get() && !useSanitizer, false)
-	msvc_STL_debugHeap(u, false)
-	msvc_STL_iteratorDebug(u, false)
-}
-func decorateMsvcConfig_Test(msvc *MsvcCompiler, u *Unit) {
-	u.AddCompilationFlag("/O2", "/Ob3", "/Gw", "/Gm-", "/Gy", "/GL", "/GA", "/Zo")
-	u.LinkerOptions.Append("/DYNAMICBASE", "/HIGHENTROPYVA", "/PROFILE", "/OPT:REF")
-	msvc_CXX_runtimeLibrary(u, msvc.WindowsFlags.StaticCRT.Get(), false)
-	msvc_CXX_linkTimeCodeGeneration(u, u.LTO.Get())
-	msvc_CXX_runtimeChecks(u, false, false)
-	msvc_STL_debugHeap(u, false)
-	msvc_STL_iteratorDebug(u, false)
-}
-func decorateMsvcConfig_Shipping(msvc *MsvcCompiler, u *Unit) {
-	u.AddCompilationFlag("/O2", "/Ob3", "/Gw", "/Gm-", "/Gy", "/GL", "/GA", "/Zo-")
-	u.LinkerOptions.Append("/DYNAMICBASE", "/HIGHENTROPYVA", "/OPT:REF", "/OPT:ICF=3")
-	msvc_CXX_runtimeLibrary(u, msvc.WindowsFlags.StaticCRT.Get(), false)
-	msvc_CXX_linkTimeCodeGeneration(u, u.LTO.Get())
-	msvc_CXX_runtimeChecks(u, false, false)
-	msvc_STL_debugHeap(u, false)
-	msvc_STL_iteratorDebug(u, false)
 }
 
 /***************************************
@@ -1122,14 +1150,7 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 		"/Zc:sizedDealloc",     // https://learn.microsoft.com/en-us/cpp/build/reference/zc-sizeddealloc-enable-global-sized-dealloc-functions?view=msvc-170
 		"/Zc:__cplusplus",      // https://docs.microsoft.com/en-us/cpp/build/reference/zc-cplusplus?view=msvc-170
 		"/utf-8",               // https://docs.microsoft.com/fr-fr/cpp/build/reference/utf-8-set-source-and-executable-character-sets-to-utf-8
-		"/W4",                  // warning level 4 (verbose)
 		"/TP",                  // compile as C++
-	)
-
-	// ignored warnings
-	facet.AddCompilationFlag(
-		"/wd4201", // nonstandard extension used: nameless struct/union'
-		"/wd4251", // 'XXX' needs to have dll-interface to be used by clients of class 'YYY'
 	)
 
 	// configure librarian
@@ -1161,38 +1182,35 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 		"/fastfail",          // better error reporting
 	)
 
+	// ignored warnings
+	facet.AddCompilationFlag(
+		"/wd4201", // nonstandard extension used: nameless struct/union'
+		"/wd4251", // 'XXX' needs to have dll-interface to be used by clients of class 'YYY'
+	)
+	// promote some warnings as errors
+	facet.AddCompilationFlag(
+		"/we4062", // enumerator 'identifier' in a switch of enum 'enumeration' is not handled
+		"/we4263", // 'function' : member function does not override any base class virtual member function
+		"/we4265", // 'class': class has virtual functions, but destructor is not virtual // not handler by boost and stl
+		"/we4296", // 'operator': expression is always false
+		"/we4555", // expression has no effect; expected expression with side-effect
+		"/we4619", // #pragma warning : there is no warning number 'number'
+		"/we4640", // 'instance' : construction of local static object is not thread-safe
+		"/we4826", // Conversion from 'type1 ' to 'type_2' is sign-extended. This may cause unexpected runtime behavior.
+		"/we4836", // nonstandard extension used : 'type' : local types or unnamed types cannot be used as template arguments
+		"/we4905", // wide string literal cast to 'LPSTR'
+		"/we4906", // string literal cast to 'LPWSTR'
+	)
+
 	// strict vs permissive
 	if msvc.WindowsFlags.Permissive.Get() {
 		base.LogVeryVerbose(LogWindows, "MSVC: using permissive compilation options")
 
-		facet.AddCompilationFlag("/permissive", "/WX-")
-		//facet.LinkerOptions.Append("/WX-")
-		facet.LibrarianOptions.Append("/WX-")
+		facet.AddCompilationFlag("/permissive")
 	} else {
 		base.LogVeryVerbose(LogWindows, "MSVC: using strict warnings and warings as error")
-
-		facet.AddCompilationFlag(
-			// https://docs.microsoft.com/en-us/cpp/build/reference/permissive-standards-conformance
-			"/permissive-",
-			// warning as errors
-			"/WX",
-			// promote some warnings as errors
-			"/we4062", // enumerator 'identifier' in a switch of enum 'enumeration' is not handled
-			"/we4263", // 'function' : member function does not override any base class virtual member function
-			"/we4265", // 'class': class has virtual functions, but destructor is not virtual // not handler by boost and stl
-			"/we4296", // 'operator': expression is always false
-			"/we4555", // expression has no effect; expected expression with side-effect
-			"/we4619", // #pragma warning : there is no warning number 'number'
-			"/we4640", // 'instance' : construction of local static object is not thread-safe
-			"/we4826", // Conversion from 'type1 ' to 'type_2' is sign-extended. This may cause unexpected runtime behavior.
-			"/we4836", // nonstandard extension used : 'type' : local types or unnamed types cannot be used as template arguments
-			"/we4905", // wide string literal cast to 'LPSTR'
-			"/we4906", // string literal cast to 'LPWSTR'
-		)
-
-		// warning as errors also for librarian and linker
-		facet.LibrarianOptions.Append("/WX")
-		//facet.LinkerOptions.Append("/WX") // #TODO: **DON'T**, will freeze link.exe ¯\_(ツ)_/¯
+		// https://docs.microsoft.com/en-us/cpp/build/reference/permissive-standards-conformance
+		facet.AddCompilationFlag("/permissive-")
 	}
 
 	if compileFlags.Benchmark.Get() {
