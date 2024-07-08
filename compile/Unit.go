@@ -73,7 +73,10 @@ func (x *TargetAlias) UnmarshalText(data []byte) error {
 }
 func (x *TargetAlias) AutoComplete(in base.AutoComplete) {
 	moduleAliases, err := NeedAllModuleAliases(CommandEnv.BuildGraph().GlobalContext())
-	base.LogPanicIfFailed(base.LogAutoComplete, err)
+	if err != nil {
+		base.LogWarningOnce(base.LogAutoComplete, "failed to load build modules: %v", err)
+		return
+	}
 
 	err = ForeachEnvironmentAlias(func(ea EnvironmentAlias) error {
 		for _, ma := range moduleAliases {

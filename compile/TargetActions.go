@@ -524,13 +524,6 @@ func (x *buildActionGenerator) ObjectListActions(headerUnits, pchs action.Action
 		staticInputFiles := FileSet{input}
 		dynamicInputFiles := FileSet{}
 
-		// can't depend staticaly of unity output file
-		if unity, err := FindUnityFile(input); err == nil {
-			dynamicInputFiles = staticInputFiles
-			staticInputFiles = FileSet{}
-			staticDeps = append(staticDeps, unity.Alias())
-		}
-
 		objs[i], err = x.CreateAction(
 			PAYLOAD_OBJECTLIST,
 			action.ActionModel{

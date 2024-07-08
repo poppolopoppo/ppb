@@ -472,7 +472,7 @@ func (x *buildExecuteContext) OutputFile(files ...Filename) error {
 		base.LogDebug(LogBuildGraph, "%v: output file %q", x.Alias(), it)
 
 		// create output file with a static dependency pointing to its creator (e.g x.node here)
-		file, err := BuildFile(it, x.node.BuildAlias).Init(x.graph,
+		file, err := PrepareOutputFile(x.graph, it, MakeBuildAliases(x.node.BuildAlias),
 			OptionBuildRecurse(x.options, x.node),
 			// this code path always force recreates file nodes, which should be rebuild
 			OptionBuildDirty,

@@ -62,14 +62,14 @@ func (x *CompilationDatabaseBuilder) Alias() utils.BuildAlias {
 	return utils.MakeBuildAlias("CompileDb", x.EnvironmentAlias.PlatformName, x.EnvironmentAlias.ConfigName)
 }
 func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
-	base.LogVerbose(LogCompileDb, "generate compilation database for %v in %q...", x.EnvironmentAlias, x.OutputFile)
+	base.LogVerbose(LogCompileDb, "%v: generate compilation database in %q...", x.EnvironmentAlias, x.OutputFile)
 
 	moduleAliases, err := NeedAllModuleAliases(bc)
 	if err != nil {
 		return err
 	}
 
-	base.LogTrace(LogCompileDb, "retrieved %q modules", moduleAliases)
+	base.LogTrace(LogCompileDb, "%v: retrieved modules -> %v", x.EnvironmentAlias, moduleAliases)
 
 	// need to depends from the compiler
 	if _, err := GetCompileEnvironment(x.EnvironmentAlias).Need(bc); err != nil {
@@ -83,14 +83,14 @@ func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
 			return err
 		}
 
-		base.LogTrace(LogCompileDb, "retrieved target actions %q with %d payloads", targetActions.Alias(), targetActions.PresentPayloads.Len())
+		base.LogTrace(LogCompileDb, "%v: retrieved target actions %q with %d payloads", x.EnvironmentAlias, targetActions.Alias(), targetActions.PresentPayloads.Len())
 
 		actions, err := targetActions.GetOutputActions()
 		if err != nil {
 			return err
 		}
 
-		base.LogTrace(LogCompileDb, "retrieved %d output actions for target %q", len(actions), targetActions.Alias())
+		base.LogTrace(LogCompileDb, "%v: retrieved %d output actions for target %q", x.EnvironmentAlias, len(actions), targetActions.Alias())
 
 		if err := actions.AppendDependencies(bc.BuildGraph(), &expandedActions); err != nil {
 			return err
@@ -104,11 +104,12 @@ func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
 
 	var database CompilationDatabase
 
-	for _, action := range expandedActions {
-		rules := action.GetAction()
+	for _, a := range expandedActions {
+		rules := a.GetAction()
 
 		inputFiles := rules.GetStaticInputFiles(bc.BuildGraph())
 		if len(inputFiles) == 0 {
+			base.LogTrace(LogCompileDb, "%v: action %q has no file input", x.EnvironmentAlias, rules.Alias())
 			continue // librarian or linker actions have dynamic inputs, but we are not interested in them here anyway
 		}
 
@@ -124,12 +125,12 @@ func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
 			Output:    rules.OutputFiles[0],
 			Arguments: commandArgs,
 		}
-
 		database.Append(actionCmd)
+		base.LogVeryVerbose(LogCompileDb, "%v: found source file -> %q", x.EnvironmentAlias, actionCmd.File)
 
 		for _, input := range inputFiles {
 			if unityFile, err := FindUnityFile(input); err == nil {
-				base.LogVerbose(LogCompileDb, "expand unity file %q action inputs for compilation database", unityFile.Alias())
+				base.LogVerbose(LogCompileDb, "%v: expand unity file %q action inputs for compilation database", x.EnvironmentAlias, unityFile.Alias())
 
 				for _, source := range unityFile.Inputs {
 					if !unityFile.Excludeds.Contains(source) {
@@ -139,6 +140,8 @@ func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
 							Output:    actionCmd.Output,
 							Arguments: actionCmd.Arguments,
 						})
+
+						base.LogVeryVerbose(LogCompileDb, "%v: found %q source file (from %q)", x.EnvironmentAlias, actionCmd.File, input)
 					}
 				}
 			}

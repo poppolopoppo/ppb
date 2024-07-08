@@ -61,6 +61,9 @@ func BuildFile(source Filename, staticDeps ...BuildAlias) BuildFactoryTyped[*Fil
 		}, bi.DependsOn(staticDeps...)
 	})
 }
+func PrepareOutputFile(bg BuildGraph, source Filename, staticDeps BuildAliases, options ...BuildOptionFunc) (*FileDependency, error) {
+	return BuildFile(source, staticDeps...).Init(bg, options...)
+}
 
 func buildFileWithoutDeps(path Filename) (FileDependency, time.Time, error) {
 	path.Invalidate() // if node is rebuilt, then file has been force created

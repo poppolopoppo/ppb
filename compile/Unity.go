@@ -31,7 +31,7 @@ func FindUnityFile(output utils.Filename) (*UnityFile, error) {
 	return utils.FindGlobalBuildable[*UnityFile](MakeUnityFileAlias(output))
 }
 
-func (x *UnityFile) Alias() utils.BuildAlias {
+func (x UnityFile) Alias() utils.BuildAlias {
 	return MakeUnityFileAlias(x.Output)
 }
 func (x *UnityFile) GetGeneratedFile() utils.Filename {
@@ -290,11 +290,19 @@ func (unit *Unit) GetSourceFiles(bc utils.BuildContext) (sourceFiles utils.FileS
 			sourceFiles = append(sourceFiles, unityFile.Excludeds...)
 		}
 
+		// create unity build node, which depends statically on og input files
 		if _, err = bc.OutputFactory(utils.MakeBuildFactory(func(bi utils.BuildInitializer) (UnityFile, error) {
 			staticDeps := utils.NewFileSet(unityFile.Inputs...)
 			staticDeps.Remove(unityFile.Excludeds...)
 			return unityFile.UnityFile, bi.NeedFiles(staticDeps...)
 		})); err != nil {
+			return
+		}
+
+		// finally, create output file if it does not exist already:
+		// this way the action code does not now about unity files at all, and graph remains consistent
+		// create output file with a static dependency pointing to its creator (e.g x.node here)
+		if _, err = utils.PrepareOutputFile(bc.BuildGraph(), unityFile.Output, utils.MakeBuildAliases(unityFile)); err != nil {
 			return
 		}
 	}

@@ -245,7 +245,7 @@ func RegisterSerializable[T any, S interface {
 		rt = rt.Elem()
 	}
 
-	var batchNew serializableBatchNew[T]
+	batchNew := new(serializableBatchNew[T])
 	globalSerializableFactory.RegisterName(uintptr(emptyPtr.typ), reflectTypename(rt), func() Serializable {
 		return S(batchNew.Allocate()) // S(new(T)) -> faster with batch new
 	})
