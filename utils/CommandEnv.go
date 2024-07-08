@@ -198,7 +198,15 @@ func InitCommandEnv(prefix string, args []string, startedAt time.Time) *CommandE
 	CommandEnv.commandLines = NewCommandLine(CommandEnv.persistent, args)
 
 	// parse global flags early-on
-	base.LogPanicIfFailed(LogCommand, PrepareCommands(CommandEnv.commandLines, &CommandEnv.commandEvents))
+	for i, cl := range CommandEnv.commandLines {
+		if err := GlobalParsableFlags.Parse(cl); err != nil {
+			base.LogPanicIfFailed(LogCommand, err)
+		}
+		if cl.Empty() { // remove empty command-lines
+			CommandEnv.commandLines = append(CommandEnv.commandLines[0:i], CommandEnv.commandLines[i+1:]...)
+		}
+	}
+	CommandEnv.commandEvents.Add(&GlobalParsableFlags)
 
 	// apply global command flags early-on
 	GetCommandFlags().Apply()
@@ -290,7 +298,7 @@ func (env *CommandEnvT) Close() error {
 	return env.buildGraph.Close()
 }
 
-func (env *CommandEnvT) Run() error {
+func (env *CommandEnvT) Run(defaults ...base.AnyDelegate) error {
 	if err := env.loadConfig(); err != nil {
 		base.LogWarning(LogCommand, "failed to load config: %v", err)
 	}
@@ -299,6 +307,13 @@ func (env *CommandEnvT) Run() error {
 	for _, cl := range env.commandLines {
 		if err := env.commandEvents.Parse(cl); err != nil {
 			return err
+		}
+	}
+
+	// append input events only if user provider no command-line input
+	if !env.commandEvents.OnRun.Bound() {
+		for _, event := range defaults {
+			env.commandEvents.OnRun.Add(event)
 		}
 	}
 

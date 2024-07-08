@@ -3,6 +3,7 @@ package base
 import (
 	"fmt"
 	"math/big"
+	"reflect"
 	"strings"
 	"unicode"
 )
@@ -241,7 +242,7 @@ type AutoCompleteResult struct {
 	Score       float32 `json:"score"`
 }
 
-func (x *AutoCompleteResult) Compare(o *AutoCompleteResult) int {
+func (x AutoCompleteResult) Compare(o *AutoCompleteResult) int {
 	if x.Score != o.Score {
 		if x.Score > o.Score {
 			return -1
@@ -251,7 +252,7 @@ func (x *AutoCompleteResult) Compare(o *AutoCompleteResult) int {
 		return strings.Compare(x.Text, o.Text)
 	}
 }
-func (x *AutoCompleteResult) String() string {
+func (x AutoCompleteResult) String() string {
 	return x.Text
 }
 
@@ -402,7 +403,72 @@ func (x *PrefixedAutoComplete) ClearResults() {
 }
 
 /***************************************
- * XXX not founmd, did you mean YYY?
+ * GatherAutoComplete will gather all possible values and store them
+ ***************************************/
+
+var memoizeGatherAutoCompletion = MemoizeComparable(func(typ reflect.Type) []AutoCompleteResult {
+	results := []AutoCompleteResult{}
+	NewGatherAutoComplete(func(in, description string) error {
+		results = append(results, AutoCompleteResult{
+			Text:        in,
+			Description: description,
+		})
+		return nil
+	}).Any(reflect.New(typ).Interface())
+	return results
+})
+
+func GatherAutoCompletion[T any]() []AutoCompleteResult {
+	var defaultValue T
+	return memoizeGatherAutoCompletion(reflect.TypeOf(defaultValue))
+}
+func GatherAutoCompletionFrom[T any](arg T) []AutoCompleteResult {
+	typ := reflect.TypeOf(arg)
+	if typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	return memoizeGatherAutoCompletion(typ)
+}
+
+type GatherAutoComplete struct {
+	OnAdd func(in, description string) error
+}
+
+func NewGatherAutoComplete(onAdd func(in, description string) error) GatherAutoComplete {
+	return GatherAutoComplete{
+		OnAdd: onAdd,
+	}
+}
+func (x GatherAutoComplete) Input() string {
+	return ""
+}
+func (x GatherAutoComplete) Any(anon interface{}) error {
+	if autocomplete, ok := anon.(AutoCompletable); ok {
+		autocomplete.AutoComplete(x)
+		return nil
+	} else {
+		return fmt.Errorf("%T: type does not support auto-complete", anon)
+	}
+}
+func (x GatherAutoComplete) Append(in AutoCompletable) {
+	in.AutoComplete(x)
+}
+func (x GatherAutoComplete) Add(in, description string) float32 {
+	LogPanicIfFailed(LogAutoComplete, x.OnAdd(in, description))
+	return 0
+}
+func (x GatherAutoComplete) Results() []AutoCompleteResult {
+	return []AutoCompleteResult{}
+}
+func (x GatherAutoComplete) Highlight(in string, highlight func(rune) string) string {
+	return ""
+}
+func (x GatherAutoComplete) ClearResults() {
+
+}
+
+/***************************************
+ * XXX not found, did you mean YYY?
  ***************************************/
 
 func DidYouMean[T AutoCompletable](in string) (string, error) {

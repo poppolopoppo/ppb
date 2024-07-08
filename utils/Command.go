@@ -38,6 +38,7 @@ func (x CommandName) AutoComplete(in base.AutoComplete) {
  ***************************************/
 
 type CommandLine interface {
+	Empty() bool
 	PeekArg(int) (string, bool)
 	ConsumeArg(int) (string, bool)
 	fmt.Stringer
@@ -94,10 +95,12 @@ type commandLine struct {
 	PersistentData
 }
 
+func (x *commandLine) Empty() bool {
+	return len(x.args) == 0
+}
 func (x *commandLine) String() string {
 	return strings.Join(x.args, " ")
 }
-
 func (x *commandLine) PeekArg(i int) (string, bool) {
 	if i >= len(x.args) {
 		return "", false
@@ -256,7 +259,15 @@ func (x *CommandArgumentFlag) Set(in string) error {
 
 type CommandArgumentFlags = base.EnumSet[CommandArgumentFlag, *CommandArgumentFlag]
 
+type CommandArgumentDetails struct {
+	Short, Long string
+	Description string
+	Flags       CommandArgumentFlags
+}
+
 type CommandArgument interface {
+	Details() CommandArgumentDetails
+	Inspect(func(CommandArgumentDetails, PersistentVar) error) error
 	HasFlag(CommandArgumentFlag) bool
 	Parse(CommandLine) error
 	Format() string
@@ -269,9 +280,7 @@ type CommandArgument interface {
  ***************************************/
 
 type commandBasicArgument struct {
-	Short, Long string
-	Description string
-	Flags       CommandArgumentFlags
+	CommandArgumentDetails
 }
 
 func (x *commandBasicArgument) Name() string {
@@ -279,6 +288,9 @@ func (x *commandBasicArgument) Name() string {
 		return x.Long
 	}
 	return x.Short
+}
+func (x *commandBasicArgument) Details() CommandArgumentDetails {
+	return x.CommandArgumentDetails
 }
 func (x *commandBasicArgument) HasFlag(flag CommandArgumentFlag) bool {
 	return x.Flags.Has(flag)
@@ -351,6 +363,9 @@ type commandConsumeOneArgument[T any, P interface {
 	commandBasicArgument
 }
 
+func (x *commandConsumeOneArgument[T, P]) Inspect(each func(CommandArgumentDetails, PersistentVar) error) error {
+	return each(x.CommandArgumentDetails, P(x.Value))
+}
 func (x *commandConsumeOneArgument[T, P]) AutoComplete(in base.AutoComplete) {
 	if err := in.Any(P(x.Value)); err == nil {
 		base.LogTrace(base.LogAutoComplete, "consume one %q", x.Name())
@@ -379,9 +394,11 @@ func OptionCommandConsumeArg[T any, P interface {
 		Value:   value,
 		Default: *value,
 		commandBasicArgument: commandBasicArgument{
-			Long:        name,
-			Description: description,
-			Flags:       base.MakeEnumSet(append(flags, COMMANDARG_CONSUME)...),
+			CommandArgumentDetails{
+				Long:        name,
+				Description: description,
+				Flags:       base.MakeEnumSet(append(flags, COMMANDARG_CONSUME)...),
+			},
 		},
 	})
 }
@@ -395,6 +412,17 @@ type commandConsumeManyArguments[T any, P interface {
 	commandBasicArgument
 }
 
+func (x *commandConsumeManyArguments[T, P]) Inspect(each func(CommandArgumentDetails, PersistentVar) error) error {
+	for i := range *x.Value {
+		if err := each(x.CommandArgumentDetails, P(&(*x.Value)[i])); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (x *commandConsumeManyArguments[T, P]) Details() CommandArgumentDetails {
+	return x.CommandArgumentDetails
+}
 func (x *commandConsumeManyArguments[T, P]) AutoComplete(in base.AutoComplete) {
 	var defaultScalar T
 	if err := in.Any(P(&defaultScalar)); err == nil {
@@ -435,9 +463,11 @@ func OptionCommandConsumeMany[T any, P interface {
 		Value:   value,
 		Default: defaultValue,
 		commandBasicArgument: commandBasicArgument{
-			Long:        name,
-			Description: description,
-			Flags:       base.MakeEnumSet(append(flags, COMMANDARG_CONSUME, COMMANDARG_VARIADIC)...),
+			CommandArgumentDetails{
+				Long:        name,
+				Description: description,
+				Flags:       base.MakeEnumSet(append(flags, COMMANDARG_CONSUME, COMMANDARG_VARIADIC)...),
+			},
 		},
 	})
 }
@@ -489,6 +519,20 @@ func NewGlobalCommandParsableFlags[T any, P interface {
 		parsable))
 	GlobalParsableFlags.Options(options...)
 	return NewCommandParsableFlags[T, P](flags)
+}
+
+func (x *commandParsableArgument) Inspect(each func(CommandArgumentDetails, PersistentVar) error) error {
+	for _, it := range x.Variables {
+		if err := each(CommandArgumentDetails{
+			Long:        it.Name,
+			Short:       it.Switch,
+			Description: it.Usage,
+			Flags:       it.Flags,
+		}, it.Value); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (x *commandParsableArgument) AutoComplete(in base.AutoComplete) {
@@ -563,8 +607,6 @@ func (x *commandParsableArgument) Help(w *base.StructuredFile) {
 	x.commandBasicArgument.Help(w)
 	w.Println("")
 	w.ScopeIndent(func() {
-		autocomplete := base.NewAutoComplete("", 8)
-
 		for _, v := range x.Variables {
 			colorFG := base.ANSI_FG0_CYAN
 			if v.Flags.Has(COMMANDARG_PERSISTENT) {
@@ -597,8 +639,8 @@ func (x *commandParsableArgument) Help(w *base.StructuredFile) {
 				colorFG = base.ANSI_FG1_BLUE
 			}
 
-			autocomplete.ClearResults()
-			if err := autocomplete.Any(v.Value); err == nil {
+			allowedValues := base.GatherAutoCompletionFrom(v.Value)
+			if len(allowedValues) > 0 {
 				sb := strings.Builder{}
 
 				sb.WriteString(base.ANSI_FRAME.String())
@@ -609,7 +651,7 @@ func (x *commandParsableArgument) Help(w *base.StructuredFile) {
 				sb.WriteString(colorFG.String())
 				sb.WriteString(base.ANSI_FAINT.String())
 				sb.WriteString(" \t(")
-				for i, it := range autocomplete.Results() {
+				for i, it := range allowedValues {
 					if i > 0 {
 						sb.WriteRune('|')
 					}
@@ -634,9 +676,11 @@ func newCommandParsableFlags(name, description string, value CommandParsableFlag
 	arg := &commandParsableArgument{
 		Value: value,
 		commandBasicArgument: commandBasicArgument{
-			Long:        name,
-			Description: description,
-			Flags:       base.MakeEnumSet(append(flags, COMMANDARG_OPTIONAL, COMMANDARG_VARIADIC)...),
+			CommandArgumentDetails{
+				Long:        name,
+				Description: description,
+				Flags:       base.MakeEnumSet(append(flags, COMMANDARG_OPTIONAL, COMMANDARG_VARIADIC)...),
+			},
 		},
 	}
 
@@ -1118,16 +1162,6 @@ build-system for PoPpOlOpPoPo Engine`,
 /***************************************
  * RunCommands
  ***************************************/
-
-func PrepareCommands(cls []CommandLine, events *CommandEvents) error {
-	for _, cl := range cls {
-		if err := GlobalParsableFlags.Parse(cl); err != nil {
-			return err
-		}
-	}
-	events.Add(&GlobalParsableFlags)
-	return nil
-}
 
 func ParseCommand(cl CommandLine, events *CommandEvents) (err error) {
 	name, ok := cl.ConsumeArg(0)

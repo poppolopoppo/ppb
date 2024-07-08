@@ -318,6 +318,21 @@ type EnumValue[T EnumFlag] interface {
 	flag.Value
 }
 
+type EnumSettable interface {
+	Ord() int32
+	FromOrd(v int32)
+	IsInheritable() bool
+	Empty() bool
+	Len() int
+	Clear()
+	Test(value string) bool
+	Select(value string, enabled bool) error
+	fmt.Stringer
+	flag.Value
+	AutoCompletable
+	Serializable
+}
+
 type EnumSet[T EnumFlag, E EnumValue[T]] int32
 
 func MakeEnumSet[T EnumFlag, E EnumValue[T]](list ...T) EnumSet[T, E] {
@@ -435,6 +450,29 @@ func (x *EnumSet[T, E]) Set(in string) error {
 		}
 	}
 	return nil
+}
+func (x EnumSet[T, E]) Test(value string) bool {
+	var parsed T
+	if err := E(&parsed).Set(value); err != nil {
+		return false
+	}
+	return x.Has(parsed)
+}
+func (x *EnumSet[T, E]) Select(value string, enabled bool) error {
+	var parsed T
+	if err := E(&parsed).Set(value); err != nil {
+		return err
+	}
+	if enabled {
+		x.Add(parsed)
+	} else {
+		x.Remove(parsed)
+	}
+	return nil
+}
+func (x *EnumSet[T, E]) AutoComplete(in AutoComplete) {
+	var defaultValue T
+	in.Any(E(&defaultValue))
 }
 func (x *EnumSet[T, E]) Serialize(ar Archive) {
 	ar.Int32((*int32)(x))

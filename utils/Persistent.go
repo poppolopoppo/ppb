@@ -24,6 +24,8 @@ type StringVar = base.InheritableString
 
 type PersistentData interface {
 	PinData() map[string]string
+	PinObjectNames() []string
+	PinObjectData(object string) (map[string]string, bool)
 	LoadData(object string, property string, value PersistentVar) error
 	StoreData(object string, property string, value PersistentVar)
 }
@@ -61,6 +63,13 @@ func (pmp *persistentData) PinData() (result map[string]string) {
 			result[fmt.Sprint(object, `.`, property)] = value
 		}
 	}
+	return
+}
+func (pmp *persistentData) PinObjectNames() []string {
+	return base.Keys(pmp.Data)
+}
+func (pmp *persistentData) PinObjectData(object string) (result map[string]string, ok bool) {
+	result, ok = pmp.Data[object]
 	return
 }
 func (pmp *persistentData) LoadData(name string, property string, dst PersistentVar) error {
