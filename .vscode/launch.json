@@ -17,7 +17,7 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "buildFlags": "-tags=debug",
+            "buildFlags": "-tags=ppb_debug,debug -pgo=off",
             "args": ["${input:promptCommand}", "-Color"],
             "program": "${fileDirname}"
         },
@@ -26,9 +26,21 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "buildFlags": "-tags=profiling",
+            "buildFlags": "-tags=ppb_profiling",
             "args": ["${input:promptCommand}", "-Color"],
             "program": "${fileDirname}"
+        },
+        {
+            "name": "Launch Package (Race)",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "buildFlags": "-race",
+            "args": ["${input:promptCommand}", "-Color"],
+            "program": "${fileDirname}",
+            "env": {
+                "GORACE": "halt_on_error=true atexit_sleep_ms=10000"
+            },
         },
     ],
 
