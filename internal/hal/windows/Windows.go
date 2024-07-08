@@ -60,7 +60,7 @@ type WindowsFlags struct {
 	MscVer           MsvcVersion
 	PerfSDK          BoolVar
 	Permissive       BoolVar
-	StackSize        IntVar
+	StackSize        base.SizeInBytes
 	TranslateInclude BoolVar
 	WindowsSDK       Directory
 }

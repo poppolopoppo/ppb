@@ -86,7 +86,7 @@ func (x *PeerAvaibility) UpdateResources(ctx context.Context, worker *WorkerFlag
 
 	case PEERMODE_PROPORTIONAL, PEERMODE_IDLE:
 		// consume only available resources
-		if worker.Mode == PEERMODE_IDLE && time.Since(x.idleSince) > time.Duration(worker.IdleCooldown)*time.Second {
+		if worker.Mode == PEERMODE_IDLE && time.Since(x.idleSince) > worker.IdleCooldown.Duration() {
 			numThreads = 0
 		} else {
 			numThreads = hw.Cores - int32(float64(hw.Cores)*usedPercent) - numJobsInFlight

@@ -36,7 +36,7 @@ type CppRules struct {
 	Incremental   utils.BoolVar
 	LTO           utils.BoolVar
 	RuntimeChecks utils.BoolVar
-	SizePerUnity  utils.IntVar
+	SizePerUnity  base.SizeInBytes
 
 	CompilerVerbose utils.BoolVar
 	LinkerVerbose   utils.BoolVar

@@ -24,7 +24,7 @@ import (
 
 type WorkerFlags struct {
 	Broadcast     IntVar
-	IdleCooldown  IntVar
+	IdleCooldown  base.Timespan
 	IdleThreshold IntVar
 	Mode          PeerMode
 	MaxThreads    IntVar
@@ -32,11 +32,11 @@ type WorkerFlags struct {
 }
 
 var GetWorkerFlags = NewCommandParsableFlags(&WorkerFlags{
-	Broadcast:     2,            // 2 seconds
-	IdleCooldown:  5 * 60,       // 5 minutes
-	IdleThreshold: 10,           // bellow 10% cpu usage
-	MinFreeMemory: 4 * base.GiB, // min 4GiB available
-	MaxThreads:    0,            // uncapped thread count
+	Broadcast:     2,               // 2 seconds
+	IdleCooldown:  5 * base.Minute, // 5 minutes
+	IdleThreshold: 10,              // bellow 10% cpu usage
+	MinFreeMemory: 4 * base.GiB,    // min 4GiB available
+	MaxThreads:    0,               // uncapped thread count
 	Mode:          PEERMODE_PROPORTIONAL,
 })
 

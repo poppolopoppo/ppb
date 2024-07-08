@@ -125,10 +125,9 @@ func (x *ActionRules) GetStaticInputFiles(bg utils.BuildGraph) (results utils.Fi
 	base.LogPanicIfFailed(LogAction, err)
 
 	for _, it := range bg.GetStaticDependencies(node) {
-		switch buildable := it.GetBuildable().(type) {
-		case *utils.FileDependency:
-			if buildable.Filename != x.Executable {
-				results.Append(buildable.Filename)
+		if buildable, ok := (it.GetBuildable()).(utils.BuildableSourceFile); ok {
+			if inputFile := buildable.GetSourceFile(); inputFile != x.Executable {
+				results.Append(inputFile)
 			}
 		}
 	}

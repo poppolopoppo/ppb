@@ -3,6 +3,7 @@ package base
 import (
 	"flag"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -295,18 +296,50 @@ func (x SizeInBytes) IsInheritable() bool {
 	return x.Get() == int64(INHERIT_VALUE)
 }
 
+var sizeInBytesUnits = map[string]int64{
+	"B":   1,
+	"KB":  1000,
+	"MB":  1000 * 1000,
+	"GB":  1000 * 1000 * 1000,
+	"TB":  1000 * 1000 * 1000 * 1000,
+	"KIB": 1024,
+	"MIB": 1024 * 1024,
+	"GIB": 1024 * 1024 * 1024,
+	"TIB": 1024 * 1024 * 1024 * 1024,
+}
+
+var re_sizeInBytes = regexp.MustCompile(`^\s*(\d+)\s*([A-Z]+)?\s*$`)
+
 func (x *SizeInBytes) Set(in string) error {
-	switch strings.ToUpper(in) {
+	upper := strings.ToUpper(in)
+	switch upper {
 	case INHERIT_STRING:
 		x.Assign(int64(INHERIT_VALUE))
 		return nil
 	default:
-		if v, err := strconv.ParseInt(in, 10, 64); err == nil {
-			x.Assign(v)
-			return nil
-		} else {
-			return err
+		matches := re_sizeInBytes.FindStringSubmatch(upper)
+		if len(matches) != 3 {
+			return fmt.Errorf("invalid input format for size: %v", upper)
 		}
+
+		sizeStr, unit := matches[1], matches[2]
+		size, err := strconv.ParseInt(sizeStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid numeric part for size: %v", err)
+		}
+
+		// assume bytes if no unit provided
+		var unitMultiplier int64 = 1
+		if len(unit) > 0 {
+			var ok bool
+			unitMultiplier, ok = sizeInBytesUnits[unit]
+			if !ok {
+				return fmt.Errorf("invalid unit for size: %v", size)
+			}
+		}
+
+		x.Assign(size * unitMultiplier)
+		return nil
 	}
 }
 
@@ -318,6 +351,135 @@ func (x *SizeInBytes) UnmarshalText(data []byte) error {
 }
 
 func (x *SizeInBytes) CommandLine(name, input string) (bool, error) {
+	if ok, err := InheritableCommandLine(name, input, x); ok || err != nil {
+		return ok, err
+	}
+	if len(name) == 1 && len(input) > 2 && input[0] == '-' && input[1] == name[0] {
+		return true, x.Set(input[2:])
+	}
+	return false, nil
+}
+
+/***************************************
+ * Timespan
+ ***************************************/
+
+type Timespan int64
+
+const (
+	Microsecond Timespan = 1
+	Millisecond          = Microsecond * 1000
+	Second               = Millisecond * 1000
+	Minute               = Second * 60
+	Hour                 = Minute * 60
+	Day                  = Hour * 24
+	Week                 = Day * 7
+)
+
+func Milliseconds(t int64) float64 { return float64(t) / float64(Millisecond) }
+func Seconds(t int64) float64      { return float64(t) / float64(Second) }
+func Minutes(t int64) float64      { return float64(t) / float64(Minute) }
+func Hours(t int64) float64        { return float64(t) / float64(Hour) }
+func Days(t int64) float64         { return float64(t) / float64(Day) }
+func Weeks(t int64) float64        { return float64(t) / float64(Week) }
+
+func (x *Timespan) Add(sz int64) { *(*int64)(x) += sz }
+func (x Timespan) String() string {
+	switch {
+	case x < Millisecond:
+		return fmt.Sprintf("%d µs", x.Get())
+	case x < Second:
+		return fmt.Sprintf("%.2f ms", Milliseconds(x.Get()))
+	case x < Minute:
+		return fmt.Sprintf("%.2f seconds", Seconds(x.Get()))
+	case x < Hour:
+		return fmt.Sprintf("%.2f minutes", Minutes(x.Get()))
+	case x < Day:
+		return fmt.Sprintf("%.2f hours", Hours(x.Get()))
+	case x < Week:
+		return fmt.Sprintf("%.2f days", Days(x.Get()))
+	default:
+		return fmt.Sprintf("%.2f weeks", Weeks(x.Get()))
+	}
+}
+
+func (x Timespan) Get() int64                    { return int64(x) }
+func (x Timespan) Duration() time.Duration       { return time.Microsecond * time.Duration(x.Get()) }
+func (x *Timespan) SetDuration(in time.Duration) { x.Assign(in.Microseconds()) }
+func (x *Timespan) Assign(in int64) {
+	*(*int64)(x) = in
+}
+func (x Timespan) Equals(o Timespan) bool {
+	return x == o
+}
+func (x *Timespan) Serialize(ar Archive) {
+	ar.Int64((*int64)(x))
+}
+func (x Timespan) IsInheritable() bool {
+	return x.Get() == int64(INHERIT_VALUE)
+}
+
+var timespanUnits = map[string]int64{
+	"US":           int64(Microsecond),
+	"ΜS":           int64(Microsecond),
+	"MICROSECONDS": int64(Microsecond),
+	"MS":           int64(Millisecond),
+	"MILLISECONDS": int64(Millisecond),
+	"S":            int64(Second),
+	"SEC":          int64(Second),
+	"SECONDS":      int64(Second),
+	"M":            int64(Minute),
+	"MIN":          int64(Minute),
+	"MINUTES":      int64(Minute),
+	"H":            int64(Hour),
+	"HOURS":        int64(Hour),
+	"D":            int64(Day),
+	"DAYS":         int64(Day),
+	"W":            int64(Week),
+	"WEEEKS":       int64(Week),
+}
+
+func (x *Timespan) Set(in string) error {
+	upper := strings.ToUpper(in)
+	switch upper {
+	case INHERIT_STRING:
+		x.Assign(int64(INHERIT_VALUE))
+		return nil
+	default:
+		matches := re_sizeInBytes.FindStringSubmatch(upper)
+		if len(matches) != 3 {
+			return fmt.Errorf("invalid input format for timespan: %v", upper)
+		}
+
+		sizeStr, unit := matches[1], matches[2]
+		size, err := strconv.ParseInt(sizeStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid numeric part for timespan: %v", err)
+		}
+
+		// assume seconds if no unit provided
+		var unitMultiplier int64 = int64(Second)
+		if len(unit) > 0 {
+			var ok bool
+			unitMultiplier, ok = timespanUnits[unit]
+			if !ok {
+				return fmt.Errorf("invalid unit for timespan: %v", size)
+			}
+		}
+
+		x.Assign(size * unitMultiplier)
+		return nil
+	}
+}
+
+func (x Timespan) MarshalText() ([]byte, error) {
+	return UnsafeBytesFromString(x.String()), nil
+}
+func (x *Timespan) UnmarshalText(data []byte) error {
+	return x.Set(UnsafeStringFromBytes(data))
+}
+
+func (x *Timespan) CommandLine(name, input string) (bool, error) {
 	if ok, err := InheritableCommandLine(name, input, x); ok || err != nil {
 		return ok, err
 	}

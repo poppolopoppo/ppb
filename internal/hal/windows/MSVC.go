@@ -573,7 +573,7 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 	}
 
 	// set default thread stack size
-	stackSize := msvc.WindowsFlags.StackSize
+	stackSize := msvc.WindowsFlags.StackSize.Get()
 	if u.Sanitizer.IsEnabled() {
 		stackSize *= 2
 		base.LogVeryVerbose(LogWindows, "%v: doubling thread stack size due to msvc sanitizer (%d)", u, stackSize)

@@ -74,7 +74,7 @@ type ClusterFlags struct {
 	MaxPeers      utils.IntVar
 	IfIndex       utils.IntVar
 	RetryCount    utils.IntVar
-	Timeout       utils.IntVar
+	Timeout       base.Timespan
 	TunnelPort    utils.IntVar
 	WebdavPort    utils.IntVar
 }
@@ -84,13 +84,13 @@ var GetClusterFlags = utils.NewCommandParsableFlags(&ClusterFlags{
 	MaxPeers:      32,
 	IfIndex:       0,
 	RetryCount:    5,
-	Timeout:       3,
+	Timeout:       3 * base.Second,
 	TunnelPort:    0,
 	WebdavPort:    0,
 })
 
 func (x *ClusterFlags) GetTimeoutDuration() time.Duration {
-	return time.Duration(x.Timeout.Get()) * time.Second
+	return x.Timeout.Duration()
 }
 func (x *ClusterFlags) GetTunnelPort() string {
 	return strconv.Itoa(x.TunnelPort.Get())
@@ -267,7 +267,7 @@ func ClusterOptionCompressWrite(write StreamWriteFunc) ClusterOption {
 }
 func ClusterOptionTimeout(every time.Duration) ClusterOption {
 	return func(co *ClusterOptions) {
-		co.Timeout.Assign(int(every.Seconds()))
+		co.Timeout.SetDuration(every)
 	}
 }
 func ClusterOptionTunnelPort(n int) ClusterOption {
