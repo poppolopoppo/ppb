@@ -378,12 +378,10 @@ func (x *commandConsumeOneArgument[T, P]) Parse(cl CommandLine) error {
 
 	*x.Value = x.Default
 
-	arg, ok := cl.ConsumeArg(0)
-	if ok && !x.HasFlag(COMMANDARG_OPTIONAL) {
-		return fmt.Errorf("missing required argument for %q, check command usage with `help`", x.Name())
+	if arg, ok := cl.ConsumeArg(0); ok || x.HasFlag(COMMANDARG_OPTIONAL) {
+		return P(x.Value).Set(arg)
 	}
-
-	return P(x.Value).Set(arg)
+	return fmt.Errorf("missing required argument for %q, check command usage with `help`", x.Name())
 }
 
 func OptionCommandConsumeArg[T any, P interface {
