@@ -1243,7 +1243,7 @@ func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
 	progress := x.progress.Load()
 	last := x.last.Load()
 
-	duration := Elapsed() - x.startedAt
+	duration := max(Elapsed()-x.startedAt, 0)
 	t := float64(duration.Seconds()+float64(x.color.R)) * 5.0
 
 	const width = 50
@@ -1307,7 +1307,7 @@ func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
 		fmt.Fprintf(lw, " %.3f %s/s", eltPerSec, eltUnit)
 
 	} else {
-		ti := int(t*3) % len(logSpinnerPattern)
+		ti := int(math.Abs(t*3)) % len(logSpinnerPattern)
 
 		var header string
 		if it := x.header.Load(); !IsNil(it) {
