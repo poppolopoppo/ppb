@@ -114,7 +114,7 @@ func (x *DirectoryDependency) Build(bc BuildContext) error {
 		return err
 	}
 
-	bc.Annotate(AnnocateBuildTimestamp(GetCreationTime(info)))
+	bc.Annotate(AnnocateBuildTimestamp(info.ModTime()))
 	return nil
 }
 

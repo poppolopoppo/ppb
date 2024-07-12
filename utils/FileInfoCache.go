@@ -5,16 +5,9 @@ import (
 	"io"
 	"os"
 	"sync"
-	"time"
-
-	"github.com/djherbis/times"
 
 	"github.com/poppolopoppo/ppb/internal/base"
 )
-
-func GetCreationTime(stat os.FileInfo) time.Time {
-	return times.Get(stat).BirthTime()
-}
 
 /***************************************
  * FileInfoCache
