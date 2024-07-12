@@ -138,6 +138,8 @@ func (v LlvmVersion) String() string {
 }
 func (v *LlvmVersion) Set(in string) (err error) {
 	switch in {
+	case llvm_any.String():
+		*v = llvm_any
 	case LLVM_LATEST.String():
 		*v = LLVM_LATEST
 	case LLVM_16.String():

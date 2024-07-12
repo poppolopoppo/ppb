@@ -122,6 +122,8 @@ func (v MsvcVersion) String() string {
 }
 func (v *MsvcVersion) Set(in string) (err error) {
 	switch in {
+	case msc_ver_any.String():
+		*v = msc_ver_any
 	case MSC_VER_LATEST.String():
 		*v = MSC_VER_LATEST
 	case MSC_VER_2022.String():

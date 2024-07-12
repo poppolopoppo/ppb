@@ -312,6 +312,7 @@ type LlvmProductInstall struct {
 	Ar            Filename
 	Clang         Filename
 	ClangPlusPlus Filename
+	Llvm_Config   Filename
 }
 
 func (x *LlvmProductInstall) Alias() BuildAlias {
@@ -326,10 +327,11 @@ func (x *LlvmProductInstall) Serialize(ar base.Archive) {
 	ar.Serializable(&x.Ar)
 	ar.Serializable(&x.Clang)
 	ar.Serializable(&x.ClangPlusPlus)
+	ar.Serializable(&x.Llvm_Config)
 }
 func (x *LlvmProductInstall) Build(bc BuildContext) error {
 	buildCompilerVer := func(suffix string) error {
-		base.LogDebug(LogLinux, "llvm: looking for clang-%s...", suffix)
+		base.LogDebug(LogLinux, "llvm: looking for clang++%s...", suffix)
 		c := exec.Command("/bin/sh", "-c", "which clang++"+suffix)
 		if outp, err := c.Output(); err == nil {
 			x.ClangPlusPlus = MakeFilename(strings.TrimSpace(base.UnsafeStringFromBytes(outp)))
@@ -337,7 +339,7 @@ func (x *LlvmProductInstall) Build(bc BuildContext) error {
 			return err
 		}
 
-		c = exec.Command("/bin/sh", "-c", "realpath $(which clang"+suffix+")")
+		c = exec.Command("/bin/sh", "-c", "realpath $(which clang++"+suffix+")")
 		if outp, err := c.Output(); err == nil {
 			x.Clang = MakeFilename(strings.TrimSpace(base.UnsafeStringFromBytes(outp)))
 		} else {
@@ -346,13 +348,18 @@ func (x *LlvmProductInstall) Build(bc BuildContext) error {
 
 		bin := x.Clang.Dirname
 		x.InstallDir = bin.Parent()
-		x.Ar = bin.File("llvm-ar")
 
+		x.Ar = bin.File("llvm-ar")
 		if _, err := x.Ar.Info(); err != nil {
 			return err
 		}
 
-		c = exec.Command("llvm-config"+suffix, "--version")
+		x.Llvm_Config = bin.File("llvm-config")
+		if _, err := x.Llvm_Config.Info(); err != nil {
+			return err
+		}
+
+		c = exec.Command(x.Llvm_Config.String(), "--version")
 		if outp, err := c.Output(); err == nil {
 			parsed := strings.TrimSpace(base.UnsafeStringFromBytes(outp))
 			if n := strings.IndexByte(parsed, '.'); n != -1 {
@@ -368,7 +375,7 @@ func (x *LlvmProductInstall) Build(bc BuildContext) error {
 		if err := bc.NeedDirectories(x.InstallDir); err != nil {
 			return err
 		}
-		if err := bc.NeedFiles(x.Ar, x.Clang, x.ClangPlusPlus); err != nil {
+		if err := bc.NeedFiles(x.Ar, x.Clang, x.ClangPlusPlus, x.Llvm_Config); err != nil {
 			return err
 		}
 
