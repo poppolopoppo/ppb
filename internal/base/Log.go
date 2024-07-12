@@ -57,24 +57,34 @@ func LogClaim(category *LogCategory, msg string, args ...interface{}) {
 var logWarningsSeenOnce = NewSharedMapT[string, int]()
 
 func LogWarning(category *LogCategory, msg string, args ...interface{}) {
-	gLogger.Log(category, LOG_WARNING, msg, args...)
+	if !gLogWarningAsError {
+		gLogger.Log(category, LOG_WARNING, msg, args...)
+	} else {
+		LogError(category, msg, args...)
+	}
 }
 func LogWarningOnce(category *LogCategory, msg string, args ...interface{}) {
 	if IsLogLevelActive(LOG_VERBOSE) {
 		formattedMsg := fmt.Sprintf(msg, args...)
 		if _, loaded := logWarningsSeenOnce.FindOrAdd(formattedMsg, 1); !loaded {
-			gLogger.Log(category, LOG_WARNING, msg, args...)
+			LogWarning(category, msg, args...)
 		}
 	}
 }
 func LogWarningVerbose(category *LogCategory, msg string, args ...interface{}) {
 	if IsLogLevelActive(LOG_VERBOSE) {
-		gLogger.Log(category, LOG_WARNING, msg, args...)
+		LogWarning(category, msg, args...)
 	}
 }
 
 func LogError(category *LogCategory, msg string, args ...interface{}) {
 	gLogger.Log(category, LOG_ERROR, msg, args...)
+
+	if gLogErrorAsPanic {
+		gLogger.Flush()
+		//LogPanic(category, msg, args...)
+		panic(fmt.Errorf(msg, args...))
+	}
 }
 func LogFatal(msg string, args ...interface{}) {
 	gLogger.Purge()
@@ -111,9 +121,65 @@ func FlushLog() {
 	gLogger.Flush()
 }
 
+var gLogWarningAsError bool = false
+
+func SetLogWarningAsError(enabled bool) {
+	gLogWarningAsError = enabled
+}
+
+var gLogErrorAsPanic bool = false
+
+func SetLogErrorAsPanic(enabled bool) {
+	gLogErrorAsPanic = enabled
+}
+
+func SetLogVisibleLevel(level LogLevel) {
+	gLogger.SetLevel(level)
+}
+
 /***************************************
  * Logger interface
  ***************************************/
+
+type LogCategory struct {
+	Name  string
+	Level LogLevel
+	Hash  uint64
+	Color Color3b
+}
+
+type LogWriter interface {
+	io.Writer
+	io.StringWriter
+}
+
+type Logger interface {
+	IsInteractive() bool
+	IsVisible(LogLevel) bool
+
+	SetLevel(LogLevel) LogLevel
+	SetLevelMaximum(LogLevel) LogLevel
+	SetLevelMinimum(LogLevel) LogLevel
+	SetShowCategory(bool)
+	SetShowTimestamp(bool)
+	SetWriter(LogWriter)
+
+	Forward(msg ...string)
+	Forwardln(msg ...string)
+	Forwardf(msg string, args ...interface{})
+
+	Log(category *LogCategory, level LogLevel, msg string, args ...interface{})
+
+	Write(buf []byte) (int, error)
+
+	Pin(msg string, args ...interface{}) PinScope
+	Progress(options ...ProgressOptionFunc) ProgressScope
+	Close(PinScope) error
+
+	Flush()   // wait for all pending all messages
+	Purge()   // close the log and every on-going pins
+	Refresh() // re-draw all pins, need for animated effects
+}
 
 type PinScope interface {
 	Log(msg string, args ...interface{})
@@ -162,47 +228,9 @@ func ProgressOptionColor(color Color3b) ProgressOptionFunc {
 	}
 }
 
-type LogCategory struct {
-	Name  string
-	Level LogLevel
-	Hash  uint64
-	Color Color3b
-}
-
-type LogWriter interface {
-	io.Writer
-	io.StringWriter
-}
-
-type Logger interface {
-	IsInteractive() bool
-	IsVisible(LogLevel) bool
-
-	SetLevel(LogLevel) LogLevel
-	SetLevelMaximum(LogLevel) LogLevel
-	SetLevelMinimum(LogLevel) LogLevel
-	SetWarningAsError(bool)
-	SetShowCategory(bool)
-	SetShowTimestamp(bool)
-	SetWriter(LogWriter)
-
-	Forward(msg ...string)
-	Forwardln(msg ...string)
-	Forwardf(msg string, args ...interface{})
-
-	Log(category *LogCategory, level LogLevel, msg string, args ...interface{})
-
-	Write(buf []byte) (int, error)
-
-	Pin(msg string, args ...interface{}) PinScope
-	Progress(options ...ProgressOptionFunc) ProgressScope
-	Close(PinScope) error
-
-	Flush()   // wait for all pending all messages
-	Purge()   // close the log and every on-going pins
-	Refresh() // re-draw all pins, need for animated effects
-
-}
+/***************************************
+ * Errors
+ ***************************************/
 
 func MakeError(msg string, args ...interface{}) error {
 	//LogError(LogGlobal, msg, args...) # DONT -> this can lock recursively the logger
@@ -219,6 +247,10 @@ func MakeUnexpectedValueError(dst interface{}, any interface{}) (err error) {
 func UnexpectedValuePanic(dst interface{}, any interface{}) {
 	LogPanicErr(LogGlobal, MakeUnexpectedValueError(dst, any))
 }
+
+/***************************************
+ * Log Forward Writer
+ ***************************************/
 
 type LogForwardWriter struct{}
 
@@ -408,11 +440,10 @@ func (x basicLogProgress) Inc()            {}
 func (x basicLogProgress) Set(int64)       {}
 
 type basicLogger struct {
-	MinimumLevel   LogLevel
-	WarningAsError bool
-	ShowCategory   bool
-	ShowTimestamp  bool
-	Writer         LogWriter
+	MinimumLevel  LogLevel
+	ShowCategory  bool
+	ShowTimestamp bool
+	Writer        LogWriter
 
 	lastFlush time.Time
 }
@@ -424,12 +455,11 @@ func newBasicLogger() *basicLogger {
 	}
 
 	logger := basicLogger{
-		MinimumLevel:   level,
-		WarningAsError: false,
-		ShowCategory:   true,
-		ShowTimestamp:  false,
-		Writer:         os.Stdout,
-		lastFlush:      time.Now(),
+		MinimumLevel:  level,
+		ShowCategory:  true,
+		ShowTimestamp: false,
+		Writer:        os.Stdout,
+		lastFlush:     time.Now(),
 	}
 
 	return &logger
@@ -464,9 +494,6 @@ func (x *basicLogger) SetLevelMaximum(level LogLevel) LogLevel {
 		x.MinimumLevel = level
 	}
 	return previous
-}
-func (x *basicLogger) SetWarningAsError(enabled bool) {
-	x.WarningAsError = enabled
 }
 func (x *basicLogger) SetShowCategory(enabled bool) {
 	x.ShowCategory = enabled
@@ -507,11 +534,6 @@ func (x *basicLogger) Forwardf(msg string, args ...interface{}) {
 }
 
 func (x *basicLogger) Log(category *LogCategory, level LogLevel, msg string, args ...interface{}) {
-	// warning as error?
-	if level == LOG_WARNING && x.WarningAsError {
-		level = LOG_ERROR
-	}
-
 	// log level visible?
 	if !x.IsVisible(level) && !category.Level.IsVisible(level) {
 		return
@@ -689,11 +711,6 @@ func (x deferredLogger) SetLevelMaximum(level LogLevel) LogLevel {
 	defer x.barrier.Unlock()
 	return x.logger.SetLevelMaximum(level)
 }
-func (x deferredLogger) SetWarningAsError(enabled bool) {
-	x.barrier.Lock()
-	defer x.barrier.Unlock()
-	x.logger.SetWarningAsError(enabled)
-}
 func (x deferredLogger) SetShowCategory(enabled bool) {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
@@ -821,11 +838,6 @@ func (x immediateLogger) SetLevelMaximum(level LogLevel) LogLevel {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	return x.logger.SetLevelMaximum(level)
-}
-func (x immediateLogger) SetWarningAsError(enabled bool) {
-	x.barrier.Lock()
-	defer x.barrier.Unlock()
-	x.logger.SetWarningAsError(enabled)
 }
 func (x immediateLogger) SetShowCategory(enabled bool) {
 	x.barrier.Lock()

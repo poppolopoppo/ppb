@@ -34,6 +34,7 @@ type CommandFlags struct {
 	RootDir        Directory
 	Summary        BoolVar
 	WarningAsError BoolVar
+	ErrorAsPanic   BoolVar
 }
 
 var GetCommandFlags = NewGlobalCommandParsableFlags("global command options", &CommandFlags{
@@ -51,6 +52,7 @@ var GetCommandFlags = NewGlobalCommandParsableFlags("global command options", &C
 	Timestamp:      base.INHERITABLE_FALSE,
 	Summary:        base.INHERITABLE_FALSE,
 	WarningAsError: base.INHERITABLE_FALSE,
+	ErrorAsPanic:   base.INHERITABLE_FALSE,
 })
 
 func (flags *CommandFlags) Flags(cfv CommandFlagsVisitor) {
@@ -75,6 +77,7 @@ func (flags *CommandFlags) Flags(cfv CommandFlagsVisitor) {
 	cfv.Variable("RootDir", "override root directory", &flags.RootDir)
 	cfv.Variable("Summary", "print build graph execution summary when build finished", &flags.Summary)
 	cfv.Variable("WX", "consider warnings as errors", &flags.WarningAsError)
+	cfv.Variable("EX", "consider errors as panics", &flags.ErrorAsPanic)
 }
 func (flags *CommandFlags) Apply() {
 	for _, category := range flags.LogAll {
@@ -103,24 +106,27 @@ func (flags *CommandFlags) Apply() {
 	}
 
 	if flags.Debug.Get() {
-		base.GetLogger().SetLevel(base.LOG_DEBUG)
+		base.SetLogVisibleLevel(base.LOG_DEBUG)
 		base.SetEnableDiagnostics(true)
 	}
 
 	if flags.Verbose.Get() {
-		base.GetLogger().SetLevel(base.LOG_VERBOSE)
+		base.SetLogVisibleLevel(base.LOG_VERBOSE)
 	}
 	if flags.Trace.Get() {
-		base.GetLogger().SetLevel(base.LOG_TRACE)
+		base.SetLogVisibleLevel(base.LOG_TRACE)
 	}
 	if flags.VeryVerbose.Get() {
-		base.GetLogger().SetLevel(base.LOG_VERYVERBOSE)
+		base.SetLogVisibleLevel(base.LOG_VERYVERBOSE)
 	}
 	if flags.Quiet.Get() {
-		base.GetLogger().SetLevel(base.LOG_ERROR)
+		base.SetLogVisibleLevel(base.LOG_ERROR)
 	}
 	if flags.WarningAsError.Get() {
-		base.GetLogger().SetWarningAsError(true)
+		base.SetLogWarningAsError(true)
+	}
+	if flags.ErrorAsPanic.Get() {
+		base.SetLogErrorAsPanic(true)
 	}
 
 	if flags.Purge.Get() {
