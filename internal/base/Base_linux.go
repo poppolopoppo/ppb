@@ -8,6 +8,9 @@ import (
 	"os"
 	"syscall"
 	"time"
+	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 /***************************************
@@ -23,12 +26,23 @@ func GetCurrentThreadId() uintptr {
  * Time helpers
  ***************************************/
 
+func futimens_(fd int, times *[2]unix.Timespec, flags int) (err error) {
+	_, _, e1 := unix.Syscall6(unix.SYS_UTIMENSAT, uintptr(fd), uintptr(0), uintptr(unsafe.Pointer(times)), uintptr(flags), 0, 0)
+	if e1 != 0 {
+		err = syscall.EAGAIN
+	}
+	return
+}
+
 func SetMTime(file *os.File, mtime time.Time) error {
-	sysMTime := syscall.NsecToTimeval(mtime.Unix() * int64(time.Second))
-	err := syscall.Futimes(int(file.Fd()), []syscall.Timeval{
-		sysMTime, // atime
-		sysMTime, // mtime
-	})
+	tspec, err := unix.TimeToTimespec(mtime)
+	if err != nil {
+		return err
+	}
+
+	times := [2]unix.Timespec{tspec, tspec}
+	err = futimens_(int(file.Fd()), &times, 0)
+
 	if err == nil {
 		Assert(func() bool {
 			var info os.FileInfo
