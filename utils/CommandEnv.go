@@ -46,7 +46,7 @@ var GetCommandFlags = NewGlobalCommandParsableFlags("global command options", &C
 	VeryVerbose:    base.INHERITABLE_FALSE,
 	Debug:          base.MakeBoolVar(base.DEBUG_ENABLED),
 	Diagnostics:    base.MakeBoolVar(base.DEBUG_ENABLED),
-	Jobs:           base.INHERIT_VALUE,
+	Jobs:           base.InheritableInt(base.INHERIT_VALUE),
 	Color:          base.INHERITABLE_INHERIT,
 	Ide:            base.INHERITABLE_FALSE,
 	Timestamp:      base.INHERITABLE_FALSE,

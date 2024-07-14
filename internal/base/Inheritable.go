@@ -122,14 +122,71 @@ func (x *InheritableString) UnmarshalText(data []byte) error {
 }
 
 /***************************************
+ * InheritableByte
+ ***************************************/
+
+type InheritableByte byte
+
+const (
+	INHERIT_VALUE InheritableByte = 0
+)
+
+func (x InheritableByte) Get() byte { return byte(x) }
+func (x *InheritableByte) Assign(in byte) {
+	*(*byte)(x) = byte(in)
+}
+func (x InheritableByte) Equals(o InheritableByte) bool {
+	return x == o
+}
+func (x *InheritableByte) Serialize(ar Archive) {
+	ar.Byte((*byte)(x))
+}
+func (x InheritableByte) IsInheritable() bool {
+	return x == INHERIT_VALUE
+}
+
+func (x InheritableByte) String() string {
+	if x.IsInheritable() {
+		return INHERIT_STRING
+	}
+	return strconv.Itoa(int(x.Get()))
+}
+func (x *InheritableByte) Set(in string) error {
+	switch strings.ToUpper(in) {
+	case INHERIT_STRING:
+		*x = INHERIT_VALUE
+	default:
+		if i64, err := strconv.ParseInt(in, 10, 8); err == nil {
+			*x = InheritableByte(byte(i64))
+		} else {
+			return err
+		}
+	}
+	return nil
+}
+
+func (x InheritableByte) MarshalText() ([]byte, error) {
+	return UnsafeBytesFromString(x.String()), nil
+}
+func (x *InheritableByte) UnmarshalText(data []byte) error {
+	return x.Set(UnsafeStringFromBytes(data))
+}
+
+func (x *InheritableByte) CommandLine(name, input string) (bool, error) {
+	if ok, err := InheritableCommandLine(name, input, x); ok || err != nil {
+		return ok, err
+	}
+	if len(name) == 1 && len(input) > 2 && input[0] == '-' && input[1] == name[0] {
+		return true, x.Set(input[2:])
+	}
+	return false, nil
+}
+
+/***************************************
  * InheritableInt
  ***************************************/
 
 type InheritableInt int32
-
-const (
-	INHERIT_VALUE InheritableInt = 0
-)
 
 func (x InheritableInt) Get() int { return int(x) }
 func (x *InheritableInt) Assign(in int) {
@@ -142,7 +199,7 @@ func (x *InheritableInt) Serialize(ar Archive) {
 	ar.Int32((*int32)(x))
 }
 func (x InheritableInt) IsInheritable() bool {
-	return x == INHERIT_VALUE
+	return int32(x) == int32(INHERIT_VALUE)
 }
 
 func (x InheritableInt) String() string {
@@ -154,7 +211,7 @@ func (x InheritableInt) String() string {
 func (x *InheritableInt) Set(in string) error {
 	switch strings.ToUpper(in) {
 	case INHERIT_STRING:
-		*x = INHERIT_VALUE
+		*x = InheritableInt(INHERIT_VALUE)
 	default:
 		if i64, err := strconv.ParseInt(in, 10, 32); err == nil {
 			*x = InheritableInt(int32(i64))
@@ -493,7 +550,7 @@ func (x *Timespan) CommandLine(name, input string) (bool, error) {
  * InheritableBool
  ***************************************/
 
-type InheritableBool InheritableInt
+type InheritableBool InheritableByte
 
 const INHERITABLE_INHERIT InheritableBool = 0
 const INHERITABLE_FALSE InheritableBool = 1
@@ -508,8 +565,8 @@ func MakeBoolVar(enabled bool) (result InheritableBool) {
 	return
 }
 
-func (x *InheritableBool) AsInt() *InheritableInt {
-	return (*InheritableInt)(x)
+func (x *InheritableBool) AsByte() *InheritableByte {
+	return (*InheritableByte)(x)
 }
 
 func (x InheritableBool) Get() bool       { return x == INHERITABLE_TRUE }
@@ -525,7 +582,7 @@ func (x InheritableBool) Equals(o InheritableBool) bool {
 	return x == o
 }
 func (x *InheritableBool) Serialize(ar Archive) {
-	x.AsInt().Serialize(ar)
+	x.AsByte().Serialize(ar)
 }
 func (x InheritableBool) IsInheritable() bool {
 	return x == INHERITABLE_INHERIT
@@ -563,7 +620,7 @@ func (x *InheritableBool) Set(in string) error {
 		x.Disable()
 		return nil
 	default:
-		return x.AsInt().Set(in)
+		return x.AsByte().Set(in)
 	}
 }
 
