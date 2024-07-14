@@ -21,6 +21,11 @@ jobs:
       with:
         go-version: '1.22'
 
+    - name: Install Packages
+      uses: ConorMacBride/install-package@v1.1.0
+      with:
+        apt: libglfw3-dev
+
     - name: Build
       run: go build -v ./...
 
