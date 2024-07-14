@@ -451,6 +451,7 @@ func (llvm *LlvmCompiler) Build(bc BuildContext) error {
 	facet.AddCompilationFlag_NoAnalysis(
 		"-Wall", "-Wextra", "-Werror", "-Wfatal-errors",
 		"-Wshadow",
+		"-Wno-#pragma-messages",             // silence Unity pragma messages, which are interpreted as warnings by clang
 		"-Wno-unused-command-line-argument", // #TODO: unsilence this warning
 		"-fcolor-diagnostics",
 		"-march=native",
