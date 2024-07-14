@@ -5,6 +5,9 @@
 
 <h4> <span> · </span> <a href="https://github.com/poppolopoppo/ppb/blob/master/README.md"> Documentation </a> <span> · </span> <a href="https://github.com/poppolopoppo/ppb/issues"> Report Bug </a> <span> · </span> <a href="https://github.com/poppolopoppo/ppb/issues"> Request Feature </a> </h4>
 
+[![Go](https://github.com/poppolopoppo/ppb/actions/workflows/go.yml/badge.svg)](https://github.com/poppolopoppo/ppb/actions/workflows/go.yml)
+[![CodeQL](https://github.com/poppolopoppo/ppb/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/poppolopoppo/ppb/actions/workflows/github-code-scanning/codeql)
+
 </div>
 
 # :notebook_with_decorative_cover: Table of Contents
