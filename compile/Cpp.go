@@ -15,19 +15,21 @@ type CppWarnings struct {
 }
 
 type CppRules struct {
-	CppStd       CppStdType
-	CppRtti      CppRttiType
-	DebugInfo    DebugInfoType
-	Exceptions   ExceptionType
+	SizePerUnity base.SizeInBytes
 	Instructions InstructionSets
-	Link         LinkType
-	Optimize     OptimizationLevel
-	PCH          PrecompiledHeaderType
-	RuntimeLib   RuntimeLibType
-	Sanitizer    SanitizerType
-	Unity        UnityType
 
 	Warnings CppWarnings
+
+	CppStd     CppStdType
+	CppRtti    CppRttiType
+	DebugInfo  DebugInfoType
+	Exceptions ExceptionType
+	Link       LinkType
+	Optimize   OptimizationLevel
+	PCH        PrecompiledHeaderType
+	RuntimeLib RuntimeLibType
+	Sanitizer  SanitizerType
+	Unity      UnityType
 
 	AdaptiveUnity utils.BoolVar
 	Benchmark     utils.BoolVar
@@ -36,7 +38,6 @@ type CppRules struct {
 	Incremental   utils.BoolVar
 	LTO           utils.BoolVar
 	RuntimeChecks utils.BoolVar
-	SizePerUnity  base.SizeInBytes
 
 	CompilerVerbose utils.BoolVar
 	LinkerVerbose   utils.BoolVar
@@ -51,17 +52,8 @@ func (rules *CppRules) GetCpp() *CppRules {
 	return rules
 }
 func (rules *CppRules) Serialize(ar base.Archive) {
-	ar.Serializable(&rules.CppStd)
-	ar.Serializable(&rules.CppRtti)
-	ar.Serializable(&rules.DebugInfo)
-	ar.Serializable(&rules.Exceptions)
+	ar.Serializable(&rules.SizePerUnity)
 	ar.Serializable(&rules.Instructions)
-	ar.Serializable(&rules.Link)
-	ar.Serializable(&rules.Optimize)
-	ar.Serializable(&rules.PCH)
-	ar.Serializable(&rules.RuntimeLib)
-	ar.Serializable(&rules.Sanitizer)
-	ar.Serializable(&rules.Unity)
 
 	ar.Serializable(&rules.Warnings.Default)
 	ar.Serializable(&rules.Warnings.Deprecation)
@@ -70,6 +62,17 @@ func (rules *CppRules) Serialize(ar base.Archive) {
 	ar.Serializable(&rules.Warnings.UndefinedMacro)
 	ar.Serializable(&rules.Warnings.UnsafeTypeCast)
 
+	ar.Serializable(&rules.CppStd)
+	ar.Serializable(&rules.CppRtti)
+	ar.Serializable(&rules.DebugInfo)
+	ar.Serializable(&rules.Exceptions)
+	ar.Serializable(&rules.Link)
+	ar.Serializable(&rules.Optimize)
+	ar.Serializable(&rules.PCH)
+	ar.Serializable(&rules.RuntimeLib)
+	ar.Serializable(&rules.Sanitizer)
+	ar.Serializable(&rules.Unity)
+
 	ar.Serializable(&rules.AdaptiveUnity)
 	ar.Serializable(&rules.Benchmark)
 	ar.Serializable(&rules.Deterministic)
@@ -77,7 +80,6 @@ func (rules *CppRules) Serialize(ar base.Archive) {
 	ar.Serializable(&rules.Incremental)
 	ar.Serializable(&rules.LTO)
 	ar.Serializable(&rules.RuntimeChecks)
-	ar.Serializable(&rules.SizePerUnity)
 
 	ar.Serializable(&rules.CompilerVerbose)
 	ar.Serializable(&rules.LinkerVerbose)
