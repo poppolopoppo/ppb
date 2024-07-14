@@ -114,7 +114,7 @@ func (x *buildExecuteContext) prepareStaticDependencies_rlock() error {
 	x.staticResults = make([]BuildResult, len(staticDeps))
 
 	if err := x.graph.buildMany(len(staticDeps),
-		func(i int) (*buildNode, error) {
+		func(i int, _ *BuildOptions) (*buildNode, error) {
 			return x.graph.findNode(staticDeps[i])
 		},
 		func(i int, br BuildResult) error {
@@ -157,11 +157,11 @@ func (x *buildExecuteContext) needToBuild_assumeLocked() (bool, error) {
 	}
 
 	static := x.graph.launchBuildMany(len(x.node.Static),
-		func(i int) (*buildNode, error) {
+		func(i int, _ *BuildOptions) (*buildNode, error) {
 			return x.graph.findNode(x.node.Static[i].Alias)
 		}, OptionBuildRecurse(x.options, x.node))
 	dynamic := x.graph.launchBuildMany(len(x.node.Dynamic),
-		func(i int) (*buildNode, error) {
+		func(i int, _ *BuildOptions) (*buildNode, error) {
 			return x.graph.findNode(x.node.Dynamic[i].Alias)
 		}, OptionBuildRecurse(x.options, x.node))
 
@@ -372,7 +372,7 @@ func (x *buildExecuteContext) NeedBuildResult(results ...BuildResult) {
 
 func (x *buildExecuteContext) NeedBuildAliasables(n int, buildAliasables func(int) BuildAliasable, onBuildResult func(int, BuildResult) error) error {
 	return x.graph.buildMany(n,
-		func(i int) (*buildNode, error) {
+		func(i int, _ *BuildOptions) (*buildNode, error) {
 			return x.graph.findNode(buildAliasables(i).Alias())
 		},
 		func(i int, br BuildResult) error {
@@ -385,7 +385,7 @@ func (x *buildExecuteContext) dependsOn_AssumeLocked(n int, aliases func(int) Bu
 	base.Assert(func() bool { return n > 0 })
 
 	return x.graph.buildMany(n,
-		func(i int) (*buildNode, error) {
+		func(i int, _ *BuildOptions) (*buildNode, error) {
 			return x.graph.findNode(aliases(i))
 		},
 		func(i int, br BuildResult) error {
@@ -434,8 +434,8 @@ func (x *buildExecuteContext) needFactoriesFunc(n int, factories func(int) Build
 	defer x.unlock_for_dependency()
 
 	return x.graph.buildMany(n,
-		func(i int) (*buildNode, error) {
-			return buildInit(x.graph, factories(i), OptionBuildRecurse(x.options, x.node))
+		func(i int, bo *BuildOptions) (*buildNode, error) {
+			return buildInit(x.graph, factories(i), OptionBuildCopy(bo))
 		},
 		func(i int, br BuildResult) error {
 			x.node.addDynamic_AssumeLocked(br.BuildAlias, br.BuildStamp)
@@ -565,7 +565,7 @@ func (x buildGraphContext) GetStaticDependencies() (empty []BuildResult) { retur
 func (x buildGraphContext) NeedBuildResult(...BuildResult) { /*NOOP*/ }
 func (x buildGraphContext) DependsOn(aliases ...BuildAlias) error {
 	return x.graph.buildMany(len(aliases),
-		func(i int) (*buildNode, error) {
+		func(i int, _ *BuildOptions) (*buildNode, error) {
 			return x.graph.findNode(aliases[i])
 		},
 		func(i int, br BuildResult) error {
@@ -575,7 +575,7 @@ func (x buildGraphContext) DependsOn(aliases ...BuildAlias) error {
 }
 func (x *buildGraphContext) NeedBuildAliasables(n int, buildAliasables func(int) BuildAliasable, onBuildResult func(int, BuildResult) error) error {
 	return x.graph.buildMany(n,
-		func(i int) (*buildNode, error) {
+		func(i int, _ *BuildOptions) (*buildNode, error) {
 			return x.graph.findNode(buildAliasables(i).Alias())
 		},
 		func(i int, br BuildResult) error {
@@ -607,7 +607,7 @@ func (x buildGraphContext) needFactoriesFunc(n int, factories func(int) BuildFac
 		func(i int, result BuildResult) error {
 			return nil
 		},
-		base.Range[base.Future[BuildResult]](func(i int) base.Future[BuildResult] {
+		base.Range(func(i int) base.Future[BuildResult] {
 			return PrepareBuildFactory(x.graph, factories(i),
 				OptionBuildRecurse(x.options, nil),
 				OptionBuildOverride(opts...))
@@ -915,7 +915,7 @@ func (g *buildGraph) launchBuild(node *buildNode, options *BuildOptions) base.Fu
 		if alias := node.Buildable.Alias(); alias.Equals(node.BuildAlias) {
 			return nil
 		} else {
-			return fmt.Errorf("%v: node alias do not match buildable -> %q", node.BuildAlias, alias)
+			return fmt.Errorf("%v: node alias do not match buildable %q\n\t-> %v", node.BuildAlias, alias, node.Buildable)
 		}
 	})
 
@@ -1013,18 +1013,19 @@ func (g *buildGraph) launchBuild(node *buildNode, options *BuildOptions) base.Fu
 	return newFuture
 }
 
-func (g *buildGraph) buildMany(n int, nodes func(int) (*buildNode, error), onResults func(int, BuildResult) error, opts ...BuildOptionFunc) error {
+func (g *buildGraph) buildMany(n int, nodes func(int, *BuildOptions) (*buildNode, error), onResults func(int, BuildResult) error, opts ...BuildOptionFunc) error {
 	switch n {
 	case 0:
 		return nil
 
 	case 1:
-		node, err := nodes(0)
+		bo := NewBuildOptions(opts...)
+
+		node, err := nodes(0, &bo)
 		if err != nil {
 			return err
 		}
 
-		bo := NewBuildOptions(opts...)
 		future := g.launchBuild(node, &bo)
 
 		result, err := future.Join().Get()
@@ -1037,8 +1038,8 @@ func (g *buildGraph) buildMany(n int, nodes func(int) (*buildNode, error), onRes
 	default:
 		futures := make([]base.Future[BuildResult], n)
 		for i := range futures {
-			if node, err := nodes(i); err == nil {
-				bo := NewBuildOptions(opts...)
+			bo := NewBuildOptions(opts...)
+			if node, err := nodes(i, &bo); err == nil {
 				futures[i] = g.launchBuild(node, &bo)
 			} else {
 				return err
@@ -1048,18 +1049,18 @@ func (g *buildGraph) buildMany(n int, nodes func(int) (*buildNode, error), onRes
 		return base.ParallelJoin(onResults, futures...)
 	}
 }
-func (g *buildGraph) launchBuildMany(n int, nodes func(int) (*buildNode, error), opts ...BuildOptionFunc) base.Future[[]BuildResult] {
+func (g *buildGraph) launchBuildMany(n int, nodes func(int, *BuildOptions) (*buildNode, error), opts ...BuildOptionFunc) base.Future[[]BuildResult] {
 	switch n {
 	case 0:
 		return base.MakeFutureLiteral[[]BuildResult]([]BuildResult{})
 
 	case 1:
-		node, err := nodes(0)
+		bo := NewBuildOptions(opts...)
+		node, err := nodes(0, &bo)
 		if err != nil {
 			return base.MakeFutureError[[]BuildResult](err)
 		}
 
-		bo := NewBuildOptions(opts...)
 		future := g.launchBuild(node, &bo)
 
 		return base.MapFuture[[]BuildResult](future, func(br BuildResult) ([]BuildResult, error) {

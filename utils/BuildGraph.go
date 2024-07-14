@@ -282,7 +282,7 @@ func (g *buildGraph) Build(it BuildAliasable, options ...BuildOptionFunc) (Build
 func (g *buildGraph) BuildMany(targets BuildAliases, options ...BuildOptionFunc) (results []BuildResult, err error) {
 	results = make([]BuildResult, targets.Len())
 	err = g.buildMany(targets.Len(),
-		func(i int) (*buildNode, error) {
+		func(i int, _ *BuildOptions) (*buildNode, error) {
 			return g.findNode(targets[i])
 		},
 		func(i int, br BuildResult) error {
