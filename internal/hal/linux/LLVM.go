@@ -96,7 +96,9 @@ func (llvm *LlvmCompiler) CppStd(f *Facet, std CppStdType) {
 		std = maxSupported
 	}
 	switch std {
-	case CPPSTD_LATEST, CPPSTD_20:
+	case CPPSTD_LATEST, CPPSTD_23:
+		f.AddCompilationFlag("-std=c++23")
+	case CPPSTD_20:
 		f.AddCompilationFlag("-std=c++20")
 	case CPPSTD_17:
 		f.AddCompilationFlag("-std=c++17")
@@ -118,9 +120,9 @@ func (llvm *LlvmCompiler) DebugSymbols(u *Unit) {
 	case DEBUGINFO_DISABLED:
 		return
 	case DEBUGINFO_SYMBOLS:
-		base.LogVeryVerbose(LogLinux, "not available on linux: DEBUG_SYMBOLS")
+		base.LogVeryVerbose(LogLinux, "%v: not available on linux: DEBUG_SYMBOLS", u)
 	case DEBUGINFO_HOTRELOAD:
-		base.LogVeryVerbose(LogLinux, "not available on linux: DEBUG_HOTRELOAD")
+		base.LogVeryVerbose(LogLinux, "%v: not available on linux: DEBUG_HOTRELOAD", u)
 	case DEBUGINFO_EMBEDDED:
 	default:
 		base.UnexpectedValue(u.DebugInfo)
@@ -428,7 +430,6 @@ func (llvm *LlvmCompiler) Build(bc BuildContext) error {
 	}
 
 	llvm.Version = llvm.ProductInstall.ActualVer
-	llvm.CompilerRules.CppStd = CPPSTD_17
 	llvm.CompilerRules.Features = base.MakeEnumSet(
 		COMPILER_ALLOW_CACHING,
 		COMPILER_ALLOW_DISTRIBUTION,

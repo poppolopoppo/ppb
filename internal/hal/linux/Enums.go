@@ -84,6 +84,9 @@ type LlvmVersion int32
 const (
 	llvm_any    LlvmVersion = -1
 	LLVM_LATEST LlvmVersion = 0
+	LLVM_19     LlvmVersion = 19
+	LLVM_18     LlvmVersion = 18
+	LLVM_17     LlvmVersion = 17
 	LLVM_16     LlvmVersion = 16
 	LLVM_15     LlvmVersion = 15
 	LLVM_14     LlvmVersion = 14
@@ -92,10 +95,15 @@ const (
 	LLVM_11     LlvmVersion = 11
 	LLVM_10     LlvmVersion = 10
 	LLVM_9      LlvmVersion = 9
+	LLVM_5      LlvmVersion = 5
+	LLVM_4      LlvmVersion = 4
 )
 
 func GetLlvmVersions() []LlvmVersion {
 	return []LlvmVersion{
+		LLVM_19,
+		LLVM_18,
+		LLVM_17,
 		LLVM_16,
 		LLVM_15,
 		LLVM_14,
@@ -104,6 +112,8 @@ func GetLlvmVersions() []LlvmVersion {
 		LLVM_11,
 		LLVM_10,
 		LLVM_9,
+		LLVM_5,
+		LLVM_4,
 	}
 }
 func (v LlvmVersion) Equals(o LlvmVersion) bool {
@@ -115,6 +125,12 @@ func (v LlvmVersion) String() string {
 		return "ANY"
 	case LLVM_LATEST:
 		return "LATEST"
+	case LLVM_19:
+		return "19"
+	case LLVM_18:
+		return "18"
+	case LLVM_17:
+		return "17"
 	case LLVM_16:
 		return "16"
 	case LLVM_15:
@@ -131,6 +147,10 @@ func (v LlvmVersion) String() string {
 		return "10"
 	case LLVM_9:
 		return "9"
+	case LLVM_5:
+		return "5"
+	case LLVM_4:
+		return "4"
 	default:
 		base.UnreachableCode()
 		return ""
@@ -142,6 +162,12 @@ func (v *LlvmVersion) Set(in string) (err error) {
 		*v = llvm_any
 	case LLVM_LATEST.String():
 		*v = LLVM_LATEST
+	case LLVM_19.String():
+		*v = LLVM_19
+	case LLVM_18.String():
+		*v = LLVM_18
+	case LLVM_17.String():
+		*v = LLVM_17
 	case LLVM_16.String():
 		*v = LLVM_16
 	case LLVM_15.String():
@@ -158,6 +184,10 @@ func (v *LlvmVersion) Set(in string) (err error) {
 		*v = LLVM_10
 	case LLVM_9.String():
 		*v = LLVM_9
+	case LLVM_5.String():
+		*v = LLVM_5
+	case LLVM_4.String():
+		*v = LLVM_4
 	default:
 		err = base.MakeUnexpectedValueError(v, in)
 	}
@@ -173,17 +203,15 @@ func (x *LlvmVersion) AutoComplete(in base.AutoComplete) {
 }
 
 func getCppStdFromLlvm(ver LlvmVersion) compile.CppStdType {
-	switch ver {
-	case LLVM_16:
+	if ver >= LLVM_15 {
+		return compile.CPPSTD_23
+	} else if ver >= LLVM_10 {
 		return compile.CPPSTD_20
-	case LLVM_15, LLVM_14, LLVM_13, LLVM_12, LLVM_11:
+	} else if ver >= LLVM_5 {
 		return compile.CPPSTD_17
-	case LLVM_10:
+	} else if ver >= LLVM_4 {
 		return compile.CPPSTD_14
-	case LLVM_9:
-		return compile.CPPSTD_11
-	default:
-		base.UnexpectedValue(ver)
+	} else {
 		return compile.CPPSTD_11
 	}
 }

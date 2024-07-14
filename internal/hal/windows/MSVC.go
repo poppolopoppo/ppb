@@ -128,7 +128,9 @@ func (msvc *MsvcCompiler) CppStd(f *Facet, std CppStdType) {
 		std = maxSupported
 	}
 	switch std {
-	case CPPSTD_LATEST, CPPSTD_20:
+	case CPPSTD_LATEST, CPPSTD_23:
+		f.AddCompilationFlag("/std:c++23")
+	case CPPSTD_20:
 		f.AddCompilationFlag("/std:c++20")
 	case CPPSTD_17:
 		f.AddCompilationFlag("/std:c++17")

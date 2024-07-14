@@ -153,7 +153,7 @@ func (x *MsvcVersion) AutoComplete(in base.AutoComplete) {
 func getCppStdFromMsc(msc_ver MsvcVersion) compile.CppStdType {
 	switch msc_ver {
 	case MSC_VER_2022:
-		return compile.CPPSTD_20
+		return compile.CPPSTD_23
 	case MSC_VER_2019:
 		return compile.CPPSTD_17
 	case MSC_VER_2017:
