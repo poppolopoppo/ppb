@@ -67,20 +67,24 @@ func (x *bytesRecyclerPool) Release(item []byte) {
 	x.pool.Put(item)
 }
 
+var TransientPage1MiB = newBytesRecycler(1 << 20) // SHOULD BE EQUALS TO ONE OF PREDEFINED LZ4.BLOCKSIZE! (64KiB,256KiB,1MiB,4MiB)
+var TransientPage256KiB = newBytesRecycler(256 << 10)
+var TransientPage64KiB = newBytesRecycler(64 << 10)
+var TransientPage4KiB = newBytesRecycler(4 << 10)
+
 func GetBytesRecyclerBySize(size int64) BytesRecycler {
 	pageAlloc := TransientPage4KiB
-	if size > int64(TransientPage64KiB.Stride()) {
+	if 2*size > int64(TransientPage64KiB.Stride()) {
 		pageAlloc = TransientPage64KiB
-		if size > int64(TransientPage1MiB.Stride()) {
-			pageAlloc = TransientPage1MiB
+		if 2*size > int64(TransientPage256KiB.Stride()) {
+			pageAlloc = TransientPage256KiB
+			if 2*size > int64(TransientPage1MiB.Stride()) {
+				pageAlloc = TransientPage1MiB
+			}
 		}
 	}
 	return pageAlloc
 }
-
-var TransientPage1MiB = newBytesRecycler(1 << 20) // SHOULD BE EQUALS TO ONE OF PREDEFINED LZ4.BLOCKSIZE! (64KiB,256KiB,1MiB,4MiB)
-var TransientPage64KiB = newBytesRecycler(64 << 10)
-var TransientPage4KiB = newBytesRecycler(4 << 10)
 
 /***************************************
  * Share LZ4 pool for 1MiB/64KiB blocks
