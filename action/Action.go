@@ -25,6 +25,10 @@ type Action interface {
 	fmt.Stringer
 }
 
+type ActionSourceDependencies interface {
+	GetActionSourceDependencies(utils.BuildContext) (utils.FileSet, error)
+}
+
 /***************************************
  * Action Rules
  ***************************************/
@@ -82,8 +86,8 @@ type ActionRules struct {
 	CommandRules
 
 	OutputFiles   utils.FileSet // all output files that should be tracked
-	ExportIndex   int32         // index of export file in outputs files
 	Prerequisites ActionAliases // actions to run dynamically only if cache missed (PCH)
+	ExportIndex   int32         // index of export file in outputs files
 
 	Options OptionFlags
 }
@@ -147,6 +151,9 @@ func (x *ActionRules) String() string {
 }
 
 func (x *ActionRules) Build(bc utils.BuildContext) error {
+	return x.BuildWithSourceDependencies(bc, nil)
+}
+func (x *ActionRules) BuildWithSourceDependencies(bc utils.BuildContext, sourceDependencies ActionSourceDependencies) error {
 	// consolidate static input files
 	var staticInputFiles, excludedInputFiles utils.FileSet
 	for _, it := range bc.GetStaticDependencies() {
@@ -229,7 +236,33 @@ func (x *ActionRules) Build(bc utils.BuildContext) error {
 	}
 
 	// check that process did write expected files and track them as outputs
-	return bc.OutputFile(x.OutputFiles...)
+	if err := bc.OutputFile(x.OutputFiles...); err != nil {
+		return err
+	}
+
+	// check if source dependencies need to be parsed
+	if !base.IsNil(sourceDependencies) {
+		sourceInputFiles, err := sourceDependencies.GetActionSourceDependencies(bc)
+		if err == nil {
+			sourceInputFiles.Remove(staticInputFiles...)
+			sourceInputFiles.Remove(excludedInputFiles...)
+
+			if flags := GetActionFlags(); flags.ShowFiles.Get() {
+				for _, file := range sourceInputFiles {
+					base.LogForwardf("%v: [%s]  %s", base.MakeStringer(func() string {
+						return x.Alias().String()
+					}), internal_io.FILEACCESS_READ, file)
+				}
+			}
+
+			err = bc.NeedFiles(sourceInputFiles...)
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func harvestActionInputFiles(bc utils.BuildContext, br utils.BuildResult, results, excludeds *utils.FileSet) error {

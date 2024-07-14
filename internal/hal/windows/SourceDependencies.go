@@ -7,7 +7,6 @@ import (
 
 	"github.com/poppolopoppo/ppb/action"
 	"github.com/poppolopoppo/ppb/internal/base"
-	internal_io "github.com/poppolopoppo/ppb/internal/io"
 	"github.com/poppolopoppo/ppb/utils"
 )
 
@@ -60,8 +59,8 @@ func (x MsvcSourceDependencies) Files() (result []utils.Filename) {
  ***************************************/
 
 type MsvcSourceDependenciesAction struct {
-	action.ActionRules
 	SourceDependenciesFile utils.Filename
+	action.ActionRules
 }
 
 func NewMsvcSourceDependenciesAction(model *action.ActionModel, output utils.Filename) *MsvcSourceDependenciesAction {
@@ -77,24 +76,21 @@ func NewMsvcSourceDependenciesAction(model *action.ActionModel, output utils.Fil
 	return result
 }
 
-func (x *MsvcSourceDependenciesAction) Alias() utils.BuildAlias {
-	return action.NewActionAlias(x.GetGeneratedFile()).Alias()
-}
 func (x *MsvcSourceDependenciesAction) Build(bc utils.BuildContext) error {
 	// compile the action with /sourceDependencies
-	if err := x.ActionRules.Build(bc); err != nil {
-		return err
-	}
+	return x.ActionRules.BuildWithSourceDependencies(bc, x)
+}
 
+func (x *MsvcSourceDependenciesAction) GetActionSourceDependencies(bc utils.BuildContext) (sourceFiles utils.FileSet, err error) {
 	// track json file as an output dependency (check file exists)
-	if err := bc.OutputFile(x.SourceDependenciesFile); err != nil {
-		return err
+	if err = bc.OutputFile(x.SourceDependenciesFile); err != nil {
+		return
 	}
 
 	// parse source dependencies outputted by cl.exe
 	var sourceDeps MsvcSourceDependencies
-	if err := utils.UFS.OpenBuffered(x.SourceDependenciesFile, sourceDeps.Load); err != nil {
-		return err
+	if err = utils.UFS.OpenBuffered(x.SourceDependenciesFile, sourceDeps.Load); err != nil {
+		return
 	}
 
 	// add all parsed filenames as dynamic dependencies: when a header is modified, this action will have to be rebuild
@@ -103,17 +99,10 @@ func (x *MsvcSourceDependenciesAction) Build(bc utils.BuildContext) error {
 		return base.PrettyPrint(dependentFiles)
 	}))
 
-	if flags := action.GetActionFlags(); flags.ShowFiles.Get() {
-		for _, file := range dependentFiles {
-			base.LogForwardf("%v: [%s]  %s", base.MakeStringer(func() string {
-				return x.Alias().String()
-			}), internal_io.FILEACCESS_READ, file)
-		}
-	}
-
-	return bc.NeedFiles(dependentFiles...)
+	return dependentFiles, nil
 }
+
 func (x *MsvcSourceDependenciesAction) Serialize(ar base.Archive) {
-	ar.Serializable(&x.ActionRules)
 	ar.Serializable(&x.SourceDependenciesFile)
+	ar.Serializable(&x.ActionRules)
 }

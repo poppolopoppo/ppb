@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"io"
 	"path/filepath"
+	"strings"
 	"unicode"
 
 	"github.com/poppolopoppo/ppb/action"
@@ -11,6 +12,8 @@ import (
 
 	. "github.com/poppolopoppo/ppb/utils"
 )
+
+var LogGnuDepFile = base.NewLogCategory("GnuDep")
 
 /***************************************
  * GnuDepFile
@@ -22,6 +25,7 @@ type GnuDepFile struct {
 
 func (x *GnuDepFile) Load(src Filename) error {
 	x.Dependencies = FileSet{}
+	// base.LogTrace(LogGnuDepFile, "%v: start parsing gnu dependency file", src)
 
 	return UFS.Open(src, func(rd io.Reader) error {
 		var rb bufio.Reader
@@ -37,16 +41,15 @@ func (x *GnuDepFile) Load(src Filename) error {
 			}
 
 			appendFile := func() {
-				filename := base.UnsafeStringFromBuffer(buf)
-				if len(filename) > 0 {
+				if filename := buf.String(); len(filename) > 0 {
 					if filepath.IsLocal(filename) {
 						x.Dependencies.AppendUniq(UFS.Root.AbsoluteFile(filename).Normalize())
 					} else {
-						x.Dependencies.AppendUniq(MakeFilename(filename))
+						x.Dependencies.AppendUniq(MakeFilename(strings.Clone(filename)))
 					}
-					// LogDebug("gnu-dep-file: parsed source file name %q", x.Dependencies[len(x.Dependencies)-1])
+					// base.LogTrace(LogGnuDepFile, "%v: parsed source file name %q", src, x.Dependencies[len(x.Dependencies)-1])
 				}
-				buf.Reset()
+				buf.Truncate(0)
 			}
 
 			for {
@@ -97,38 +100,36 @@ func (x *GnuDepFile) Load(src Filename) error {
  ***************************************/
 
 type GnuSourceDependenciesAction struct {
-	action.ActionRules
 	GnuDepFile Filename
+	action.ActionRules
 }
 
-func (x *GnuSourceDependenciesAction) Alias() BuildAlias {
-	return action.NewActionAlias(x.GetGeneratedFile()).Alias()
-}
 func (x *GnuSourceDependenciesAction) Build(bc BuildContext) error {
 	// compile the action with /sourceDependencies
-	if err := x.ActionRules.Build(bc); err != nil {
-		return err
+	return x.ActionRules.BuildWithSourceDependencies(bc, x)
+}
+
+func (x *GnuSourceDependenciesAction) GetActionSourceDependencies(bc BuildContext) (sourceFiles FileSet, err error) {
+	// track json file as an output dependency (and check if file exists)
+	if err = bc.OutputFile(x.GnuDepFile); err != nil {
+		return
 	}
 
-	// track json file as an output dependency (check file exists)
-	if err := bc.OutputFile(x.GnuDepFile); err != nil {
-		return err
-	}
-
-	// parse source dependencies outputted by cl.exe
+	// parse source dependencies outputted by a GNU compiler
 	var sourceDeps GnuDepFile
-	if err := sourceDeps.Load(x.GnuDepFile); err != nil {
-		return err
+	if err = sourceDeps.Load(x.GnuDepFile); err != nil {
+		return
 	}
 
-	// add all parsed filenames as dynamic dependencies: when a header is modified, this action will have to be rebuild
-	base.LogDebug(LogGeneric, "gnu-dep-file: parsed output in %q\n%v", x.GnuDepFile, base.MakeStringer(func() string {
+	// add all parsed filenames as dynamic dependencies: when a dependency is modified, this action will have to be rebuild
+	base.LogDebug(LogGnuDepFile, "gnu-dep-file: parsed output in %q\n%v", x.GnuDepFile, base.MakeStringer(func() string {
 		return base.PrettyPrint(sourceDeps.Dependencies)
 	}))
 
-	return bc.NeedFiles(sourceDeps.Dependencies...)
+	return sourceDeps.Dependencies, nil
 }
+
 func (x *GnuSourceDependenciesAction) Serialize(ar base.Archive) {
-	ar.Serializable(&x.ActionRules)
 	ar.Serializable(&x.GnuDepFile)
+	ar.Serializable(&x.ActionRules)
 }
