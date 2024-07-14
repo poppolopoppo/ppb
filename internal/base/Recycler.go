@@ -339,7 +339,16 @@ func TransientIoCopyWithProgress(context string, totalSize int64, dst io.Writer,
 	if wt, ok := src.(io.WriterTo); ok {
 		// If the reader has a WriteTo method, use it to do the copy.
 		// Avoids an allocation and a copy.
-		return wt.WriteTo(WriterWithProgress{writer: dst, pbar: pbar})
+		hasNonGenericOverride := true
+		IfLinux(func() {
+			// os.File on Linux fallbacks on io.Copy, and we prefer our version in this case
+			_, ok := dst.(*os.File)
+			hasNonGenericOverride = !ok
+		})
+		if hasNonGenericOverride {
+			return wt.WriteTo(WriterWithProgress{writer: dst, pbar: pbar})
+		}
+
 	} else if rt, ok := dst.(io.ReaderFrom); ok {
 		hasNonGenericOverride := true
 		IfWindows(func() {
