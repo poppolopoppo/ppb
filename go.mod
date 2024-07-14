@@ -22,7 +22,7 @@ require (
 )
 
 require (
-	github.com/AllenDang/cimgui-go v0.0.0-20240611070805-39b5aa2438db // indirect
+	github.com/AllenDang/cimgui-go v0.0.0-20240711055741-4b4d3ac1ee30 // indirect
 	github.com/AllenDang/go-findfont v0.0.0-20200702051237-9f180485aeb8 // indirect
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/dsnet/compress v0.0.2-0.20210315054119-f66993602bf5 // indirect
@@ -31,7 +31,7 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/google/pprof v0.0.0-20240625030939-27f56978b8b0 // indirect
+	github.com/google/pprof v0.0.0-20240711041743-f6c9dda6c6da // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/mazznoer/csscolorparser v0.1.3 // indirect
