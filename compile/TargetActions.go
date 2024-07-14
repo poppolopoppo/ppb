@@ -438,9 +438,7 @@ func (x *buildActionGenerator) PrecompilerHeaderActions(dependencies action.Acti
 	case PCH_MONOLITHIC:
 		compilerRules := x.Compiler.GetCompiler()
 
-		pchObject := Filename{
-			Dirname:  x.Unit.PrecompiledObject.Dirname,
-			Basename: x.Unit.PrecompiledObject.Basename + x.Compiler.Extname(PAYLOAD_OBJECTLIST)}
+		pchObject := x.Compiler.GetPayloadOutput(x.Unit, PAYLOAD_PRECOMPILEDOBJECT, x.Unit.PrecompiledObject)
 
 		buildAction, err := x.CreateAction(
 			PAYLOAD_PRECOMPILEDHEADER,
@@ -464,7 +462,7 @@ func (x *buildActionGenerator) PrecompilerHeaderActions(dependencies action.Acti
 
 		actions.Append(buildAction)
 	case PCH_HEADERUNIT:
-		// handed in HeaderUnitActions()
+		// handled in HeaderUnitActions()
 	case PCH_SHARED:
 		return action.ActionSet{}, fmt.Errorf("PCH_SHARED is not supported at the monent")
 	default:

@@ -100,6 +100,8 @@ func (msvc *MsvcCompiler) Extname(x PayloadType) string {
 		return ".h.ifc"
 	case PAYLOAD_PRECOMPILEDHEADER:
 		return ".pch"
+	case PAYLOAD_PRECOMPILEDOBJECT:
+		return ".obj"
 	case PAYLOAD_HEADERS:
 		return ".h"
 	case PAYLOAD_SOURCES:
@@ -163,6 +165,8 @@ func (msvc *MsvcCompiler) AllowCaching(u *Unit, payload PayloadType) (result act
 		}
 	case PAYLOAD_HEADERUNIT, PAYLOAD_STATICLIB, PAYLOAD_DEBUGSYMBOLS:
 		result = action.CACHE_READWRITE
+	case PAYLOAD_PRECOMPILEDOBJECT:
+		base.UnreachableCode()
 	}
 	if result == action.CACHE_INHERIT {
 		result = action.CACHE_NONE
@@ -186,6 +190,8 @@ func (msvc *MsvcCompiler) AllowDistribution(u *Unit, payload PayloadType) (resul
 		}
 	case PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB, PAYLOAD_STATICLIB, PAYLOAD_HEADERUNIT, PAYLOAD_DEBUGSYMBOLS:
 		result = action.DIST_ENABLE
+	case PAYLOAD_PRECOMPILEDOBJECT:
+		base.UnreachableCode()
 	}
 	if result == action.DIST_INHERIT {
 		result = action.DIST_NONE
@@ -196,6 +202,8 @@ func (msvc *MsvcCompiler) AllowResponseFile(u *Unit, payload PayloadType) (resul
 	switch payload {
 	case PAYLOAD_OBJECTLIST, PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB, PAYLOAD_STATICLIB, PAYLOAD_DEBUGSYMBOLS:
 		result = SUPPORT_ALLOWED
+	case PAYLOAD_PRECOMPILEDOBJECT:
+		base.UnreachableCode()
 	}
 	if result == SUPPORT_INHERIT {
 		result = SUPPORT_UNAVAILABLE
@@ -722,7 +730,7 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 		}
 
 	case PAYLOAD_STATICLIB:
-	case PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER:
+	case PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_PRECOMPILEDOBJECT:
 	case PAYLOAD_OBJECTLIST, PAYLOAD_HEADERS:
 	default:
 		base.UnexpectedValuePanic(u.Payload, u.Payload)

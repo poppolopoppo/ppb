@@ -57,7 +57,10 @@ func (llvm *LlvmCompiler) Extname(x PayloadType) string {
 	case PAYLOAD_SOURCES:
 		return ".cpp"
 	case PAYLOAD_DEPENDENCIES:
-		return ".obj.d"
+		return ".d"
+	case PAYLOAD_PRECOMPILEDOBJECT:
+		base.UnreachableCode()
+		return ""
 	default:
 		base.UnexpectedValue(x)
 		return ""
@@ -137,10 +140,13 @@ func (llvm *LlvmCompiler) Link(f *Facet, lnk LinkType) {
 }
 func (llvm *LlvmCompiler) PrecompiledHeader(u *Unit) {
 	switch u.PCH {
+	case PCH_HEADERUNIT:
+		base.LogWarning(LogLinux, "%v: clang does not support header units with automatic translation, fallback to PCH", u)
+		fallthrough
 	case PCH_MONOLITHIC, PCH_SHARED:
 		u.CompilerOptions.Append(
 			"-include"+u.PrecompiledHeader.Relative(UFS.Source),
-			"-include-pch"+MakeLocalFilename(u.PrecompiledObject))
+			"-include-pch", MakeLocalFilename(u.PrecompiledObject))
 		if u.PCH != PCH_SHARED {
 			u.PrecompiledHeaderOptions.Prepend("-emit-pch", "-xc++-header")
 		}
@@ -200,6 +206,9 @@ func (llvm *LlvmCompiler) LibraryPath(f *Facet, dirs ...Directory) {
 	}
 }
 func (llvm *LlvmCompiler) GetPayloadOutput(u *compile.Unit, payload compile.PayloadType, file Filename) Filename {
+	if payload == PAYLOAD_PRECOMPILEDOBJECT {
+		return file // clang does not output a compiled object when emitting PCH, only a pre-parsed AST
+	}
 	return file.ReplaceExt(llvm.Extname(payload))
 }
 func (llvm *LlvmCompiler) CreateAction(u *Unit, _ PayloadType, model *action.ActionModel) action.Action {

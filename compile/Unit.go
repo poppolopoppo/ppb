@@ -225,7 +225,7 @@ func (unit *Unit) GetBinariesOutput(compiler Compiler, src Filename, payload Pay
 	return compiler.GetPayloadOutput(unit, payload, UFS.Binaries.AbsoluteFile(modulePath))
 }
 func (unit *Unit) GetIntermediateOutput(compiler Compiler, src Filename, payload PayloadType) Filename {
-	base.AssertIn(payload, PAYLOAD_OBJECTLIST, PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_STATICLIB)
+	base.AssertIn(payload, PAYLOAD_OBJECTLIST, PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_PRECOMPILEDOBJECT, PAYLOAD_STATICLIB)
 	var modulePath string
 	if src.Dirname.IsIn(unit.GeneratedDir) {
 		modulePath = src.Relative(unit.GeneratedDir)
@@ -238,7 +238,7 @@ func (unit *Unit) GetPayloadOutput(compiler Compiler, src Filename, payload Payl
 	switch payload {
 	case PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB:
 		result = unit.GetBinariesOutput(compiler, src, payload)
-	case PAYLOAD_OBJECTLIST, PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_STATICLIB:
+	case PAYLOAD_OBJECTLIST, PAYLOAD_HEADERUNIT, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_PRECOMPILEDOBJECT, PAYLOAD_STATICLIB:
 		result = unit.GetIntermediateOutput(compiler, src, payload)
 	case PAYLOAD_HEADERS:
 		result = src
@@ -554,8 +554,8 @@ func (unit *Unit) linkModuleDependencies(bc BuildContext, compileEnv *CompileEnv
 			default:
 				base.UnexpectedValue(vis)
 			}
-		case PAYLOAD_EXECUTABLE:
-			fallthrough // can't depend on an executable
+		case PAYLOAD_EXECUTABLE, PAYLOAD_PRECOMPILEDOBJECT:
+			fallthrough // can't depend on an executable or precompiled object
 		default:
 			return base.MakeUnexpectedValueError(unit.Payload, other.Payload)
 		}
