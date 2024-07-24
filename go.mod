@@ -15,7 +15,7 @@ require (
 	github.com/pkg/profile v1.7.0
 	github.com/quic-go/quic-go v0.45.1
 	github.com/shirou/gopsutil v3.21.11+incompatible
-	golang.org/x/exp v0.0.0-20240707233637-46b078467d37
+	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
 	golang.org/x/image v0.18.0
 	golang.org/x/net v0.27.0
 	golang.org/x/sys v0.22.0
@@ -25,16 +25,19 @@ require (
 	github.com/AllenDang/cimgui-go v0.0.0-20240711055741-4b4d3ac1ee30 // indirect
 	github.com/AllenDang/go-findfont v0.0.0-20200702051237-9f180485aeb8 // indirect
 	github.com/andybalholm/brotli v1.1.0 // indirect
+	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/dsnet/compress v0.0.2-0.20210315054119-f66993602bf5 // indirect
 	github.com/faiface/mainthread v0.0.0-20171120011319-8b78f0a41ae3 // indirect
 	github.com/felixge/fgprof v0.9.4 // indirect
+	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/google/pprof v0.0.0-20240711041743-f6c9dda6c6da // indirect
+	github.com/google/pprof v0.0.0-20240722153945-304e4f0156b8 // indirect
+	github.com/ianlancetaylor/demangle v0.0.0-20240312041847-bd984b5ce465 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
-	github.com/mazznoer/csscolorparser v0.1.3 // indirect
+	github.com/mazznoer/csscolorparser v0.1.4 // indirect
 	github.com/napsy/go-css v0.0.0-20230611142900-9dd118f3874c // indirect
 	github.com/nwaples/rardecode v1.1.3 // indirect
 	github.com/onsi/ginkgo/v2 v2.19.0 // indirect
