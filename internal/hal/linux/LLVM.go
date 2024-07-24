@@ -150,7 +150,10 @@ func (llvm *LlvmCompiler) PrecompiledHeader(u *Unit) {
 			"-include"+u.PrecompiledHeader.Relative(UFS.Source),
 			"-include-pch", MakeLocalFilename(u.PrecompiledObject))
 		if u.PCH != PCH_SHARED {
-			u.PrecompiledHeaderOptions.Prepend("-emit-pch", "-xc++-header")
+			u.PrecompiledHeaderOptions.Prepend(
+				"-xc++-header",
+				"-fpch-instantiate-templates",
+				"-fpch-validate-input-files-content")
 		}
 	case PCH_DISABLED:
 	default:
@@ -213,21 +216,37 @@ func (llvm *LlvmCompiler) GetPayloadOutput(u *compile.Unit, payload compile.Payl
 	}
 	return file.ReplaceExt(llvm.Extname(payload))
 }
-func (llvm *LlvmCompiler) CreateAction(u *Unit, _ PayloadType, model *action.ActionModel) action.Action {
-	result := &GnuSourceDependenciesAction{
-		ActionRules: model.CreateActionRules(),
-		GnuDepFile:  model.ExportFile.ReplaceExt(llvm.Extname(PAYLOAD_DEPENDENCIES)),
+func (llvm *LlvmCompiler) CreateAction(u *Unit, payload PayloadType, model *action.ActionModel) action.Action {
+	switch payload {
+	case PAYLOAD_OBJECTLIST, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_PRECOMPILEDOBJECT, PAYLOAD_HEADERUNIT:
+		if model.Options.Has(action.OPT_ALLOW_SOURCECONTROL) {
+			result := &GnuSourceDependenciesAction{
+				ActionRules: model.CreateActionRules(),
+				GnuDepFile:  model.ExportFile.ReplaceExt(llvm.Extname(PAYLOAD_DEPENDENCIES)),
+			}
+
+			allowRelativePath := result.Options.Has(action.OPT_ALLOW_RELATIVEPATH)
+
+			result.Arguments.Append("--write-dependencies", "-MF"+MakeLocalFilenameIFP(result.GnuDepFile, allowRelativePath))
+			result.OutputFiles.Append(result.GnuDepFile)
+			return result
+		}
+		fallthrough
+
+	case PAYLOAD_DEBUGSYMBOLS, PAYLOAD_DEPENDENCIES, PAYLOAD_EXECUTABLE, PAYLOAD_HEADERS, PAYLOAD_SHAREDLIB, PAYLOAD_SOURCES, PAYLOAD_STATICLIB:
+		rules := model.CreateActionRules()
+		return &rules
+	default:
+		base.UnreachableCode()
+		return nil
 	}
-
-	allowRelativePath := result.Options.Has(action.OPT_ALLOW_RELATIVEPATH)
-
-	result.Arguments.Append("--write-dependencies", "-MF"+MakeLocalFilenameIFP(result.GnuDepFile, allowRelativePath))
-	result.OutputFiles.Append(result.GnuDepFile)
-	return result
 }
 func (llvm *LlvmCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 	if u.CompilerVerbose.Get() {
-		u.CompilerOptions.AppendUniq("/v")
+		u.CompilerOptions.AppendUniq("-v")
+	}
+	if u.LinkerVerbose.Get() {
+		u.LinkerOptions.AppendUniq("-v")
 	}
 
 	switch compileEnv.GetPlatform().Arch {
@@ -255,13 +274,24 @@ func (llvm *LlvmCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 
 	switch u.Optimize {
 	case OPTIMIZE_NONE:
-		u.AddCompilationFlag("-O0", "-fno-PIE")
+		u.AddCompilationFlag("-O0")
 	case OPTIMIZE_FOR_DEBUG:
-		u.AddCompilationFlag("-O1", "-fno-PIE")
+		u.AddCompilationFlag("-O1")
 	case OPTIMIZE_FOR_SIZE:
-		u.AddCompilationFlag("-O2", "-fno-PIE", "-ffast-math")
+		u.AddCompilationFlag("-O2", "-ffast-math")
 	case OPTIMIZE_FOR_SPEED, OPTIMIZE_FOR_SHIPPING:
-		u.AddCompilationFlag("-O3", "-fPIE", "-ffast-math")
+		u.AddCompilationFlag("-O3", "-Ofast", "-ffast-math")
+
+		// https://blog.quarkslab.com/clang-hardening-cheat-sheet.html
+		if u.Payload == PAYLOAD_SHAREDLIB {
+			u.AddCompilationFlag("-fPIC")
+		} else {
+			u.AddCompilationFlag("-fPIE", "-pie")
+		}
+
+		if u.Optimize == OPTIMIZE_FOR_SHIPPING {
+			u.AddCompilationFlag("-Wl,-z,now", "-Wl,-z,relr")
+		}
 	}
 
 	// can only enable LTCG when optimizations are enabled
@@ -437,7 +467,7 @@ func (llvm *LlvmCompiler) Build(bc BuildContext) error {
 
 	llvm.CompilerRules.Executable = llvm.ProductInstall.ClangPlusPlus
 	llvm.CompilerRules.Librarian = llvm.ProductInstall.Ar
-	llvm.CompilerRules.Linker = llvm.ProductInstall.Clang
+	llvm.CompilerRules.Linker = llvm.ProductInstall.ClangPlusPlus
 
 	llvm.CompilerRules.Environment = internal_io.NewProcessEnvironment()
 	llvm.CompilerRules.Facet = NewFacet()
@@ -449,17 +479,18 @@ func (llvm *LlvmCompiler) Build(bc BuildContext) error {
 	)
 
 	facet.AddCompilationFlag_NoAnalysis(
+		"-o", "%2", "%1", // input file injection
+		"-Wformat", "-Wformat-security", // detect Potential Formatting Attack
 		"-Wall", "-Wextra", "-Werror", "-Wfatal-errors",
 		"-Wshadow",
 		"-Wno-#pragma-messages",             // silence Unity pragma messages, which are interpreted as warnings by clang
-		"-Wno-unused-command-line-argument", // #TODO: unsilence this warning
+		"-Wno-unused-command-line-argument", // #TODO: unsilence this warning (-lxxx are generating warnings when do not directly consumes specified libraries)
 		"-fcolor-diagnostics",
 		"-march=native",
 		"-mavx", "-msse4.2",
 		"-mlzcnt", "-mpopcnt",
 		"-fsized-deallocation", // https://isocpp.org/files/papers/n3778.html
 		"-c",                   // compile only
-		"-o", "%2", "%1",       // input file injection
 	)
 
 	if compileFlags, err := GetCompileFlags(bc); err == nil && compileFlags.Benchmark.Get() {
@@ -470,11 +501,7 @@ func (llvm *LlvmCompiler) Build(bc BuildContext) error {
 	}
 
 	facet.LibrarianOptions.Append("rcs", "%2", "%1")
-	facet.LinkerOptions.Append("%1", "-o", "%2")
-
-	if int(llvm.Version) >= int(LLVM_14) {
-		facet.AddCompilationFlag_NoPreprocessor("-Xclang -fuse-ctor-homing")
-	}
+	facet.LinkerOptions.Append("-o", "%2", "%1")
 
 	switch linuxFlags.DumpRecordLayouts {
 	case DUMPRECORDLAYOUTS_NONE:
