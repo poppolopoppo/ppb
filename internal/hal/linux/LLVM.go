@@ -326,14 +326,19 @@ func llvm_CXX_linkTimeCodeGeneration(u *Unit, enabled bool, incremental bool) {
 func llvm_CXX_runtimeChecks(u *Unit, enabled bool, strong bool) {
 	if enabled {
 		if strong {
+			base.LogVeryVerbose(LogLinux, "%v: using glibc _FORTIFY_SOURCE=2", u)
+			u.Defines.Append("_FORTIFY_SOURCE=2")
 			base.LogVeryVerbose(LogLinux, "%v: using llvm strong stack protector", u)
 			u.AddCompilationFlag_NoPreprocessor("-fstack-protector-strong")
 		} else {
+			base.LogVeryVerbose(LogLinux, "%v: using glibc _FORTIFY_SOURCE=1", u)
+			u.Defines.Append("_FORTIFY_SOURCE=1")
 			base.LogVeryVerbose(LogLinux, "%v: using llvm stack protector", u)
 			u.AddCompilationFlag_NoPreprocessor("-fstack-protector")
 		}
 	} else {
 		base.LogVeryVerbose(LogLinux, "%v: disable llvm stack protector", u)
+		u.Defines.Append("_FORTIFY_SOURCE=0")
 		u.AddCompilationFlag_NoPreprocessor("-fno-stack-protector")
 	}
 }
