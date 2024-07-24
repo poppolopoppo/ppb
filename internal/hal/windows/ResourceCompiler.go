@@ -63,7 +63,7 @@ func (res *ResourceCompiler) ExternIncludePath(facet *compile.Facet, dirs ...uti
 func (res *ResourceCompiler) SystemIncludePath(facet *compile.Facet, dirs ...utils.Directory) {
 	res.IncludePath(facet, dirs...)
 }
-func (res *ResourceCompiler) Library(*compile.Facet, ...utils.Filename)      {}
+func (res *ResourceCompiler) Library(*compile.Facet, ...string)              {}
 func (res *ResourceCompiler) LibraryPath(*compile.Facet, ...utils.Directory) {}
 
 func (res *ResourceCompiler) GetPayloadOutput(u *compile.Unit, payload compile.PayloadType, file utils.Filename) utils.Filename {

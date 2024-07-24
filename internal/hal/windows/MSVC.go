@@ -357,11 +357,10 @@ func (msvc *MsvcCompiler) ExternIncludePath(f *Facet, dirs ...Directory) {
 func (msvc *MsvcCompiler) SystemIncludePath(facet *Facet, dirs ...Directory) {
 	msvc.ExternIncludePath(facet, dirs...)
 }
-func (msvc *MsvcCompiler) Library(f *Facet, lib ...Filename) {
-	for _, x := range lib {
-		libInc := MakeLocalFilename(x)
-		f.LibrarianOptions.Append(libInc)
-		f.LinkerOptions.Append(libInc)
+func (msvc *MsvcCompiler) Library(f *Facet, lib ...string) {
+	for _, s := range lib {
+		f.LibrarianOptions.Append(s)
+		f.LinkerOptions.Append(s)
 	}
 }
 func (msvc *MsvcCompiler) LibraryPath(f *Facet, dirs ...Directory) {

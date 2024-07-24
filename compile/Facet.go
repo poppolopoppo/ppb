@@ -40,7 +40,7 @@ type Facet struct {
 	HeaderUnitOptions        base.StringSet
 	PrecompiledHeaderOptions base.StringSet
 
-	Libraries    utils.FileSet
+	Libraries    base.StringSet
 	LibraryPaths utils.DirSet
 
 	LibrarianOptions base.StringSet
@@ -89,7 +89,7 @@ func NewFacet() Facet {
 		PreprocessorOptions:      base.StringSet{},
 		CompilerOptions:          base.StringSet{},
 		PrecompiledHeaderOptions: base.StringSet{},
-		Libraries:                utils.FileSet{},
+		Libraries:                base.StringSet{},
 		LibraryPaths:             utils.DirSet{},
 		LibrarianOptions:         base.StringSet{},
 		LinkerOptions:            base.StringSet{},
@@ -108,7 +108,7 @@ func (x *Facet) DeepCopy(src *Facet) {
 	x.PreprocessorOptions = base.NewStringSet(src.PreprocessorOptions...)
 	x.CompilerOptions = base.NewStringSet(src.CompilerOptions...)
 	x.PrecompiledHeaderOptions = base.NewStringSet(src.PrecompiledHeaderOptions...)
-	x.Libraries = utils.NewFileSet(src.Libraries...)
+	x.Libraries = base.NewStringSet(src.Libraries...)
 	x.LibraryPaths = utils.NewDirSet(src.LibraryPaths...)
 	x.LibrarianOptions = base.NewStringSet(src.LibrarianOptions...)
 	x.LinkerOptions = base.NewStringSet(src.LinkerOptions...)
@@ -218,7 +218,7 @@ func (facet *Facet) PerformSubstitutions() {
 		facet.PreprocessorOptions = base.Map(subst.ExpandString, facet.PreprocessorOptions...)
 		facet.CompilerOptions = base.Map(subst.ExpandString, facet.CompilerOptions...)
 		facet.PrecompiledHeaderOptions = base.Map(subst.ExpandString, facet.PrecompiledHeaderOptions...)
-		facet.Libraries = base.Map(subst.ExpandFilename, facet.Libraries...)
+		facet.Libraries = base.Map(subst.ExpandString, facet.Libraries...)
 		facet.LibraryPaths = base.Map(subst.ExpandDirectory, facet.LibraryPaths...)
 		facet.LibrarianOptions = base.Map(subst.ExpandString, facet.LibrarianOptions...)
 		facet.LinkerOptions = base.Map(subst.ExpandString, facet.LinkerOptions...)

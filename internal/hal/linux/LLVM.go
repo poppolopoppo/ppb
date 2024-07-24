@@ -196,11 +196,9 @@ func (llvm *LlvmCompiler) SystemIncludePath(f *Facet, dirs ...Directory) {
 		f.AddCompilationFlag_NoAnalysis("-isystem" + MakeLocalDirectory(x))
 	}
 }
-func (llvm *LlvmCompiler) Library(f *Facet, lib ...Filename) {
-	for _, x := range lib {
-		s := MakeLocalFilename(x)
-		f.LibrarianOptions.Append(s)
-		f.LinkerOptions.Append(s)
+func (llvm *LlvmCompiler) Library(f *Facet, lib ...string) {
+	for _, s := range lib {
+		f.LinkerOptions.Append("-l" + s)
 	}
 }
 func (llvm *LlvmCompiler) LibraryPath(f *Facet, dirs ...Directory) {

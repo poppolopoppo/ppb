@@ -102,7 +102,7 @@ type Compiler interface {
 	IncludePath(*Facet, ...Directory)
 	ExternIncludePath(*Facet, ...Directory)
 	SystemIncludePath(*Facet, ...Directory)
-	Library(*Facet, ...Filename)
+	Library(*Facet, ...string)
 	LibraryPath(*Facet, ...Directory)
 
 	GetPayloadOutput(*Unit, PayloadType, Filename) Filename
