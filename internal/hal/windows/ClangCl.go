@@ -92,7 +92,7 @@ func (clang *ClangCompiler) GetPayloadOutput(u *compile.Unit, payload compile.Pa
 }
 func (clang *ClangCompiler) CreateAction(_ *compile.Unit, _ compile.PayloadType, model *action.ActionModel) action.Action {
 	if internal_io.OnRunCommandWithDetours != nil || // use IO detouring with DLL injection
-		!model.Options.Has(action.OPT_ALLOW_SOURCECONTROL) { // rely on internal logic to track dependencies
+		!model.Options.Has(action.OPT_ALLOW_SOURCEDEPENDENCIES) { // rely on internal logic to track dependencies
 		rules := model.CreateActionRules()
 		return &rules
 	}

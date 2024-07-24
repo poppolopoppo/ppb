@@ -217,7 +217,7 @@ func (llvm *LlvmCompiler) GetPayloadOutput(u *compile.Unit, payload compile.Payl
 func (llvm *LlvmCompiler) CreateAction(u *Unit, payload PayloadType, model *action.ActionModel) action.Action {
 	switch payload {
 	case PAYLOAD_OBJECTLIST, PAYLOAD_PRECOMPILEDHEADER, PAYLOAD_PRECOMPILEDOBJECT, PAYLOAD_HEADERUNIT:
-		if model.Options.Has(action.OPT_ALLOW_SOURCECONTROL) {
+		if model.Options.Has(action.OPT_ALLOW_SOURCEDEPENDENCIES) {
 			result := &GnuSourceDependenciesAction{
 				ActionRules: model.CreateActionRules(),
 				GnuDepFile:  model.ExportFile.ReplaceExt(llvm.Extname(PAYLOAD_DEPENDENCIES)),

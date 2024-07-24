@@ -387,7 +387,7 @@ func (msvc *MsvcCompiler) GetPayloadOutput(u *Unit, payload PayloadType, file Fi
 }
 func (msvc *MsvcCompiler) CreateAction(u *Unit, payload PayloadType, model *action.ActionModel) action.Action {
 	if internal_io.OnRunCommandWithDetours != nil || // use IO detouring with DLL injection
-		!model.Options.Has(action.OPT_ALLOW_SOURCECONTROL) { // rely on internal logic to track dependencies
+		!model.Options.Has(action.OPT_ALLOW_SOURCEDEPENDENCIES) { // rely on internal logic to track dependencies
 		rules := model.CreateActionRules()
 		return &rules
 

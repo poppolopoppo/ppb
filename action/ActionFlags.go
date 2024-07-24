@@ -72,9 +72,9 @@ const (
 	OPT_ALLOW_RELATIVEPATH
 	// Allow action to use response files when command-line is too long (depends on executable support)
 	OPT_ALLOW_RESPONSEFILE
-	// Allow action to check source control for local modications, and avoid storing in cache when dirty
-	OPT_ALLOW_SOURCECONTROL
-	// This action should propagate its input files instead of its own output when tracking inputs (for PCH)
+	// Allow action to use source dependencies parsing to track input files (depends on executable support)
+	OPT_ALLOW_SOURCEDEPENDENCIES
+	// This action should propagate its input files instead of its own output when tracking inputs (for PCH for instance)
 	OPT_PROPAGATE_INPUTS
 
 	OPT_ALLOW_CACHEREADWRITE OptionType = OPT_ALLOW_CACHEREAD | OPT_ALLOW_CACHEWRITE
@@ -87,7 +87,7 @@ func GetOptionTypes() []OptionType {
 		OPT_ALLOW_DISTRIBUTION,
 		OPT_ALLOW_RELATIVEPATH,
 		OPT_ALLOW_RESPONSEFILE,
-		OPT_ALLOW_SOURCECONTROL,
+		OPT_ALLOW_SOURCEDEPENDENCIES,
 		OPT_PROPAGATE_INPUTS,
 	}
 }
@@ -105,7 +105,7 @@ func (x OptionType) String() string {
 		return "ALLOW_RELATIVEPATH"
 	case OPT_ALLOW_RESPONSEFILE:
 		return "ALLOW_RESPONSEFILE"
-	case OPT_ALLOW_SOURCECONTROL:
+	case OPT_ALLOW_SOURCEDEPENDENCIES:
 		return "ALLOW_SOURCECONTROL"
 	case OPT_PROPAGATE_INPUTS:
 		return "PROPAGATE_INPUTS"
@@ -126,8 +126,8 @@ func (x *OptionType) Set(in string) (err error) {
 		*x = OPT_ALLOW_RELATIVEPATH
 	case OPT_ALLOW_RESPONSEFILE.String():
 		*x = OPT_ALLOW_RESPONSEFILE
-	case OPT_ALLOW_SOURCECONTROL.String():
-		*x = OPT_ALLOW_SOURCECONTROL
+	case OPT_ALLOW_SOURCEDEPENDENCIES.String():
+		*x = OPT_ALLOW_SOURCEDEPENDENCIES
 	case OPT_PROPAGATE_INPUTS.String():
 		*x = OPT_PROPAGATE_INPUTS
 	default:
