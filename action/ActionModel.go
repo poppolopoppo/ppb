@@ -93,10 +93,15 @@ func (x *ActionModel) CreateActionRules() ActionRules {
 	if index, ok := base.IndexOf(x.ExportFile, rules.OutputFiles...); ok {
 		rules.ExportIndex = int32(index)
 	} else {
-		rules.ExportIndex = int32(len(rules.OutputFiles))
 		rules.OutputFiles.Append(x.ExportFile)
 		rules.OutputFiles.Sort()
+		if index, ok = base.IndexOf(x.ExportFile, rules.OutputFiles...); ok {
+			rules.ExportIndex = int32(index)
+		} else {
+			base.UnreachableCode() // we just inserted this item, it can't be missing
+		}
 	}
+	base.AssertIn(x.ExportFile, rules.OutputFiles[rules.ExportIndex])
 
 	return rules
 }
