@@ -1303,7 +1303,7 @@ func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
 		lw.WriteString(ANSI_RESET.String())
 		fmt.Fprintf(lw, " %6.2f%% ", pf*100)
 
-		numElts := float32(progress - x.first)
+		numElts := float64(progress - x.first)
 		eltUnit := ""
 		if numElts > 5000 {
 			eltUnit = "K"
@@ -1314,9 +1314,17 @@ func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
 			numElts /= 1000
 		}
 
-		eltPerSec := numElts / float32(duration.Seconds()+0.00001)
-		lw.WriteString(ANSI_FG1_YELLOW.String())
-		fmt.Fprintf(lw, " %.3f %s/s", eltPerSec, eltUnit)
+		eltPerSec := numElts / float64(duration.Seconds()+1e-6)
+		lw.WriteString(ANSI_FG0_YELLOW.String())
+		fmt.Fprintf(lw, "%7.3f %s/s", eltPerSec, eltUnit)
+
+		if numElts > 0 {
+			remainingTime := time.Duration(float64((last-progress)*int64(time.Second)) / (eltPerSec + 1e-6))
+			remainingTime = remainingTime.Round(10 * time.Millisecond)
+
+			lw.WriteString(ANSI_FG1_YELLOW.String())
+			fmt.Fprintf(lw, "  -%v", remainingTime)
+		}
 
 	} else {
 		ti := int(math.Abs(t*3)) % len(logSpinnerPattern)
