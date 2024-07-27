@@ -96,7 +96,9 @@ func (llvm *LlvmCompiler) CppStd(f *Facet, std CppStdType) {
 		std = maxSupported
 	}
 	switch std {
-	case CPPSTD_LATEST, CPPSTD_23:
+	case CPPSTD_LATEST:
+		f.AddCompilationFlag("-std=c++2c")
+	case CPPSTD_23:
 		f.AddCompilationFlag("-std=c++23")
 	case CPPSTD_20:
 		f.AddCompilationFlag("-std=c++20")

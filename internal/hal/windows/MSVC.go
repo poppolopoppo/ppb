@@ -130,9 +130,11 @@ func (msvc *MsvcCompiler) CppStd(f *Facet, std CppStdType) {
 	switch std {
 	case CPPSTD_23:
 		// f.AddCompilationFlag("/std:c++23") // still not supported as of 07/24/24
-		base.LogWarningOnce(LogWindows, "c++23 is still not supported by MSVC v%v, fallback on C++20", msvc.MSC_VER)
+		base.LogWarningOnce(LogWindows, "c++23 is still not completely supported by MSVC v%v, fallback on C++latest", msvc.MSC_VER)
 		fallthrough // fallback on C++20 for the moment
-	case CPPSTD_20, CPPSTD_LATEST:
+	case CPPSTD_LATEST:
+		f.AddCompilationFlag("/std:c++latest")
+	case CPPSTD_20:
 		f.AddCompilationFlag("/std:c++20")
 	case CPPSTD_17:
 		f.AddCompilationFlag("/std:c++17")
