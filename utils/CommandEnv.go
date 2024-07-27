@@ -234,7 +234,7 @@ func InitCommandEnv(prefix string, args []string, startedAt time.Time) *CommandE
 	// program if it receives an interrupt from the OS. We then handle this by calling
 	// our clean up procedure and exiting the program.
 	go func() {
-		const maxBeforePanic = 5
+		const maxBeforePanic = 3
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, os.Interrupt)
 		for i := 0; i < maxBeforePanic; i++ {
