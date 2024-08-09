@@ -1026,7 +1026,7 @@ func (x *VcxProjectGenerator) GenerateVCXProj(xml *internal_io.XmlFile) error {
 			xml.InnerString("PlatformToolset", config.PlatformToolset)
 			xml.InnerString("LocalDebuggerCommandArguments", config.LocalDebuggerCommandArguments)
 			xml.InnerString("LocalDebuggerCommand", x.CanonicalizePath(config.LocalDebuggerCommand.String()))
-			xml.InnerString("LocalDebuggerCommandEnvironment", config.LocalDebuggerEnvironment)
+			xml.InnerString("LocalDebuggerEnvironment", config.LocalDebuggerEnvironment)
 
 		}, internal_io.XmlAttr{Name: "Condition", Value: fmt.Sprintf("'$(Configuration)|$(Platform)'=='%s|%s'", config.Config, config.Platform)},
 			internal_io.XmlAttr{Name: "Label", Value: "Configuration"})

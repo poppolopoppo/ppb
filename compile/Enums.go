@@ -1440,6 +1440,7 @@ const (
 	SANITIZER_INHERIT SanitizerType = iota
 	SANITIZER_NONE
 	SANITIZER_ADDRESS
+	SANITIZER_FUZZER
 	SANITIZER_THREAD
 	SANITIZER_UNDEFINED_BEHAVIOR
 )
@@ -1449,6 +1450,7 @@ func GetSanitizerTypes() []SanitizerType {
 		SANITIZER_INHERIT,
 		SANITIZER_NONE,
 		SANITIZER_ADDRESS,
+		SANITIZER_FUZZER,
 		SANITIZER_THREAD,
 		SANITIZER_UNDEFINED_BEHAVIOR,
 	}
@@ -1461,6 +1463,8 @@ func (x SanitizerType) Description() string {
 		return "don't use a sanitizer"
 	case SANITIZER_ADDRESS:
 		return "use address sanitizer for memory issues"
+	case SANITIZER_FUZZER:
+		return "use fuzzer sanitizer on progam user-inputs"
 	case SANITIZER_THREAD:
 		return "use thread sanitizer for race conditions"
 	case SANITIZER_UNDEFINED_BEHAVIOR:
@@ -1478,6 +1482,8 @@ func (x SanitizerType) String() string {
 		return "NONE"
 	case SANITIZER_ADDRESS:
 		return "ADDRESS"
+	case SANITIZER_FUZZER:
+		return "FUZZER"
 	case SANITIZER_THREAD:
 		return "THREAD"
 	case SANITIZER_UNDEFINED_BEHAVIOR:
@@ -1501,6 +1507,8 @@ func (x *SanitizerType) Set(in string) (err error) {
 		*x = SANITIZER_NONE
 	case SANITIZER_ADDRESS.String():
 		*x = SANITIZER_ADDRESS
+	case SANITIZER_FUZZER.String():
+		*x = SANITIZER_FUZZER
 	case SANITIZER_THREAD.String():
 		*x = SANITIZER_THREAD
 	case SANITIZER_UNDEFINED_BEHAVIOR.String():

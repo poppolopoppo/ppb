@@ -62,6 +62,7 @@ type WindowsFlags struct {
 	Permissive       BoolVar
 	StackSize        base.SizeInBytes
 	TranslateInclude BoolVar
+	UseAfterReturn   BoolVar
 	WindowsSDK       Directory
 }
 
@@ -76,6 +77,7 @@ var GetWindowsFlags = NewCompilationFlags("WindowsCompilation", "windows-specifi
 	Permissive:       base.INHERITABLE_FALSE,
 	StackSize:        2000000,
 	TranslateInclude: base.INHERITABLE_TRUE,
+	UseAfterReturn:   base.INHERITABLE_FALSE,
 })
 
 func (flags *WindowsFlags) Flags(cfv CommandFlagsVisitor) {
@@ -88,7 +90,8 @@ func (flags *WindowsFlags) Flags(cfv CommandFlagsVisitor) {
 	cfv.Persistent("PerfSDK", "enable/disable Visual Studio Performance SDK", &flags.PerfSDK)
 	cfv.Persistent("Permissive", "enable/disable MSCV permissive", &flags.Permissive)
 	cfv.Persistent("StackSize", "set default thread stack size in bytes", &flags.StackSize)
-	cfv.Persistent("TranslateInclude", "convert PCH to header units for C++20 units if enabled ", &flags.TranslateInclude)
+	cfv.Persistent("TranslateInclude", "convert PCH to header units for C++20 units if enabled", &flags.TranslateInclude)
+	cfv.Persistent("UseAfterReturn", "enable use-after-return when address sanitizer is enabled", &flags.UseAfterReturn)
 	cfv.Persistent("WindowsSDK", "override Windows SDK install path (use latest otherwise)", &flags.WindowsSDK)
 }
 

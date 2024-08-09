@@ -12,6 +12,9 @@ type ArchiveFile struct {
 	Tags    []FourCC
 }
 
+var ArchiveFileMagic FourCC = MakeFourCC('A', 'R', 'B', 'F')
+var ArchiveFileVersion FourCC = MakeFourCC('1', '0', '0', '1')
+
 var ArchiveTags = []FourCC{}
 
 func MakeArchiveTag(tag FourCC) FourCC {
@@ -28,8 +31,8 @@ func MakeArchiveTagIf(tag FourCC, enabled bool) (emptyTag FourCC) {
 
 func NewArchiveFile() ArchiveFile {
 	return ArchiveFile{
-		Magic:   MakeFourCC('A', 'R', 'B', 'F'),
-		Version: MakeFourCC('1', '0', '0', '0'),
+		Magic:   ArchiveFileMagic,
+		Version: ArchiveFileVersion,
 		Tags:    ArchiveTags,
 	}
 }
@@ -46,12 +49,14 @@ func ArchiveFileRead(reader io.Reader, scope func(ar Archive), flags ...ArchiveF
 	return file, ArchiveBinaryRead(reader, func(ar Archive) {
 		ar.Serializable(&file)
 		if err := ar.Error(); err == nil {
-			defaultFile := NewArchiveFile()
-			if file.Magic != defaultFile.Magic {
-				ar.OnErrorf("archive: invalid file magic (%q != %q)", file.Magic, defaultFile.Magic)
+			if file.Magic != ArchiveFileMagic {
+				ar.OnErrorf("archive: invalid file magic (%q != %q)", file.Magic, ArchiveFileMagic)
 			}
-			if file.Version > defaultFile.Version {
-				ar.OnErrorf("archive: newer file version (%q > %q)", file.Version, defaultFile.Version)
+			if file.Version > ArchiveFileVersion {
+				ar.OnErrorf("archive: newer file version (%q > %q)", file.Version, ArchiveFileVersion)
+			}
+			if file.Version < ArchiveFileVersion {
+				ar.OnErrorf("archive: older file version (%q < %q)", file.Version, ArchiveFileVersion)
 			}
 			if err = ar.Error(); err == nil {
 				scope(NewArchiveGuard(ar))

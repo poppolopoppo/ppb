@@ -50,7 +50,11 @@ func (x CompilerAlias) Alias() BuildAlias {
 	return MakeBuildAlias("Rules", "Compiler", x.String())
 }
 func (x CompilerAlias) String() string {
-	return fmt.Sprintf("%s-%s-%s", x.CompilerFamily, x.CompilerName, x.CompilerVariant)
+	if len(x.CompilerFamily) > 0 || len(x.CompilerName) > 0 || len(x.CompilerVariant) > 0 {
+		return fmt.Sprintf("%s-%s-%s", x.CompilerFamily, x.CompilerName, x.CompilerVariant)
+	} else {
+		return ""
+	}
 }
 func (x *CompilerAlias) Serialize(ar base.Archive) {
 	ar.String(&x.CompilerFamily)
@@ -69,7 +73,10 @@ func (x CompilerAlias) Compare(o CompilerAlias) int {
 	}
 }
 func (x *CompilerAlias) Set(in string) error {
-	if _, err := fmt.Sscanf(in, "%s-%s-%s", &x.CompilerFamily, &x.CompilerName, &x.CompilerVariant); err == nil {
+	if in == "" {
+		*x = CompilerAlias{}
+		return nil
+	} else if _, err := fmt.Sscanf(in, "%s-%s-%s", &x.CompilerFamily, &x.CompilerName, &x.CompilerVariant); err == nil {
 		return nil
 	} else {
 		return err

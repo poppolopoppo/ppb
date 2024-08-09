@@ -630,14 +630,15 @@ func (set *StringSet) RemoveAll(x string) (found bool) {
 	}
 	return
 }
-func (set *StringSet) Remove(it ...string) *StringSet {
+func (set *StringSet) Remove(it ...string) (numRemoved int) {
 	for _, x := range it {
-		Assert(func() bool { return len(x) > 0 })
+		AssertNotIn(x, "")
 		if i, ok := set.IndexOf(x); ok {
 			set.Delete(i)
+			numRemoved++
 		}
 	}
-	return set
+	return
 }
 func (set *StringSet) Delete(i int) *StringSet {
 	*set = append((*set)[:i], (*set)[i+1:]...)

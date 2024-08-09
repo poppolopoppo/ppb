@@ -29,13 +29,12 @@ const MSVC_ENABLE_PATHMAP = false
  ***************************************/
 
 type MsvcCompiler struct {
-	Arch ArchType
-
+	Arch            ArchType
+	PlatformToolset MsvcPlatformToolset
 	MSC_VER         MsvcVersion
 	MinorVer        string
 	Host            string
 	Target          string
-	PlatformToolset string
 	VSInstallName   string
 	VSInstallPath   Directory
 	VCToolsPath     Directory
@@ -53,12 +52,11 @@ func (msvc *MsvcCompiler) GetCompiler() *CompilerRules { return &msvc.CompilerRu
 
 func (msvc *MsvcCompiler) Serialize(ar base.Archive) {
 	ar.Serializable(&msvc.Arch)
-
+	ar.Serializable(&msvc.PlatformToolset)
 	ar.Serializable(&msvc.MSC_VER)
 	ar.String(&msvc.MinorVer)
 	ar.String(&msvc.Host)
 	ar.String(&msvc.Target)
-	ar.String(&msvc.PlatformToolset)
 	ar.String(&msvc.VSInstallName)
 	ar.Serializable(&msvc.VSInstallPath)
 	ar.Serializable(&msvc.VCToolsPath)
@@ -123,10 +121,13 @@ func (msvc *MsvcCompiler) CppRtti(f *Facet, enabled bool) {
 	}
 }
 func (msvc *MsvcCompiler) CppStd(f *Facet, std CppStdType) {
-	maxSupported := getCppStdFromMsc(msvc.MSC_VER)
+	maxSupported, err := getCppStdFromMsc(msvc.MSC_VER)
+	base.LogPanicIfFailed(LogWindows, err)
+
 	if int32(std) > int32(maxSupported) {
 		std = maxSupported
 	}
+
 	switch std {
 	case CPPSTD_23:
 		// f.AddCompilationFlag("/std:c++23") // still not supported as of 07/24/24
@@ -337,7 +338,10 @@ func (msvc *MsvcCompiler) Sanitizer(f *Facet, sanitizer SanitizerType) {
 	case SANITIZER_ADDRESS:
 		// https://devblogs.microsoft.com/cppblog/addresssanitizer-asan-for-windows-with-msvc/
 		f.Defines.Append("USE_PPE_SANITIZER=1")
-		f.AddCompilationFlag_NoAnalysis("/fsanitize=address", "/fsanitize-address-use-after-return")
+		f.AddCompilationFlag_NoAnalysis("/fsanitize=address")
+		if msvc.WindowsFlags.UseAfterReturn.Get() {
+			f.AddCompilationFlag_NoAnalysis("/fsanitize-address-use-after-return")
+		}
 	default:
 		base.UnexpectedValue(sanitizer)
 	}
@@ -483,6 +487,10 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 		base.LogWarning(LogWindows, "%v: sanitizer %v is not supported on windows", u, u.Sanitizer)
 		u.Sanitizer = SANITIZER_NONE
 	}
+	if u.Sanitizer.IsEnabled() && u.RuntimeLib.IsDebug() {
+		base.LogWarning(LogWindows, "%v: sanitizer %v is not supported on windows", u, u.Sanitizer)
+		u.RuntimeLib = RUNTIMELIB_STATIC_DEBUG
+	}
 
 	// hot-reload can override LTCG
 	if u.DebugInfo == DEBUGINFO_HOTRELOAD {
@@ -616,14 +624,15 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 	if u.Sanitizer.IsEnabled() {
 		base.LogVeryVerbose(LogWindows, "%v: using sanitizer %v", u, u.Sanitizer)
 		// https://github.com/google/sanitizers/wiki/AddressSanitizerFlags
-		asanOptions := "check_initialization_order=1:detect_stack_use_after_return=1:windows_hook_rtl_allocators=1"
+		asanOptions := "check_initialization_order=1:debug=1:verbose=1"
+		if msvc.WindowsFlags.UseAfterReturn.Get() {
+			asanOptions += ":detect_stack_use_after_return=1"
+		}
 		// - use_sigaltstack=0 to workaround this issue: https://github.com/google/sanitizers/issues/1171
 		// asanOptions += ":use_sigaltstack=0"
 		// - detect_leaks=1 is not supported on Windows (visual studio 17.7.2)
 		// asanOptions += ":detect_leaks=1"
-		if compileEnv.Tags.Has(TAG_DEBUG) {
-			asanOptions += ":debug=1:verbose=1"
-		}
+
 		u.Environment.Append("ASAN_OPTIONS", asanOptions)
 
 		if u.Incremental.Get() {
@@ -631,14 +640,14 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 			u.Incremental.Assign(false)
 		}
 
-		if u.CompilerOptions.RemoveAll("/INCREMENTAL") {
+		if u.CompilerOptions.Remove("/INCREMENTAL") > 0 {
 			base.LogVeryVerbose(LogWindows, "%v: remove /INCREMENTAL due to %v", u, u.Sanitizer)
 		}
-		if u.CompilerOptions.RemoveAll("/LTCG") {
+		if u.CompilerOptions.Remove("/LTCG", "/LTCG:INCREMENTAL") > 0 {
 			base.LogVeryVerbose(LogWindows, "%v: remove /LTCG due to %v", u, u.Sanitizer)
 		}
-		if u.CompilerOptions.RemoveAll("/LTCG:INCREMENTAL") {
-			base.LogVeryVerbose(LogWindows, "%v: remove /LTCG:INCREMENTAL due to %v", u, u.Sanitizer)
+		if u.CompilerOptions.Remove("/GS", "/GUARD:CF", "/sdl", "/RTC1") > 0 {
+			base.LogVeryVerbose(LogWindows, "%v: remove runtime checks /RTC1 due to %v", u, u.Sanitizer)
 		}
 	}
 
@@ -1078,12 +1087,18 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 	msvc.MinorVer = msvcProductInstall.VcToolsPath.Basename()
 	msvc.Host = msvcProductInstall.HostArch
 	msvc.Target = msvc.Arch.String()
-	msvc.PlatformToolset = fmt.Sprintf("%s%s%s", msvc.MinorVer[0:1], msvc.MinorVer[1:2], msvc.MinorVer[3:4])
 	msvc.VSInstallName = msvcProductInstall.Selected.InstallationName
 	msvc.VSInstallPath = msvcProductInstall.VsInstallPath
 	msvc.VCToolsPath = msvcProductInstall.VcToolsPath
 
-	msvc.CompilerRules.CppStd = getCppStdFromMsc(msc_ver)
+	if msvc.PlatformToolset, err = getPlatformToolsetFromMinorVer(msvc.MinorVer); err != nil {
+		return err
+	}
+
+	if msvc.CompilerRules.CppStd, err = getCppStdFromMsc(msc_ver); err != nil {
+		return err
+	}
+
 	msvc.CompilerRules.Features = base.MakeEnumSet(
 		COMPILER_ALLOW_CACHING,
 		COMPILER_ALLOW_DISTRIBUTION,
@@ -1122,10 +1137,10 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 		"_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING", // warning STL4043: stdext::checked_array_iterator, stdext::unchecked_array_iterator, and related factory functions are non-Standard extensions and will be removed in the future. std::span (since C++20) and gsl::span can be used instead. You can define _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING or _SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS to suppress this warning.
 	)
 
+	facet.Exports.Add("VisualStudio/MsvcToolsetVersion", msvc.MinorVer)
 	facet.Exports.Add("VisualStudio/Path", msvc.VSInstallPath.String())
-	facet.Exports.Add("VisualStudio/PlatformToolset", msvc.PlatformToolset)
+	facet.Exports.Add("VisualStudio/PlatformToolset", msvc.PlatformToolset.String())
 	facet.Exports.Add("VisualStudio/Tools", msvc.VCToolsPath.String())
-	facet.Exports.Add("VisualStudio/Version", msvc.MinorVer)
 
 	facet.SystemIncludePaths.Append(
 		msvc.VSInstallPath.Folder("VC", "Auxiliary", "VS", "include"),
