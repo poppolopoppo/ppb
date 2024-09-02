@@ -57,7 +57,7 @@ type BuildGraph interface {
 	Build(alias BuildAliasable, options ...BuildOptionFunc) (BuildNode, base.Future[BuildResult])
 	BuildMany(aliases BuildAliases, options ...BuildOptionFunc) ([]BuildResult, error)
 
-	Abort()
+	Abort(error)
 	Join() error
 
 	Load(io.Reader) error
@@ -104,7 +104,7 @@ type buildGraph struct {
 	stats   BuildStats
 
 	revision int32
-	abort    atomic.Bool
+	abort    atomic.Value
 
 	buildEvents
 }
@@ -306,8 +306,12 @@ func (g *buildGraph) Join() (lastErr error) {
 	}
 	return
 }
-func (g *buildGraph) Abort() {
-	g.abort.Store(true)
+func (g *buildGraph) Abort(err error) {
+	if err != nil {
+		// only keeps the first error
+		var null error = nil
+		g.abort.CompareAndSwap(null, err)
+	}
 }
 
 func (g *buildGraph) PostLoad() {

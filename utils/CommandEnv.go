@@ -32,6 +32,7 @@ type CommandFlags struct {
 	LogFile        Filename
 	OutputDir      Directory
 	RootDir        Directory
+	StopOnError    BoolVar
 	Summary        BoolVar
 	WarningAsError BoolVar
 	ErrorAsPanic   BoolVar
@@ -50,6 +51,7 @@ var GetCommandFlags = NewGlobalCommandParsableFlags("global command options", &C
 	Color:          base.INHERITABLE_INHERIT,
 	Ide:            base.INHERITABLE_FALSE,
 	Timestamp:      base.INHERITABLE_FALSE,
+	StopOnError:    base.INHERITABLE_FALSE,
 	Summary:        base.INHERITABLE_FALSE,
 	WarningAsError: base.INHERITABLE_FALSE,
 	ErrorAsPanic:   base.INHERITABLE_FALSE,
@@ -75,6 +77,7 @@ func (flags *CommandFlags) Flags(cfv CommandFlagsVisitor) {
 	cfv.Variable("LogFile", "output log to specified file (default: stdout)", &flags.LogFile)
 	cfv.Variable("OutputDir", "override default output directory", &flags.OutputDir)
 	cfv.Variable("RootDir", "override root directory", &flags.RootDir)
+	cfv.Variable("StopOnError", "interrupt build process immediately when an error occurred", &flags.StopOnError)
 	cfv.Variable("Summary", "print build graph execution summary when build finished", &flags.Summary)
 	cfv.Variable("WX", "consider warnings as errors", &flags.WarningAsError)
 	cfv.Variable("EX", "consider errors as panics", &flags.ErrorAsPanic)
@@ -240,10 +243,11 @@ func InitCommandEnv(prefix string, args []string, startedAt time.Time) *CommandE
 		for i := 0; i < maxBeforePanic; i++ {
 			<-c
 
+			err := fmt.Errorf("Ctrl+C pressed in Terminal, aborting (%d/%d)", i+1, maxBeforePanic)
 			// intercepting the event allows to die gracefully by waiting running jobs
-			base.LogWarning(LogUtils, "\r- Ctrl+C pressed in Terminal, aborting (%d/%d)", i+1, maxBeforePanic)
+			base.LogWarning(LogUtils, "\r- %v", err)
 			// child processes also received the signal, and we rely on them dying to quit the program instead of calling os.Exit(0) here
-			CommandEnv.Abort()
+			CommandEnv.Abort(err)
 		}
 
 		CommandPanicF("Ctrl+C pressed %d times in Terminal, panic", maxBeforePanic)
@@ -288,15 +292,16 @@ func CommandPanic(err error) {
 
 // don't save the db when panic occured
 func (env *CommandEnvT) OnPanic(err error) base.PanicResult {
-	if env.lastPanic.CompareAndSwap(nil, err) {
+	var null error = nil
+	if env.lastPanic.CompareAndSwap(null, err) {
 		env.commandEvents.OnPanic.Invoke(err)
 		return base.PANIC_ABORT
 	}
 	return base.PANIC_REENTRANCY // a fatal error was already reported
 }
 
-func (env *CommandEnvT) Abort() {
-	env.buildGraph.Abort()
+func (env *CommandEnvT) Abort(err error) {
+	env.buildGraph.Abort(err)
 }
 
 func (env *CommandEnvT) Close() error {

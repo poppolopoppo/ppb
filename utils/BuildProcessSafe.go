@@ -72,12 +72,16 @@ func (x *GlobalBuildGraph) Save(env *CommandEnvT) error {
 	}
 	return err
 }
-func (x *GlobalBuildGraph) Abort() {
+func (x *GlobalBuildGraph) Abort(err error) {
+	if err == nil {
+		return
+	}
+
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 
 	if x.protected != nil {
-		x.protected.BuildGraph.Abort()
+		x.protected.BuildGraph.Abort(err)
 	}
 }
 func (x *GlobalBuildGraph) Join() error {

@@ -68,10 +68,13 @@ type buildExecuteContext struct {
 	barrier sync.Mutex
 }
 
-type buildAbortError struct{}
+type buildAbortError struct {
+	alias BuildAlias
+	inner error
+}
 
 func (x buildAbortError) Error() string {
-	return "build aborted"
+	return fmt.Sprintf("node %q build aborted: %v", x.alias, x.inner.Error())
 }
 
 type buildExecuteError struct {
@@ -238,12 +241,12 @@ func (x *buildExecuteContext) Execute() (BuildResult, bool, error) {
 	x.node.state.Lock()
 	defer x.node.state.Unlock()
 
-	if x.graph.abort.Load() {
+	if err := x.graph.abort.Load(); !base.IsNil(err) {
 		return BuildResult{
 			BuildAlias: x.node.BuildAlias,
 			Buildable:  x.node.Buildable,
 			BuildStamp: BuildStamp{},
-		}, false, buildAbortError{}
+		}, false, buildAbortError{alias: x.node.BuildAlias, inner: err.(error)}
 	}
 
 	needToBuild, err := x.needToBuild_assumeLocked()
@@ -317,6 +320,10 @@ func (x *buildExecuteContext) Execute() (BuildResult, bool, error) {
 		x.node.Static.makeDirty()
 
 		err = buildExecuteError{alias: x.Alias(), inner: err}
+
+		if GetCommandFlags().StopOnError.Get() {
+			x.graph.Abort(err)
+		}
 
 		return BuildResult{
 			BuildAlias: x.node.BuildAlias,
