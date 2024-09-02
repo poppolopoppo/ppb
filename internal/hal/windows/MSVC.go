@@ -338,7 +338,10 @@ func (msvc *MsvcCompiler) Sanitizer(f *Facet, sanitizer SanitizerType) {
 	case SANITIZER_ADDRESS:
 		// https://devblogs.microsoft.com/cppblog/addresssanitizer-asan-for-windows-with-msvc/
 		f.Defines.Append("USE_PPE_SANITIZER=1")
-		f.AddCompilationFlag_NoAnalysis("/fsanitize=address", "/fsanitize-address-use-after-return")
+		f.AddCompilationFlag_NoAnalysis("/fsanitize=address")
+		if msvc.WindowsFlags.UseAfterReturn.Get() {
+			f.AddCompilationFlag_NoAnalysis("/fsanitize-address-use-after-return")
+		}
 	default:
 		base.UnexpectedValue(sanitizer)
 	}
@@ -484,6 +487,10 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 		base.LogWarning(LogWindows, "%v: sanitizer %v is not supported on windows", u, u.Sanitizer)
 		u.Sanitizer = SANITIZER_NONE
 	}
+	if u.Sanitizer.IsEnabled() && u.RuntimeLib.IsDebug() {
+		base.LogWarning(LogWindows, "%v: sanitizer %v is not supported on windows", u, u.Sanitizer)
+		u.RuntimeLib = RUNTIMELIB_STATIC_DEBUG
+	}
 
 	// hot-reload can override LTCG
 	if u.DebugInfo == DEBUGINFO_HOTRELOAD {
@@ -617,14 +624,15 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 	if u.Sanitizer.IsEnabled() {
 		base.LogVeryVerbose(LogWindows, "%v: using sanitizer %v", u, u.Sanitizer)
 		// https://github.com/google/sanitizers/wiki/AddressSanitizerFlags
-		asanOptions := "check_initialization_order=1:detect_stack_use_after_return=1:windows_hook_rtl_allocators=1"
+		asanOptions := "check_initialization_order=1:debug=1:verbose=1"
+		if msvc.WindowsFlags.UseAfterReturn.Get() {
+			asanOptions += ":detect_stack_use_after_return=1"
+		}
 		// - use_sigaltstack=0 to workaround this issue: https://github.com/google/sanitizers/issues/1171
 		// asanOptions += ":use_sigaltstack=0"
 		// - detect_leaks=1 is not supported on Windows (visual studio 17.7.2)
 		// asanOptions += ":detect_leaks=1"
-		if compileEnv.Tags.Has(TAG_DEBUG) {
-			asanOptions += ":debug=1:verbose=1"
-		}
+
 		u.Environment.Append("ASAN_OPTIONS", asanOptions)
 
 		if u.Incremental.Get() {
@@ -632,14 +640,14 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 			u.Incremental.Assign(false)
 		}
 
-		if u.CompilerOptions.RemoveAll("/INCREMENTAL") {
+		if u.CompilerOptions.Remove("/INCREMENTAL") > 0 {
 			base.LogVeryVerbose(LogWindows, "%v: remove /INCREMENTAL due to %v", u, u.Sanitizer)
 		}
-		if u.CompilerOptions.RemoveAll("/LTCG") {
+		if u.CompilerOptions.Remove("/LTCG", "/LTCG:INCREMENTAL") > 0 {
 			base.LogVeryVerbose(LogWindows, "%v: remove /LTCG due to %v", u, u.Sanitizer)
 		}
-		if u.CompilerOptions.RemoveAll("/LTCG:INCREMENTAL") {
-			base.LogVeryVerbose(LogWindows, "%v: remove /LTCG:INCREMENTAL due to %v", u, u.Sanitizer)
+		if u.CompilerOptions.Remove("/GS", "/GUARD:CF", "/sdl", "/RTC1") > 0 {
+			base.LogVeryVerbose(LogWindows, "%v: remove runtime checks /RTC1 due to %v", u, u.Sanitizer)
 		}
 	}
 
