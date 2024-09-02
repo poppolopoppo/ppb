@@ -4,6 +4,7 @@ package windows
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/poppolopoppo/ppb/compile"
@@ -72,7 +73,80 @@ func (x *CompilerType) AutoComplete(in base.AutoComplete) {
 }
 
 /***************************************
- * MSCV Version
+ * MSVC PlatformToolset
+ ***************************************/
+
+type MsvcPlatformToolset byte
+
+const (
+	MSVC_PLATFORMTOOLSET_142 MsvcPlatformToolset = 142
+	MSVC_PLATFORMTOOLSET_143 MsvcPlatformToolset = 143
+	MSVC_PLATFORMTOOLSET_144 MsvcPlatformToolset = 144
+)
+
+func GetMsvcPlatformToolsets() []MsvcPlatformToolset {
+	return []MsvcPlatformToolset{
+		MSVC_PLATFORMTOOLSET_142,
+		MSVC_PLATFORMTOOLSET_143,
+		MSVC_PLATFORMTOOLSET_144,
+	}
+}
+func (v MsvcPlatformToolset) Equals(o MsvcPlatformToolset) bool {
+	return (v == o)
+}
+func (v MsvcPlatformToolset) String() string {
+	switch v {
+	case MSVC_PLATFORMTOOLSET_144:
+		return "144"
+	case MSVC_PLATFORMTOOLSET_143:
+		return "143"
+	case MSVC_PLATFORMTOOLSET_142:
+		return "143"
+	default:
+		return strconv.FormatUint(uint64(byte(v)), 10)
+	}
+}
+func (v *MsvcPlatformToolset) Set(in string) (err error) {
+	switch in {
+	case MSVC_PLATFORMTOOLSET_144.String():
+		*v = MSVC_PLATFORMTOOLSET_144
+	case MSVC_PLATFORMTOOLSET_143.String():
+		*v = MSVC_PLATFORMTOOLSET_143
+	case MSVC_PLATFORMTOOLSET_142.String():
+		*v = MSVC_PLATFORMTOOLSET_142
+	default:
+		base.LogWarningOnce(LogWindows, "unknown MSVC platform toolset: %q", in)
+		var long uint64
+		long, err = strconv.ParseUint(in, 10, 8)
+		if err == nil {
+			*v = MsvcPlatformToolset((byte)(long))
+		}
+	}
+	return err
+}
+func (x *MsvcPlatformToolset) Serialize(ar base.Archive) {
+	ar.Byte((*byte)(x))
+}
+func (x *MsvcPlatformToolset) AutoComplete(in base.AutoComplete) {
+	for _, it := range GetMsvcPlatformToolsets() {
+		in.Add(it.String(), fmt.Sprint("Microsoft Visual Studio ", it.String()))
+	}
+}
+
+func getPlatformToolsetFromMinorVer(minorVer string) (result MsvcPlatformToolset, err error) {
+	err = result.Set(fmt.Sprintf("%s%s%s", minorVer[0:1], minorVer[1:2], minorVer[3:4]))
+	if err == nil {
+		if result == MSVC_PLATFORMTOOLSET_144 && strings.HasPrefix(minorVer, "14.40.") {
+			// https://devblogs.microsoft.com/cppblog/msvc-toolset-minor-version-number-14-40-in-vs-2022-v17-10/
+			base.LogWarningOnce(LogWindows, "MSVC still expects platform toolset v143 instead of v144, insteadf MSVC toolset version must be used to select v144 toolchain")
+			result = MSVC_PLATFORMTOOLSET_143
+		}
+	}
+	return
+}
+
+/***************************************
+ * MSVC Version
  ***************************************/
 
 type MsvcVersion int32
@@ -150,20 +224,19 @@ func (x *MsvcVersion) AutoComplete(in base.AutoComplete) {
 	}
 }
 
-func getCppStdFromMsc(msc_ver MsvcVersion) compile.CppStdType {
+func getCppStdFromMsc(msc_ver MsvcVersion) (compile.CppStdType, error) {
 	switch msc_ver {
 	case MSC_VER_2022:
-		return compile.CPPSTD_23
+		return compile.CPPSTD_23, nil
 	case MSC_VER_2019:
-		return compile.CPPSTD_17
+		return compile.CPPSTD_17, nil
 	case MSC_VER_2017:
-		return compile.CPPSTD_14
+		return compile.CPPSTD_14, nil
 	case MSC_VER_2015:
-		return compile.CPPSTD_14
+		return compile.CPPSTD_14, nil
 	case MSC_VER_2013:
-		return compile.CPPSTD_11
+		return compile.CPPSTD_11, nil
 	default:
-		base.UnexpectedValue(msc_ver)
-		return compile.CPPSTD_17
+		return compile.CPPSTD_INHERIT, base.MakeUnexpectedValueError(compile.CPPSTD_INHERIT, msc_ver)
 	}
 }

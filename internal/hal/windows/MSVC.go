@@ -29,13 +29,12 @@ const MSVC_ENABLE_PATHMAP = false
  ***************************************/
 
 type MsvcCompiler struct {
-	Arch ArchType
-
+	Arch            ArchType
+	PlatformToolset MsvcPlatformToolset
 	MSC_VER         MsvcVersion
 	MinorVer        string
 	Host            string
 	Target          string
-	PlatformToolset string
 	VSInstallName   string
 	VSInstallPath   Directory
 	VCToolsPath     Directory
@@ -53,12 +52,11 @@ func (msvc *MsvcCompiler) GetCompiler() *CompilerRules { return &msvc.CompilerRu
 
 func (msvc *MsvcCompiler) Serialize(ar base.Archive) {
 	ar.Serializable(&msvc.Arch)
-
+	ar.Serializable(&msvc.PlatformToolset)
 	ar.Serializable(&msvc.MSC_VER)
 	ar.String(&msvc.MinorVer)
 	ar.String(&msvc.Host)
 	ar.String(&msvc.Target)
-	ar.String(&msvc.PlatformToolset)
 	ar.String(&msvc.VSInstallName)
 	ar.Serializable(&msvc.VSInstallPath)
 	ar.Serializable(&msvc.VCToolsPath)
@@ -123,10 +121,13 @@ func (msvc *MsvcCompiler) CppRtti(f *Facet, enabled bool) {
 	}
 }
 func (msvc *MsvcCompiler) CppStd(f *Facet, std CppStdType) {
-	maxSupported := getCppStdFromMsc(msvc.MSC_VER)
+	maxSupported, err := getCppStdFromMsc(msvc.MSC_VER)
+	base.LogPanicIfFailed(LogWindows, err)
+
 	if int32(std) > int32(maxSupported) {
 		std = maxSupported
 	}
+
 	switch std {
 	case CPPSTD_23:
 		// f.AddCompilationFlag("/std:c++23") // still not supported as of 07/24/24
@@ -1078,12 +1079,18 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 	msvc.MinorVer = msvcProductInstall.VcToolsPath.Basename()
 	msvc.Host = msvcProductInstall.HostArch
 	msvc.Target = msvc.Arch.String()
-	msvc.PlatformToolset = fmt.Sprintf("%s%s%s", msvc.MinorVer[0:1], msvc.MinorVer[1:2], msvc.MinorVer[3:4])
 	msvc.VSInstallName = msvcProductInstall.Selected.InstallationName
 	msvc.VSInstallPath = msvcProductInstall.VsInstallPath
 	msvc.VCToolsPath = msvcProductInstall.VcToolsPath
 
-	msvc.CompilerRules.CppStd = getCppStdFromMsc(msc_ver)
+	if msvc.PlatformToolset, err = getPlatformToolsetFromMinorVer(msvc.MinorVer); err != nil {
+		return err
+	}
+
+	if msvc.CompilerRules.CppStd, err = getCppStdFromMsc(msc_ver); err != nil {
+		return err
+	}
+
 	msvc.CompilerRules.Features = base.MakeEnumSet(
 		COMPILER_ALLOW_CACHING,
 		COMPILER_ALLOW_DISTRIBUTION,
@@ -1122,10 +1129,10 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 		"_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING", // warning STL4043: stdext::checked_array_iterator, stdext::unchecked_array_iterator, and related factory functions are non-Standard extensions and will be removed in the future. std::span (since C++20) and gsl::span can be used instead. You can define _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING or _SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS to suppress this warning.
 	)
 
+	facet.Exports.Add("VisualStudio/MsvcToolsetVersion", msvc.MinorVer)
 	facet.Exports.Add("VisualStudio/Path", msvc.VSInstallPath.String())
-	facet.Exports.Add("VisualStudio/PlatformToolset", msvc.PlatformToolset)
+	facet.Exports.Add("VisualStudio/PlatformToolset", msvc.PlatformToolset.String())
 	facet.Exports.Add("VisualStudio/Tools", msvc.VCToolsPath.String())
-	facet.Exports.Add("VisualStudio/Version", msvc.MinorVer)
 
 	facet.SystemIncludePaths.Append(
 		msvc.VSInstallPath.Folder("VC", "Auxiliary", "VS", "include"),
