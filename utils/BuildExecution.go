@@ -35,6 +35,8 @@ type BuildAnnotateFunc func(*BuildAnnotations)
 type BuildContext interface {
 	BuildInitializer
 
+	CheckForAbort() error
+
 	GetStaticDependencies() []BuildResult
 
 	NeedBuildAliasables(n int, buildAliasables func(int) BuildAliasable, onBuildResult func(int, BuildResult) error) error
@@ -69,12 +71,11 @@ type buildExecuteContext struct {
 }
 
 type buildAbortError struct {
-	alias BuildAlias
 	inner error
 }
 
 func (x buildAbortError) Error() string {
-	return fmt.Sprintf("node %q build aborted: %v", x.alias, x.inner.Error())
+	return "build aborted"
 }
 
 type buildExecuteError struct {
@@ -226,6 +227,9 @@ func (x *buildExecuteContext) needToBuild_assumeLocked() (bool, error) {
 
 	return rebuild, lastError
 }
+func (x *buildExecuteContext) CheckForAbort() error {
+	return x.graph.CheckForAbort()
+}
 func (x *buildExecuteContext) Execute() (BuildResult, bool, error) {
 	x.stats = StartBuildStats()
 	x.stats.pauseTimer()
@@ -240,14 +244,6 @@ func (x *buildExecuteContext) Execute() (BuildResult, bool, error) {
 
 	x.node.state.Lock()
 	defer x.node.state.Unlock()
-
-	if err := x.graph.abort.Load(); !base.IsNil(err) {
-		return BuildResult{
-			BuildAlias: x.node.BuildAlias,
-			Buildable:  x.node.Buildable,
-			BuildStamp: BuildStamp{},
-		}, false, buildAbortError{alias: x.node.BuildAlias, inner: err.(error)}
-	}
 
 	needToBuild, err := x.needToBuild_assumeLocked()
 
@@ -270,6 +266,14 @@ func (x *buildExecuteContext) Execute() (BuildResult, bool, error) {
 			Buildable:  x.node.Buildable,
 			BuildStamp: x.node.Stamp,
 		}, false, nil
+	}
+
+	if err := x.CheckForAbort(); err != nil {
+		return BuildResult{
+			BuildAlias: x.node.BuildAlias,
+			Buildable:  x.node.GetBuildable(),
+			BuildStamp: BuildStamp{},
+		}, false, err
 	}
 
 	defer func() {
@@ -321,6 +325,7 @@ func (x *buildExecuteContext) Execute() (BuildResult, bool, error) {
 
 		err = buildExecuteError{alias: x.Alias(), inner: err}
 
+		// abort every other build if stop-on-error is enabled
 		if GetCommandFlags().StopOnError.Get() {
 			x.graph.Abort(err)
 		}
@@ -566,6 +571,10 @@ func makeBuildGraphContext(g *buildGraph, options *BuildOptions) buildGraphConte
 }
 
 func (x buildGraphContext) BuildGraph() BuildGraph { return x.graph }
+
+func (x buildGraphContext) CheckForAbort() error {
+	return x.graph.CheckForAbort()
+}
 
 func (x buildGraphContext) GetStaticDependencies() (empty []BuildResult) { return }
 

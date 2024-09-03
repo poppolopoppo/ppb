@@ -252,6 +252,8 @@ func (x *dependencyBuildContext) GetBuildContext() utils.BuildContext {
 }
 
 func (x *dependencyBuildContext) BuildGraph() utils.BuildGraph { return x.inner.BuildGraph() }
+func (x *dependencyBuildContext) CheckForAbort() error         { return x.inner.CheckForAbort() }
+
 func (x *dependencyBuildContext) GetStaticDependencies() []utils.BuildResult {
 	return x.inner.GetStaticDependencies()
 }

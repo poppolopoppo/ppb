@@ -190,7 +190,7 @@ type CommandEnvT struct {
 	commandEvents CommandEvents
 	commandLines  []CommandLine
 
-	lastPanic atomic.Value
+	lastPanic atomic.Pointer[error]
 }
 
 var CommandEnv *CommandEnvT
@@ -292,8 +292,10 @@ func CommandPanic(err error) {
 
 // don't save the db when panic occured
 func (env *CommandEnvT) OnPanic(err error) base.PanicResult {
-	var null error = nil
-	if env.lastPanic.CompareAndSwap(null, err) {
+	if base.IsNil(err) {
+		return base.PANIC_HANDLED
+	}
+	if env.lastPanic.CompareAndSwap(nil, &err) {
 		env.commandEvents.OnPanic.Invoke(err)
 		return base.PANIC_ABORT
 	}

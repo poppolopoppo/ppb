@@ -104,7 +104,7 @@ type buildGraph struct {
 	stats   BuildStats
 
 	revision int32
-	abort    atomic.Value
+	abort    atomic.Pointer[error]
 
 	buildEvents
 }
@@ -131,6 +131,20 @@ func (g *buildGraph) Range(each func(BuildAlias, BuildNode) error) error {
 	return g.nodes.Range(func(key BuildAlias, node *buildNode) error {
 		return each(key, node)
 	})
+}
+
+func (g *buildGraph) Abort(err error) {
+	if !base.IsNil(err) {
+		// only keeps the first error
+		g.abort.CompareAndSwap(nil, &err)
+	}
+}
+func (g *buildGraph) CheckForAbort() error {
+	err := g.abort.Load()
+	if err != nil {
+		return buildAbortError{inner: *err}
+	}
+	return nil
 }
 
 func (g *buildGraph) Dirty() bool {
@@ -305,13 +319,6 @@ func (g *buildGraph) Join() (lastErr error) {
 		})
 	}
 	return
-}
-func (g *buildGraph) Abort(err error) {
-	if err != nil {
-		// only keeps the first error
-		var null error = nil
-		g.abort.CompareAndSwap(null, err)
-	}
 }
 
 func (g *buildGraph) PostLoad() {

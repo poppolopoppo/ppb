@@ -403,6 +403,10 @@ func executeOrDistributeAction(bc utils.BuildContext, action *ActionRules, flags
 		future := base.MakeGlobalWorkerFuture(func(tc base.ThreadContext) (int, error) {
 			bc.Annotate(utils.AnnocateBuildCommentf("Thread:%d/%d", tc.GetThreadId()+1, tc.GetThreadPool().GetArity()))
 
+			if err := bc.CheckForAbort(); err != nil {
+				return -1, err
+			}
+
 			internal_io.OptionProcessOnSpinnerMessage(func(executable utils.Filename, arguments base.StringSet, options *internal_io.ProcessOptions) base.ProgressScope {
 				spinner := base.LogSpinnerEx(
 					base.ProgressOptionFormat("[W:%02d/%2d] %v",
