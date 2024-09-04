@@ -487,10 +487,6 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 		base.LogWarning(LogWindows, "%v: sanitizer %v is not supported on windows", u, u.Sanitizer)
 		u.Sanitizer = SANITIZER_NONE
 	}
-	if u.Sanitizer.IsEnabled() && u.RuntimeLib.IsDebug() {
-		base.LogWarning(LogWindows, "%v: sanitizer %v is not supported on windows", u, u.Sanitizer)
-		u.RuntimeLib = RUNTIMELIB_STATIC_DEBUG
-	}
 
 	// hot-reload can override LTCG
 	if u.DebugInfo == DEBUGINFO_HOTRELOAD {
@@ -624,7 +620,7 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 	if u.Sanitizer.IsEnabled() {
 		base.LogVeryVerbose(LogWindows, "%v: using sanitizer %v", u, u.Sanitizer)
 		// https://github.com/google/sanitizers/wiki/AddressSanitizerFlags
-		asanOptions := "check_initialization_order=1:debug=1:verbose=1"
+		asanOptions := "check_initialization_order=1"
 		if msvc.WindowsFlags.UseAfterReturn.Get() {
 			asanOptions += ":detect_stack_use_after_return=1"
 		}
@@ -632,6 +628,8 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 		// asanOptions += ":use_sigaltstack=0"
 		// - detect_leaks=1 is not supported on Windows (visual studio 17.7.2)
 		// asanOptions += ":detect_leaks=1"
+		// - tweak asan log output
+		asanOptions += ":debug=1:verbose=1"
 
 		u.Environment.Append("ASAN_OPTIONS", asanOptions)
 
@@ -640,13 +638,13 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 			u.Incremental.Assign(false)
 		}
 
-		if u.CompilerOptions.Remove("/INCREMENTAL") > 0 {
+		if u.RemoveCompilationFlag("/INCREMENTAL") > 0 {
 			base.LogVeryVerbose(LogWindows, "%v: remove /INCREMENTAL due to %v", u, u.Sanitizer)
 		}
-		if u.CompilerOptions.Remove("/LTCG", "/LTCG:INCREMENTAL") > 0 {
+		if u.RemoveCompilationFlag("/LTCG", "/LTCG:INCREMENTAL") > 0 {
 			base.LogVeryVerbose(LogWindows, "%v: remove /LTCG due to %v", u, u.Sanitizer)
 		}
-		if u.CompilerOptions.Remove("/GS", "/GUARD:CF", "/sdl", "/RTC1") > 0 {
+		if u.RemoveCompilationFlag("/GS", "/GUARD:CF", "/sdl", "/RTC1") > 0 {
 			base.LogVeryVerbose(LogWindows, "%v: remove runtime checks /RTC1 due to %v", u, u.Sanitizer)
 		}
 	}
@@ -777,10 +775,10 @@ func msvc_CXX_runtimeLibrary(u *Unit, staticCrt bool, debug bool) {
 	if staticCrt {
 		runtimeFlag = "/MT"
 		base.LogVeryVerbose(LogWindows, "%v: using msvc static CRT libraries %s%s (debug=%v)", u, runtimeFlag, suffix, debug)
-		u.AddCompilationFlag(
-			"LIBCMT"+suffix+".lib",
-			"libvcruntime"+suffix+".lib",
-			"libucrt"+suffix+".lib")
+		// u.AddCompilationFlag(
+		// 	"libcmt"+suffix+".lib",
+		// 	"libvcruntime"+suffix+".lib",
+		// 	"libucrt"+suffix+".lib")
 	} else {
 		base.LogVeryVerbose(LogWindows, "%v: using msvc dynamic CRT libraries %s%s (debug=%v)", u, runtimeFlag, suffix, debug)
 		runtimeFlag = "/MD"

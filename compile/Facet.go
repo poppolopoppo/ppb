@@ -198,12 +198,12 @@ func (facet *Facet) AddCompilationFlag_NoPreprocessor(flags ...string) {
 	facet.PrecompiledHeaderOptions.Append(flags...)
 	facet.CompilerOptions.Append(flags...)
 }
-func (facet *Facet) RemoveCompilationFlag(flags ...string) {
-	facet.AnalysisOptions.Remove(flags...)
-	facet.HeaderUnitOptions.Remove(flags...)
-	facet.PrecompiledHeaderOptions.Remove(flags...)
-	facet.PreprocessorOptions.Remove(flags...)
-	facet.CompilerOptions.Remove(flags...)
+func (facet *Facet) RemoveCompilationFlag(flags ...string) int {
+	return facet.AnalysisOptions.Remove(flags...) +
+		facet.HeaderUnitOptions.Remove(flags...) +
+		facet.PrecompiledHeaderOptions.Remove(flags...) +
+		facet.PreprocessorOptions.Remove(flags...) +
+		facet.CompilerOptions.Remove(flags...)
 }
 
 func (facet *Facet) PerformSubstitutions() {
