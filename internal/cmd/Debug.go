@@ -252,8 +252,8 @@ var ProgressBar = utils.NewCommand(
 		printGradient := func(title string, n int, color func(float64) base.Color3f) {
 			sb := strings.Builder{}
 			sb.WriteString(base.ANSI_RESET.String())
-			for i := 0; i < 100; i++ {
-				c := color(float64(i) / 100.0)
+			for i := 0; i < n; i++ {
+				c := color(float64(i+1) / float64(n))
 
 				sb.WriteString(c.Quantize(true).Ansi(true))
 				sb.WriteRune('▇')
