@@ -939,6 +939,7 @@ type interactiveLogPin struct {
 	last      atomic.Int64
 	progress  atomic.Int64
 	startedAt time.Duration
+	avgSpeed  float64
 
 	color Color3b
 }
@@ -952,6 +953,7 @@ func (x *interactiveLogPin) reset() {
 	x.writer = nil
 	x.tick = 0
 	x.startedAt = 0
+	x.avgSpeed = 0
 	x.progress.Store(0)
 }
 func (x *interactiveLogPin) format(dst LogWriter) {
@@ -1303,26 +1305,34 @@ func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
 		lw.WriteString(ANSI_RESET.String())
 		fmt.Fprintf(lw, " %6.2f%% ", pf*100)
 
-		numElts := float64(progress - x.first)
-		eltUnit := ""
-		if numElts > 5000 {
-			eltUnit = "K"
-			numElts /= 1000
-		}
-		if numElts > 5000 {
-			eltUnit = "M"
-			numElts /= 1000
-		}
+		if numElts := float64(progress - x.first); numElts > 0 {
+			eltUnitDiv := 1.0
+			eltUnitStr := ""
+			if numElts > 5000 {
+				eltUnitStr = "K"
+				eltUnitDiv *= 1000
+				numElts /= 1000
+			}
+			if numElts > 5000 {
+				eltUnitStr = "M"
+				eltUnitDiv *= 1000
+				numElts /= 1000
+			}
 
-		eltPerSec := numElts / float64(duration.Seconds()+1e-6)
-		lw.WriteString(ANSI_FG0_YELLOW.String())
-		fmt.Fprintf(lw, "%7.3f %s/s", eltPerSec, eltUnit)
+			if speed := float64(progress-x.first) / float64(duration.Seconds()+1e-6); x.avgSpeed == 0 {
+				x.avgSpeed = speed
+			} else {
+				const alpha = 0.2
+				x.avgSpeed = alpha*speed + (1-alpha)*x.avgSpeed
+			}
 
-		if numElts > 0 {
-			remainingTime := time.Duration(float64((last-progress)*int64(time.Second)) / (eltPerSec + 1e-6))
-			remainingTime = remainingTime.Round(10 * time.Millisecond)
+			lw.WriteString(ANSI_FG0_YELLOW.String())
+			fmt.Fprintf(lw, "%8.2f %s/s", x.avgSpeed/eltUnitDiv, eltUnitStr)
 
-			lw.WriteString(ANSI_FG1_YELLOW.String())
+			remainingTime := time.Duration(float64((last-progress)*int64(time.Second)) / (x.avgSpeed + 1e-6)).
+				Round(10 * time.Millisecond) // restrict precision
+
+			lw.WriteString(ANSI_FG0_GREEN.String())
 			fmt.Fprintf(lw, "  -%v", remainingTime)
 		}
 
