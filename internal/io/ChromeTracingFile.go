@@ -1,13 +1,10 @@
 package io
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
 	"runtime"
-	"runtime/debug"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -21,6 +18,8 @@ var LogChromeTrace = base.NewLogCategory("ChromeTrace")
 /***************************************
  * Chrome Tracing flags
  ***************************************/
+
+const buildGraphTid = "BuildGraph"
 
 type ChromeTracingFlags struct {
 	Enabled    utils.BoolVar
@@ -51,12 +50,12 @@ var GetChromeTracingFlags = func() func() *ChromeTracingFlags {
 				chromeTracingFile := NewThreadSafeChromeTracing(runtime.NumCPU())
 
 				bg.OnBuildNodeStart(func(bn utils.BuildNode) error {
-					chromeTracingFile.Event(ChromeTracingBegin(bn.Alias().String(), base.GetTypename(bn.GetBuildable())))
+					chromeTracingFile.Event(ChromeTracingBegin(buildGraphTid, bn.Alias().String(), base.GetTypename(bn.GetBuildable())))
 					return nil
 				})
 
 				bg.OnBuildNodeFinished(func(bn utils.BuildNode) error {
-					chromeTracingFile.Event(ChromeTracingEnd(bn.Alias().String(), base.GetTypename(bn.GetBuildable())))
+					chromeTracingFile.Event(ChromeTracingEnd(buildGraphTid, bn.Alias().String(), base.GetTypename(bn.GetBuildable())))
 					return nil
 				})
 
@@ -118,10 +117,10 @@ const (
 type ChromeTracingEvent struct {
 	Name      string                 `json:"name"`
 	Category  string                 `json:"cat"`
+	Tid       string                 `json:"tid"`
 	Phase     ChromeTracingPhase     `json:"ph"`
 	Timestamp int64                  `json:"ts"`
 	Pid       int64                  `json:"pid"`
-	Tid       int64                  `json:"tid"`
 	Arguments map[string]interface{} `json:"args,omitempty"`
 }
 
@@ -161,15 +160,7 @@ func (x ChromeTracingPhase) MarshalText() ([]byte, error) {
  * Chrome trace events formating
  ***************************************/
 
-const USE_THREADID_AS_TID = false // choose your poison between thread id or goroutine id: neither works well for scoping in GO due to how the scheduler works :'(
-
-func NewChromeTracingEvent(name, category string, phase ChromeTracingPhase) ChromeTracingEvent {
-	var tid int64
-	if USE_THREADID_AS_TID {
-		tid = int64(base.GetCurrentThreadId())
-	} else {
-		tid, _ = binary.Varint(bytes.Fields(debug.Stack())[1]) //,
-	}
+func NewChromeTracingEvent(tid, name, category string, phase ChromeTracingPhase) ChromeTracingEvent {
 	return ChromeTracingEvent{
 		//Pid: initialized with value cached in ChromeTracingFile
 		Name:      name,
@@ -179,11 +170,11 @@ func NewChromeTracingEvent(name, category string, phase ChromeTracingPhase) Chro
 		Timestamp: base.Elapsed().Microseconds(),
 	}
 }
-func ChromeTracingBegin(name, category string) ChromeTracingEvent {
-	return NewChromeTracingEvent(name, category, CHROMETRACING_PHASE_BEGIN)
+func ChromeTracingBegin(tid, name, category string) ChromeTracingEvent {
+	return NewChromeTracingEvent(tid, name, category, CHROMETRACING_PHASE_BEGIN)
 }
-func ChromeTracingEnd(name, category string) ChromeTracingEvent {
-	return NewChromeTracingEvent(name, category, CHROMETRACING_PHASE_END)
+func ChromeTracingEnd(tid, name, category string) ChromeTracingEvent {
+	return NewChromeTracingEvent(tid, name, category, CHROMETRACING_PHASE_END)
 }
 
 /***************************************
