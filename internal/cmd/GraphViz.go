@@ -15,7 +15,7 @@ import (
 var CommandGraphviz = newExportNodesCommand(
 	"Debug",
 	"graphviz",
-	"dump build node to graphviz .dot",
+	"dump build node to graphviz .dot file format",
 	func(cc CommandContext, args *ExportNodeArgs[BuildAlias, *BuildAlias]) error {
 		bg := CommandEnv.BuildGraph()
 
@@ -28,7 +28,7 @@ var CommandGraphviz = newExportNodesCommand(
 		}
 
 		return args.WithOutput(func(w io.Writer) error {
-			gvz := newBuildGraphViz(bg, w)
+			gvz := newBuildGraphViz(bg, w, args.Minify.Get())
 			gvz.Digraph("G", func() {
 				for _, node := range nodes {
 					gvz.Visit(node,
@@ -61,18 +61,20 @@ type buildGraphViz struct {
 	internal_io.GraphVizFile
 	graph     BuildGraph
 	visited   map[BuildNode]string
-	clustered bool
 	subgraphs map[string][]buildGraphVizNode
 	edges     []buildGraphVizEdge
+	clustered bool
+	minify    bool
 }
 
-func newBuildGraphViz(graph BuildGraph, w io.Writer) buildGraphViz {
+func newBuildGraphViz(graph BuildGraph, w io.Writer, minify bool) buildGraphViz {
 	return buildGraphViz{
 		graph:        graph,
 		GraphVizFile: internal_io.NewGraphVizFile(w),
 		visited:      make(map[BuildNode]string),
 		subgraphs:    make(map[string][]buildGraphVizNode),
 		edges:        make([]buildGraphVizEdge, 0),
+		minify:       minify,
 	}
 }
 func (x *buildGraphViz) CloseSubGraphs() error {
@@ -98,6 +100,9 @@ func (x *buildGraphViz) CompoundNode(subgraph, id string, options *internal_io.G
 	}
 }
 func (x *buildGraphViz) CompoundEdge(from, to string, options ...internal_io.GraphVizOptionFunc) {
+	if from == "" || to == "" {
+		return // don't add edge from/to a minified node
+	}
 	if x.clustered {
 		x.edges = append(x.edges, buildGraphVizEdge{from: from, to: to, GraphVizOptions: internal_io.NewGraphVizOptions(options...)})
 	} else {
@@ -116,6 +121,8 @@ func (x *buildGraphViz) Visit(node BuildNode, userOptions ...internal_io.GraphVi
 	options.Label = trimNodeLabel(id)
 	options.Tooltip = id
 
+	minified := true
+
 	switch buildable := node.GetBuildable().(type) {
 	case *FileDependency:
 		options.Color = "#AAE4B580"
@@ -133,6 +140,7 @@ func (x *buildGraphViz) Visit(node BuildNode, userOptions ...internal_io.GraphVi
 		options.Color = "#7B68EE50"
 		options.Shape = internal_io.GRAPHVIZ_Component
 		options.FontSize = 7
+
 	default:
 		ty := reflect.TypeOf(buildable)
 		color := base.NewColorFromStringHash(ty.String()).Quantize(true)
@@ -140,6 +148,15 @@ func (x *buildGraphViz) Visit(node BuildNode, userOptions ...internal_io.GraphVi
 		options.Color = color.ToHTML(0x80)
 		options.Style = internal_io.GRAPHVIZ_Filled
 		options.Shape = internal_io.GRAPHVIZ_Cds
+
+		minified = false
+	}
+
+	// ignore file/directory nodes when minify is enabled
+	if minified && x.minify {
+		id = ""
+		x.visited[node] = id
+		return id
 	}
 
 	options.Init(userOptions...)
