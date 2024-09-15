@@ -21,7 +21,7 @@ type BuildNode interface {
 	GetDynamicDependencies() BuildAliases
 	GetOutputDependencies() BuildAliases
 
-	GetDependencyLinks() []BuildDependencyLink
+	GetDependencyLinks(includeOutputs bool) []BuildDependencyLink
 }
 
 type BuildableGeneratedFile interface {
@@ -130,7 +130,7 @@ func (node *buildNode) GetOutputDependencies() BuildAliases {
 	defer node.state.RUnlock()
 	return append(node.OutputFiles.Aliases(), node.OutputNodes...)
 }
-func (node *buildNode) GetDependencyLinks() []BuildDependencyLink {
+func (node *buildNode) GetDependencyLinks(includeOutputs bool) []BuildDependencyLink {
 	node.state.RLock()
 	defer node.state.RUnlock()
 	result := make([]BuildDependencyLink, 0, len(node.Static)+len(node.Dynamic)+len(node.OutputFiles)+len(node.OutputNodes))
@@ -140,11 +140,13 @@ func (node *buildNode) GetDependencyLinks() []BuildDependencyLink {
 	for _, it := range node.Dynamic {
 		result = append(result, BuildDependencyLink{Alias: it.Alias, Type: DEPENDENCY_DYNAMIC})
 	}
-	for _, it := range node.OutputFiles {
-		result = append(result, BuildDependencyLink{Alias: it.Alias, Type: DEPENDENCY_OUTPUT})
-	}
-	for _, a := range node.OutputNodes {
-		result = append(result, BuildDependencyLink{Alias: a, Type: DEPENDENCY_OUTPUT})
+	if includeOutputs {
+		for _, it := range node.OutputFiles {
+			result = append(result, BuildDependencyLink{Alias: it.Alias, Type: DEPENDENCY_OUTPUT})
+		}
+		for _, a := range node.OutputNodes {
+			result = append(result, BuildDependencyLink{Alias: a, Type: DEPENDENCY_OUTPUT})
+		}
 	}
 	return result
 }

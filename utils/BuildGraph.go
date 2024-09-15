@@ -71,7 +71,7 @@ type BuildGraph interface {
 	GetDependencyChain(a, b BuildAlias, weight func(BuildDependencyLink) float32) ([]BuildDependencyLink, error)
 	GetDependencyInputFiles(recursive bool, queue ...BuildAlias) (FileSet, error)
 	GetDependencyOutputFiles(queue ...BuildAlias) (FileSet, error)
-	GetDependencyLinks(BuildAlias) ([]BuildDependencyLink, error)
+	GetDependencyLinks(a BuildAlias, includeOutputs bool) ([]BuildDependencyLink, error)
 
 	GetBuildStats() BuildStats
 	GetCriticalPathNodes() []BuildNode
@@ -399,9 +399,9 @@ func (g *buildGraph) GetOutputDependencies(root BuildNode) (result []BuildNode) 
 	return
 }
 
-func (g *buildGraph) GetDependencyLinks(a BuildAlias) ([]BuildDependencyLink, error) {
+func (g *buildGraph) GetDependencyLinks(a BuildAlias, includeOutputs bool) ([]BuildDependencyLink, error) {
 	if node, err := g.Expect(a); err == nil {
-		return node.GetDependencyLinks(), nil
+		return node.GetDependencyLinks(includeOutputs), nil
 	} else {
 		return []BuildDependencyLink{}, err
 	}
@@ -549,21 +549,21 @@ func (g *buildGraph) GetDependencyChain(src, dst BuildAlias, weight func(BuildDe
 			break // destination found, guaranteed with shortest path
 		}
 
-		links, err := g.GetDependencyLinks(BuildAlias(u))
-		if err != nil {
+		if links, err := g.GetDependencyLinks(BuildAlias(u), false); err == nil {
+			for _, l := range links {
+				v := l.Alias
+				if j, ok := visiteds[v]; ok {
+					if alt := distances[min] + 1; alt < distances[j] {
+						distances[j] = alt
+						previous[j] = min
+						linkTypes[j] = l.Type
+					}
+				}
+			}
+		} else {
 			return []BuildDependencyLink{}, err
 		}
 
-		for _, l := range links {
-			v := l.Alias
-			if j, ok := visiteds[v]; ok {
-				if alt := distances[min] + 1; alt < distances[j] {
-					distances[j] = alt
-					previous[j] = min
-					linkTypes[j] = l.Type
-				}
-			}
-		}
 	}
 
 	if distances[dstIndex] == math.MaxFloat32 {
