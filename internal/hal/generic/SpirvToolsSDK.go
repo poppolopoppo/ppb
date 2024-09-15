@@ -97,9 +97,9 @@ func getSpirvToolsExtractor(download *internal_io.Downloader, extractDir utils.D
 	}, spirvToolsGlobIncludes)
 }
 
-const spirvToolsUseFrozenArtifacts = true
+const spirvToolsUseFrozenArtifacts = false
 
-// already happened that CI would fail, and not binary was available on HEAD...
+// already happened that CI would fail, and no binary was available on HEAD...
 var spirvToolsFrozenArtifactUris = map[string]string{
 	"windows_vs2017_release": "https://storage.googleapis.com/spirv-tools/artifacts/prod/graphics_shader_compiler/spirv-tools/windows-msvc-2017-release/continuous/1691/20220215-161749/install.zip",
 	"windows_vs2017_debug":   "https://storage.googleapis.com/spirv-tools/artifacts/prod/graphics_shader_compiler/spirv-tools/windows-msvc-2017-debug/continuous/1409/20220304-121700/install.zip",
