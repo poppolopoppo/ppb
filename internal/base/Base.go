@@ -1,15 +1,11 @@
 package base
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"net"
 	"reflect"
-	"regexp"
 	"sort"
-	"strings"
 	"time"
 	"unsafe"
 )
@@ -153,31 +149,6 @@ type OrderedComparable[T any] interface {
 	comparable
 }
 
-type jointStringer[T fmt.Stringer] struct {
-	it    []T
-	delim string
-}
-
-func (join jointStringer[T]) String() string {
-	var notFirst bool
-	sb := strings.Builder{}
-	for _, x := range join.it {
-		if notFirst {
-			sb.WriteString(join.delim)
-		}
-		sb.WriteString(x.String())
-		notFirst = true
-	}
-	return sb.String()
-}
-
-func Join[T fmt.Stringer](delim string, it ...T) fmt.Stringer {
-	return jointStringer[T]{delim: delim, it: it}
-}
-func JoinString[T fmt.Stringer](delim string, it ...T) string {
-	return Join(delim, it...).String()
-}
-
 func Map[T, R any](transform func(T) R, src ...T) (dst []R) {
 	dst = make([]R, len(src))
 	for i, x := range src {
@@ -207,108 +178,6 @@ func Blend[T any](ifFalse, ifTrue T, selector bool) T {
 	} else {
 		return ifFalse
 	}
-}
-
-/***************************************
- * String helpers
- ***************************************/
-
-var re_nonAlphaNumeric = regexp.MustCompile(`[^\w\d]+`)
-
-func SanitizeIdentifier(in string) string {
-	return re_nonAlphaNumeric.ReplaceAllString(in, "_")
-}
-
-var re_whiteSpace = regexp.MustCompile(`\s+`)
-
-func SplitWords(in string) []string {
-	return re_whiteSpace.Split(in, -1)
-}
-
-func SplitRegex(re *regexp.Regexp, capacity int) bufio.SplitFunc {
-	return func(data []byte, atEOF bool) (advance int, token []byte, err error) {
-		if atEOF && len(data) == 0 {
-			return 0, nil, nil
-		}
-		if loc := re.FindIndex(data); loc != nil {
-			return loc[1] + 1, data[loc[0]:loc[1]], nil
-		}
-		if atEOF {
-			return 0, nil, io.EOF
-		}
-		if len(data) >= capacity {
-			return len(data) - capacity, nil, nil
-		}
-		return 0, nil, nil
-	}
-}
-
-func MakeString(x any) string {
-	switch it := x.(type) {
-	case string:
-		return it
-	case fmt.Stringer:
-		return it.String()
-	case []byte:
-		return UnsafeStringFromBytes(it)
-	default:
-		return fmt.Sprint(x)
-	}
-}
-
-/***************************************
- * FourCC
- ***************************************/
-
-type FourCC uint32
-
-func StringToFourCC(in string) FourCC {
-	runes := ([]rune)(in)[:4]
-	return MakeFourCC(runes[0], runes[1], runes[2], runes[3])
-}
-func BytesToFourCC(a, b, c, d byte) FourCC {
-	return FourCC(uint32(a) | (uint32(b) << 8) | (uint32(c) << 16) | (uint32(d) << 24))
-}
-func MakeFourCC(a, b, c, d rune) FourCC {
-	return BytesToFourCC(byte(a), byte(b), byte(c), byte(d))
-}
-func (x FourCC) Valid() bool { return x != 0 }
-func (x FourCC) Bytes() (result [4]byte) {
-	result[0] = byte((uint32(x) >> 0) & 0xFF)
-	result[1] = byte((uint32(x) >> 8) & 0xFF)
-	result[2] = byte((uint32(x) >> 16) & 0xFF)
-	result[3] = byte((uint32(x) >> 24) & 0xFF)
-	return
-}
-func (x FourCC) String() string {
-	raw := x.Bytes()
-	return UnsafeStringFromBytes(raw[:])
-}
-func (x *FourCC) Serialize(ar Archive) {
-	var raw [4]byte
-	if ar.Flags().IsLoading() {
-		ar.Raw(raw[:])
-		*x = BytesToFourCC(raw[0], raw[1], raw[2], raw[3])
-	} else {
-		raw = x.Bytes()
-		ar.Raw(raw[:])
-	}
-}
-
-/***************************************
- * Avoid allocation for string/[]byte conversions
- ***************************************/
-
-func UnsafeBytesFromString(in string) []byte {
-	return unsafe.Slice(unsafe.StringData(in), len(in))
-}
-func UnsafeStringFromBytes(raw []byte) string {
-	// from func (strings.Builder) String() string
-	return unsafe.String(unsafe.SliceData(raw), len(raw))
-}
-func UnsafeStringFromBuffer(buf *bytes.Buffer) string {
-	// from func (strings.Builder) String() string
-	return UnsafeStringFromBytes(buf.Bytes())
 }
 
 /***************************************

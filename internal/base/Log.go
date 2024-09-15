@@ -1400,15 +1400,6 @@ func LogBenchmark(category *LogCategory, msg string, args ...interface{}) Benchm
 	}
 }
 
-type lambdaStringer func() string
-
-func (x lambdaStringer) String() string {
-	return x()
-}
-func MakeStringer(fn func() string) fmt.Stringer {
-	return lambdaStringer(fn)
-}
-
 func CopyWithProgress(context string, totalSize int64, dst io.Writer, src io.Reader) (err error) {
 	pageAlloc := GetBytesRecyclerBySize(totalSize)
 
