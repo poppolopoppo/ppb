@@ -934,14 +934,12 @@ func (g *buildGraph) launchBuild(node *buildNode, options *BuildOptions) base.Fu
 			return fmt.Errorf("%v: node alias do not match buildable %q\n\t-> %v", node.BuildAlias, alias, node.Buildable)
 		}
 	})
-
-	base.Assert(func() bool {
+	base.AssertErr(func() error {
 		relateOutp := strings.Builder{}
 		if options.RelatesVerbose(node, 0, &relateOutp) {
-			base.LogPanic(LogBuildGraph, "build cyclic dependency in %q\n%s", node, relateOutp.String())
-			return false
+			return fmt.Errorf("build cyclic dependency in %q\n%s", node, relateOutp.String())
 		}
-		return true
+		return nil
 	})
 
 	if BUILDGRAPH_ENABLE_CHECKS {
