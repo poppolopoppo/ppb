@@ -515,7 +515,7 @@ func (x *ActionCacheStats) Print() {
 
 	base.LogForwardf("   READ <==  %8.3f seconds - %5d cache entries",
 		x.CacheRead.Duration.Exclusive.Seconds(), x.CacheRead.Count)
-	base.LogForwardf("INFLATE  ->  %8.3f seconds - %5d cache bulks    - %8.3f MiB/Sec  - %8.3f MiB  ->> %9.3f MiB  (x%4.2f)",
+	base.LogForwardf("INFLATE  ->  %8.3f seconds - %5d cache bulks    - %8.3f MiB/Sec  - %9.3f MiB  ->> %10.3f MiB  (x%4.2f)",
 		x.CacheInflate.Duration.Exclusive.Seconds(), x.CacheInflate.Count,
 		base.MebibytesPerSec(x.CacheReadUncompressed, x.CacheInflate.Duration.Exclusive),
 		base.Mebibytes(x.CacheReadCompressed),
@@ -524,7 +524,7 @@ func (x *ActionCacheStats) Print() {
 
 	base.LogForwardf("  WRITE ==>  %8.3f seconds - %5d cache entries",
 		x.CacheWrite.Duration.Exclusive.Seconds(), x.CacheWrite.Count)
-	base.LogForwardf("DEFLATE <-   %8.3f seconds - %5d cache bulks    - %8.3f MiB/Sec  - %8.3f MiB <<-  %9.3f MiB  (x%4.2f)",
+	base.LogForwardf("DEFLATE <-   %8.3f seconds - %5d cache bulks    - %8.3f MiB/Sec  - %9.3f MiB <<-  %10.3f MiB  (x%4.2f)",
 		x.CacheDeflate.Duration.Exclusive.Seconds(), x.CacheDeflate.Count,
 		base.MebibytesPerSec(x.CacheWriteUncompressed, x.CacheDeflate.Duration.Exclusive),
 		base.Mebibytes(x.CacheWriteCompressed),
