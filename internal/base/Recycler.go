@@ -48,22 +48,23 @@ type bytesRecyclerPool struct {
 
 type BytesRecycler interface {
 	Stride() int
-	Recycler[[]byte]
+	Recycler[*[]byte]
 }
 
 func newBytesRecycler(stride int) BytesRecycler {
 	result := &bytesRecyclerPool{stride: stride}
 	result.pool.New = func() any {
-		return make([]byte, result.stride)
+		buf := make([]byte, result.stride)
+		return &buf
 	}
 	return result
 }
 func (x *bytesRecyclerPool) Stride() int { return x.stride }
-func (x *bytesRecyclerPool) Allocate() []byte {
-	return x.pool.Get().([]byte)
+func (x *bytesRecyclerPool) Allocate() *[]byte {
+	return x.pool.Get().(*[]byte)
 }
-func (x *bytesRecyclerPool) Release(item []byte) {
-	Assert(func() bool { return len(item) == x.stride })
+func (x *bytesRecyclerPool) Release(item *[]byte) {
+	Assert(func() bool { return item != nil && len(*item) == x.stride })
 	x.pool.Put(item)
 }
 
@@ -129,7 +130,7 @@ const useTransientIoCopyAsynchronous = true
 func AsyncTransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler) (int64, error) {
 	// pass a reusable buffer + size to keep og buffer size known
 	type data_view struct {
-		buf  []byte
+		buf  *[]byte
 		size int
 	}
 
@@ -137,7 +138,7 @@ func AsyncTransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler)
 	var writerErr error
 	var writerSize int64
 	write_block := func(view data_view) error {
-		nw, ew := dst.Write(view.buf[:view.size])
+		nw, ew := dst.Write((*view.buf)[:view.size])
 		if nw != view.size {
 			if ew == nil {
 				ew = io.ErrShortWrite
@@ -156,10 +157,10 @@ func AsyncTransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler)
 	// spawns asynchronous writer goroutine, if needed
 	var writerWg sync.WaitGroup
 	var writerChannel chan data_view
-	var readerChannel chan []byte
+	var readerChannel chan *[]byte
 	launch_writer := func() {
 		writerChannel = make(chan data_view, 2)
-		readerChannel = make(chan []byte, 2)
+		readerChannel = make(chan *[]byte, 2)
 		writerWg.Add(1)
 		go func() {
 			defer func() {
@@ -180,7 +181,7 @@ func AsyncTransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler)
 	var readerErr error
 	var readerSize int64
 	for i := 0; ; i++ {
-		var buf []byte
+		var buf *[]byte
 		if i < 2 {
 			// lazily allocate 2 blocks, only 1 if no more is needed
 			buf = pageAlloc.Allocate()
@@ -191,7 +192,7 @@ func AsyncTransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler)
 		}
 
 		// read from source
-		nr, er := src.Read(buf)
+		nr, er := src.Read(*buf)
 
 		// check if something was read
 		if nr > 0 {
@@ -287,9 +288,9 @@ func TransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler, allo
 			defer pageAlloc.Release(buf)
 
 			for {
-				nr, er := src.Read(buf)
+				nr, er := src.Read(*buf)
 				if nr > 0 {
-					nw, ew := dst.Write(buf[0:nr])
+					nw, ew := dst.Write((*buf)[0:nr])
 					if nw < 0 || nr < nw {
 						nw = 0
 						if ew == nil {
@@ -318,7 +319,7 @@ func TransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler, allo
 		buf := pageAlloc.Allocate()
 		defer pageAlloc.Release(buf)
 
-		size, err = io.CopyBuffer(dst, src, buf)
+		size, err = io.CopyBuffer(dst, src, *buf)
 	}
 
 	if err == io.EOF {

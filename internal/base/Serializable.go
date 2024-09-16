@@ -456,7 +456,7 @@ func SerializeCompactUnsigned[Unsigned constraints.Unsigned](ar Archive, index *
  ***************************************/
 
 type basicArchive struct {
-	bytes   []byte
+	bytes   *[]byte
 	tags    []FourCC
 	flags   ArchiveFlags
 	factory SerializableFactory
@@ -476,7 +476,7 @@ func newBasicArchive(flags ...ArchiveFlag) basicArchive {
 	return ar
 }
 
-func (x basicArchive) Bytes() []byte                { return x.bytes }
+func (x basicArchive) Bytes() []byte                { return *x.bytes }
 func (x basicArchive) Factory() SerializableFactory { return x.factory }
 func (x basicArchive) Flags() ArchiveFlags          { return x.flags }
 func (x basicArchive) Error() error                 { return x.err }

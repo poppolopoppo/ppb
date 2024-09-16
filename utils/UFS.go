@@ -920,7 +920,7 @@ func (ufs *UFSFrontEnd) Read(src Filename, read func([]byte) error) error {
 
 			transient := base.TransientPage1MiB.Allocate()
 			defer base.TransientPage1MiB.Release(transient)
-			return useBuffer(transient)
+			return useBuffer(*transient)
 
 		} else {
 			// for large files we revert to a dedicated allocation
@@ -937,7 +937,7 @@ func (ufs *UFSFrontEnd) ReadLines(src Filename, line func(string) error) error {
 		defer base.TransientPage64KiB.Release(buf)
 
 		scanner := bufio.NewScanner(rd)
-		scanner.Buffer(buf, len(buf)/2)
+		scanner.Buffer(*buf, len(*buf)/2)
 
 		for scanner.Scan() {
 			if err := scanner.Err(); err == nil {
@@ -957,10 +957,10 @@ func (ufs *UFSFrontEnd) Scan(src Filename, re *regexp.Regexp, match func([]strin
 
 		buf := base.TransientPage64KiB.Allocate()
 		defer base.TransientPage64KiB.Release(buf)
-		capacity := len(buf) / 2
+		capacity := len(*buf) / 2
 
 		scanner := bufio.NewScanner(rd)
-		scanner.Buffer(buf, capacity)
+		scanner.Buffer(*buf, capacity)
 		scanner.Split(base.SplitRegex(re, capacity))
 
 		for scanner.Scan() {

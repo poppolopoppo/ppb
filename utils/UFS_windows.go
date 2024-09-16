@@ -42,7 +42,7 @@ func ComputeSha256(path string, seed base.Fingerprint) ([]byte, error) {
 
 	// Start the first read operation.
 	var done uint32
-	err = windows.ReadFile(handle, data[:], &done, &overlapped)
+	err = windows.ReadFile(handle, (*data)[:], &done, &overlapped)
 	if err != nil && err != windows.ERROR_IO_PENDING {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
@@ -53,7 +53,7 @@ func ComputeSha256(path string, seed base.Fingerprint) ([]byte, error) {
 
 	for {
 		// Start the next read operation.
-		err = windows.ReadFile(handle, nextData[:], &done, &nextOverlapped)
+		err = windows.ReadFile(handle, (*nextData)[:], &done, &nextOverlapped)
 		if err != nil && err != windows.ERROR_IO_PENDING {
 			return nil, fmt.Errorf("failed to read file: %w", err)
 		}
@@ -66,7 +66,7 @@ func ComputeSha256(path string, seed base.Fingerprint) ([]byte, error) {
 		}
 
 		// Write the data from the previous read operation to the hash.
-		digester.Write(data[:bytesReturned])
+		digester.Write((*data)[:bytesReturned])
 
 		// If the next read operation returned 0 bytes, we've reached the end of the file.
 		if windows.GetOverlappedResult(handle, &nextOverlapped, &bytesReturned, false) == nil {

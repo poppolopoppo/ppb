@@ -121,7 +121,7 @@ func checkArchiveDiffForScalar[T comparable](ar *ArchiveDiff, serialize func(*T)
 }
 
 func (x *ArchiveDiff) Raw(value []byte) {
-	cmp := x.compare.bytes[:len(value)]
+	cmp := (*x.compare.bytes)[:len(value)]
 	x.compare.Raw(cmp)
 	x.serializeLog("%T: '%v' == '%v'", value, value, cmp)
 	if !bytes.Equal(cmp, value) {

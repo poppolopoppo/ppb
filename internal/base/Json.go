@@ -72,7 +72,7 @@ func PrettyPrint(x interface{}) string {
 	tmp := TransientPage64KiB.Allocate()
 	defer TransientPage64KiB.Release(tmp)
 
-	buf := bytes.NewBuffer(tmp[:0])
+	buf := bytes.NewBuffer((*tmp)[:0])
 
 	encoder := slowJson.NewEncoder(buf)
 
@@ -81,7 +81,7 @@ func PrettyPrint(x interface{}) string {
 		tmp2 := TransientPage64KiB.Allocate()
 		defer TransientPage64KiB.Release(tmp2)
 
-		pretty := bytes.NewBuffer(tmp2[:0])
+		pretty := bytes.NewBuffer((*tmp2)[:0])
 
 		if err = slowJson.Indent(pretty, buf.Bytes(), "", "\t"); err == nil {
 			return pretty.String()

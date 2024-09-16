@@ -78,7 +78,7 @@ func (ar *ArchiveBinaryReader) Raw(value []byte) {
 	}
 }
 func (ar *ArchiveBinaryReader) Byte(value *byte) {
-	raw := ar.bytes[:1]
+	raw := (*ar.bytes)[:1]
 	if _, err := ar.reader.Read(raw); err == nil {
 		*value = raw[0]
 	} else {
@@ -94,7 +94,7 @@ func (ar *ArchiveBinaryReader) Int32(value *int32) {
 	if AR_USE_COMPACT_INDICES {
 		SerializeCompactSigned(ar, value)
 	} else {
-		raw := ar.bytes[:INT32_SIZE]
+		raw := (*ar.bytes)[:INT32_SIZE]
 		ar.Raw(raw)
 		*value = int32(binary.LittleEndian.Uint32(raw))
 	}
@@ -103,7 +103,7 @@ func (ar *ArchiveBinaryReader) Int64(value *int64) {
 	if AR_USE_COMPACT_INDICES {
 		SerializeCompactSigned(ar, value)
 	} else {
-		raw := ar.bytes[:INT64_SIZE]
+		raw := (*ar.bytes)[:INT64_SIZE]
 		ar.Raw(raw)
 		*value = int64(binary.LittleEndian.Uint64(raw))
 	}
@@ -112,7 +112,7 @@ func (ar *ArchiveBinaryReader) UInt32(value *uint32) {
 	if AR_USE_COMPACT_INDICES {
 		SerializeCompactUnsigned(ar, value)
 	} else {
-		raw := ar.bytes[:UINT32_SIZE]
+		raw := (*ar.bytes)[:UINT32_SIZE]
 		ar.Raw(raw)
 		*value = binary.LittleEndian.Uint32(raw)
 	}
@@ -121,18 +121,18 @@ func (ar *ArchiveBinaryReader) UInt64(value *uint64) {
 	if AR_USE_COMPACT_INDICES {
 		SerializeCompactUnsigned(ar, value)
 	} else {
-		raw := ar.bytes[:UINT64_SIZE]
+		raw := (*ar.bytes)[:UINT64_SIZE]
 		ar.Raw(raw)
 		*value = binary.LittleEndian.Uint64(raw)
 	}
 }
 func (ar *ArchiveBinaryReader) Float32(value *float32) {
-	raw := ar.bytes[:FLOAT32_SIZE]
+	raw := (*ar.bytes)[:FLOAT32_SIZE]
 	ar.Raw(raw)
 	*value = math.Float32frombits(binary.LittleEndian.Uint32(raw))
 }
 func (ar *ArchiveBinaryReader) Float64(value *float64) {
-	raw := ar.bytes[:FLOAT64_SIZE]
+	raw := (*ar.bytes)[:FLOAT64_SIZE]
 	ar.Raw(raw)
 	*value = math.Float64frombits(binary.LittleEndian.Uint64(raw))
 }
@@ -151,14 +151,14 @@ func (ar *ArchiveBinaryReader) String(value *string) {
 		}
 		return fmt.Errorf("serializable: sanity check failed on string length (%d > 2048)", size)
 	})
-	ar.Raw(ar.bytes[:size])
-	*value = string(ar.bytes[:size])
+	ar.Raw((*ar.bytes)[:size])
+	*value = string((*ar.bytes)[:size])
 
 	// record the string for future occurrences
 	ar.indexToString = append(ar.indexToString, *value)
 }
 func (ar *ArchiveBinaryReader) Time(value *time.Time) {
-	raw := ar.bytes[:INT64_SIZE]
+	raw := (*ar.bytes)[:INT64_SIZE]
 	ar.Raw(raw)
 	*value = time.UnixMilli(int64(binary.LittleEndian.Uint64(raw)))
 }
@@ -232,14 +232,14 @@ func (ar *ArchiveBinaryWriter) Raw(value []byte) {
 	}
 }
 func (ar *ArchiveBinaryWriter) Byte(value *byte) {
-	raw := ar.bytes[:BYTE_SIZE]
+	raw := (*ar.bytes)[:BYTE_SIZE]
 	raw[0] = *value
 	if _, err := ar.writer.Write(raw); err != nil {
 		ar.onError(err)
 	}
 }
 func (ar *ArchiveBinaryWriter) Bool(value *bool) {
-	raw := ar.bytes[:BOOL_SIZE]
+	raw := (*ar.bytes)[:BOOL_SIZE]
 	raw[0] = 0
 	if *value {
 		raw[0] = 0xFF
@@ -250,7 +250,7 @@ func (ar *ArchiveBinaryWriter) Int32(value *int32) {
 	if AR_USE_COMPACT_INDICES {
 		SerializeCompactSigned(ar, value)
 	} else {
-		raw := ar.bytes[:INT32_SIZE]
+		raw := (*ar.bytes)[:INT32_SIZE]
 		binary.LittleEndian.PutUint32(raw, uint32(*value))
 		ar.Raw(raw)
 	}
@@ -259,7 +259,7 @@ func (ar *ArchiveBinaryWriter) Int64(value *int64) {
 	if AR_USE_COMPACT_INDICES {
 		SerializeCompactSigned(ar, value)
 	} else {
-		raw := ar.bytes[:INT64_SIZE]
+		raw := (*ar.bytes)[:INT64_SIZE]
 		binary.LittleEndian.PutUint64(raw, uint64(*value))
 		ar.Raw(raw)
 	}
@@ -268,7 +268,7 @@ func (ar *ArchiveBinaryWriter) UInt32(value *uint32) {
 	if AR_USE_COMPACT_INDICES {
 		SerializeCompactUnsigned(ar, value)
 	} else {
-		raw := ar.bytes[:UINT32_SIZE]
+		raw := (*ar.bytes)[:UINT32_SIZE]
 		binary.LittleEndian.PutUint32(raw, *value)
 		ar.Raw(raw)
 	}
@@ -277,18 +277,18 @@ func (ar *ArchiveBinaryWriter) UInt64(value *uint64) {
 	if AR_USE_COMPACT_INDICES {
 		SerializeCompactUnsigned(ar, value)
 	} else {
-		raw := ar.bytes[:UINT64_SIZE]
+		raw := (*ar.bytes)[:UINT64_SIZE]
 		binary.LittleEndian.PutUint64(raw, *value)
 		ar.Raw(raw)
 	}
 }
 func (ar *ArchiveBinaryWriter) Float32(value *float32) {
-	raw := ar.bytes[:FLOAT32_SIZE]
+	raw := (*ar.bytes)[:FLOAT32_SIZE]
 	binary.LittleEndian.PutUint32(raw, math.Float32bits(*value))
 	ar.Raw(raw)
 }
 func (ar *ArchiveBinaryWriter) Float64(value *float64) {
-	raw := ar.bytes[:FLOAT64_SIZE]
+	raw := (*ar.bytes)[:FLOAT64_SIZE]
 	binary.LittleEndian.PutUint64(raw, math.Float64bits(*value))
 	ar.Raw(raw)
 }
@@ -324,7 +324,7 @@ func (ar *ArchiveBinaryWriter) String(value *string) {
 	}
 }
 func (ar *ArchiveBinaryWriter) Time(value *time.Time) {
-	raw := ar.bytes[:INT64_SIZE]
+	raw := (*ar.bytes)[:INT64_SIZE]
 	binary.LittleEndian.PutUint64(raw, uint64(value.UnixMilli()))
 	ar.Raw(raw)
 }

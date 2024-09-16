@@ -311,7 +311,7 @@ func RunProcess_Vanilla(executable utils.Filename, arguments base.StringSet, opt
 		defer base.TransientPage64KiB.Release(buf)
 
 		scanner := bufio.NewScanner(stdout)
-		scanner.Buffer(buf, len(buf)/2)
+		scanner.Buffer(*buf, len(*buf)/2)
 
 		for scanner.Scan() {
 			if line := scanner.Text(); len(line) > 0 {
