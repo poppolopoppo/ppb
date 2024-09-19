@@ -652,7 +652,7 @@ func newDeferredLogger(logger Logger) deferredLogger {
 		logger:  logger,
 		barrier: barrier,
 		thread: NewFixedSizeThreadPoolEx("logger", 1,
-			func(threadContext ThreadContext, high <-chan TaskFunc, low <-chan TaskFunc) {
+			func(threadContext ThreadContext, high <-chan TaskQueued, mid <-chan TaskQueued, low <-chan TaskQueued) {
 				mustQuit := false
 				runTask := func(task TaskFunc) {
 					if task != nil {
@@ -669,9 +669,11 @@ func newDeferredLogger(logger Logger) deferredLogger {
 						// refresh pinned logs if no message output after a while
 						select {
 						case task := <-high:
-							runTask(task)
+							runTask(task.Func)
+						case task := <-mid:
+							runTask(task.Func)
 						case task := <-low:
-							runTask(task)
+							runTask(task.Func)
 						case <-time.After(50 * time.Millisecond):
 							logger.Refresh()
 						}
@@ -680,9 +682,11 @@ func newDeferredLogger(logger Logger) deferredLogger {
 					for !mustQuit {
 						select {
 						case task := <-high:
-							runTask(task)
+							runTask(task.Func)
+						case task := <-mid:
+							runTask(task.Func)
 						case task := <-low:
-							runTask(task)
+							runTask(task.Func)
 						}
 					}
 				}
@@ -724,29 +728,29 @@ func (x deferredLogger) SetShowTimestamp(enabled bool) {
 func (x deferredLogger) SetWriter(dst LogWriter) {
 	x.thread.Queue(func(ThreadContext) {
 		x.logger.SetWriter(dst)
-	}, TASKPRIORITY_HIGH)
+	}, TASKPRIORITY_NORMAL, ThreadPoolDebugId{})
 }
 
 func (x deferredLogger) Forward(msg ...string) {
 	x.thread.Queue(func(ThreadContext) {
 		x.logger.Forward(msg...)
-	}, TASKPRIORITY_LOW)
+	}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
 }
 func (x deferredLogger) Forwardln(msg ...string) {
 	x.thread.Queue(func(ThreadContext) {
 		x.logger.Forwardln(msg...)
-	}, TASKPRIORITY_LOW)
+	}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
 }
 func (x deferredLogger) Forwardf(msg string, args ...interface{}) {
 	x.thread.Queue(func(ThreadContext) {
 		x.logger.Forwardf(msg, args...)
-	}, TASKPRIORITY_LOW)
+	}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
 }
 func (x deferredLogger) Log(category *LogCategory, level LogLevel, msg string, args ...interface{}) {
 	if x.logger.IsVisible(level) || category.Level.IsVisible(level) {
 		x.thread.Queue(func(ThreadContext) {
 			x.logger.Log(category, level, msg, args...)
-		}, TASKPRIORITY_LOW)
+		}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
 	}
 	if level >= LOG_ERROR {
 		x.thread.Join() // flush log when an error occurred
@@ -758,7 +762,7 @@ func (x deferredLogger) Write(buf []byte) (n int, err error) {
 		if err == nil {
 			x.logger.Flush()
 		}
-	}, TASKPRIORITY_HIGH)
+	}, TASKPRIORITY_NORMAL, ThreadPoolDebugId{})
 	x.thread.Join()
 	return
 }
@@ -767,37 +771,37 @@ func (x deferredLogger) Pin(msg string, args ...interface{}) PinScope {
 		future: MakeWorkerFuture(x.thread, func(ThreadContext) (PinScope, error) {
 			pin := x.logger.Pin(msg, args...)
 			return pin, nil
-		}, TASKPRIORITY_HIGH)}
+		}, TASKPRIORITY_NORMAL, ThreadPoolDebugId{})}
 }
 func (x deferredLogger) Progress(opts ...ProgressOptionFunc) ProgressScope {
 	return deferredProgressScope{
 		future: MakeWorkerFuture(x.thread, func(ThreadContext) (ProgressScope, error) {
 			pin := x.logger.Progress(opts...)
 			return pin, nil
-		}, TASKPRIORITY_HIGH)}
+		}, TASKPRIORITY_NORMAL, ThreadPoolDebugId{})}
 }
 func (x deferredLogger) Close(pin PinScope) (err error) {
 	x.thread.Queue(func(ThreadContext) {
 		err = x.logger.Close(pin)
-	}, TASKPRIORITY_HIGH)
+	}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
 	return
 }
 func (x deferredLogger) Flush() {
 	x.thread.Queue(func(ThreadContext) {
 		x.logger.Flush()
-	}, TASKPRIORITY_LOW)
+	}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
 	x.thread.Join()
 }
 func (x deferredLogger) Purge() {
 	x.thread.Queue(func(ThreadContext) {
 		x.logger.Purge()
-	}, TASKPRIORITY_LOW)
+	}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
 	x.thread.Join()
 }
 func (x deferredLogger) Refresh() {
 	x.thread.Queue(func(ThreadContext) {
 		x.logger.Refresh()
-	}, TASKPRIORITY_LOW)
+	}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
 }
 
 /***************************************

@@ -76,6 +76,8 @@ const (
 	OPT_ALLOW_SOURCEDEPENDENCIES
 	// This action should propagate its input files instead of its own output when tracking inputs (for PCH for instance)
 	OPT_PROPAGATE_INPUTS
+	// This action should run first when possible, since many tasks can depend on it (for PCH for instance)
+	OPT_HIGH_PRIORITY
 
 	OPT_ALLOW_CACHEREADWRITE OptionType = OPT_ALLOW_CACHEREAD | OPT_ALLOW_CACHEWRITE
 )
@@ -89,6 +91,7 @@ func GetOptionTypes() []OptionType {
 		OPT_ALLOW_RESPONSEFILE,
 		OPT_ALLOW_SOURCEDEPENDENCIES,
 		OPT_PROPAGATE_INPUTS,
+		OPT_HIGH_PRIORITY,
 	}
 }
 func (x OptionType) Ord() int32           { return int32(x) }
@@ -109,6 +112,8 @@ func (x OptionType) String() string {
 		return "ALLOW_SOURCECONTROL"
 	case OPT_PROPAGATE_INPUTS:
 		return "PROPAGATE_INPUTS"
+	case OPT_HIGH_PRIORITY:
+		return "HIGH_PRIORITY"
 	default:
 		base.UnexpectedValue(x)
 		return ""
@@ -130,6 +135,8 @@ func (x *OptionType) Set(in string) (err error) {
 		*x = OPT_ALLOW_SOURCEDEPENDENCIES
 	case OPT_PROPAGATE_INPUTS.String():
 		*x = OPT_PROPAGATE_INPUTS
+	case OPT_HIGH_PRIORITY.String():
+		*x = OPT_HIGH_PRIORITY
 	default:
 		err = base.MakeUnexpectedValueError(x, in)
 	}

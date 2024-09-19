@@ -117,16 +117,16 @@ type async_future[T any] struct {
 func MakeAsyncFuture[T any](f func() (T, error)) Future[T] {
 	return make_async_future[T](f)
 }
-func MakeGlobalWorkerFuture[T any](f func(ThreadContext) (T, error), priority TaskPriority) Future[T] {
-	return MakeWorkerFuture(GetGlobalThreadPool(), f, priority)
+func MakeGlobalWorkerFuture[T any](f func(ThreadContext) (T, error), priority TaskPriority, debugId ThreadPoolDebugId) Future[T] {
+	return MakeWorkerFuture(GetGlobalThreadPool(), f, priority, debugId)
 }
-func MakeWorkerFuture[T any](pool ThreadPool, f func(ThreadContext) (T, error), priority TaskPriority) Future[T] {
+func MakeWorkerFuture[T any](pool ThreadPool, f func(ThreadContext) (T, error), priority TaskPriority, debugId ThreadPoolDebugId) Future[T] {
 	future := &async_future[T]{done: make(chan struct{})}
 	pool.Queue(func(tc ThreadContext) {
 		future.invoke(func() (T, error) {
 			return f(tc)
 		})
-	}, priority)
+	}, priority, debugId)
 	return future
 }
 

@@ -320,7 +320,7 @@ func asyncCacheWriteAction(cacheKey ActionCacheKey, cacheArtifact *CacheArtifact
 			err := GetActionCache().CacheWrite(cacheKey, cacheArtifact)
 			base.LogPanicIfFailed(LogActionCache, err)
 		}
-	}, base.TASKPRIORITY_LOW) // executing tasks has more priority than caching results
+	}, base.TASKPRIORITY_LOW, base.ThreadPoolDebugId{Category: "AsyncCacheWrite", Arg: cacheArtifact.OutputFiles[0]}) // executing tasks has more priority than caching results
 
 	return nil
 }
@@ -399,6 +399,13 @@ func executeOrDistributeAction(bc utils.BuildContext, action *ActionRules, flags
 
 	// run process locally if it was not distributed
 	if !wasDistributed {
+		// task priority can be set above normal while generating unit's actions,
+		// it can help reduce overall build latency when many tasks are dependent from this one.
+		priority := base.TASKPRIORITY_NORMAL
+		if action.Options.Has(OPT_HIGH_PRIORITY) {
+			priority = base.TASKPRIORITY_HIGH
+		}
+
 		// limit number of concurrent external processes with MakeGlobalWorkerFuture()
 		future := base.MakeGlobalWorkerFuture(func(tc base.ThreadContext) (int, error) {
 			bc.Annotate(utils.AnnocateBuildCommentf("Thread:%d/%d", tc.GetThreadId()+1, tc.GetThreadPool().GetArity()))
@@ -423,7 +430,7 @@ func executeOrDistributeAction(bc utils.BuildContext, action *ActionRules, flags
 			}
 
 			return 0, internal_io.RunProcess(action.Executable, action.Arguments, internal_io.OptionProcessStruct(&processOptions))
-		}, base.TASKPRIORITY_HIGH)
+		}, priority, base.ThreadPoolDebugId{Category: "ExecuteAction", Arg: action.Alias()})
 
 		if err := future.Join().Failure(); err != nil {
 			return readFiles, err

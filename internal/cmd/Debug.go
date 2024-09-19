@@ -122,7 +122,7 @@ var CommandCheckCache = utils.NewCommand(
 				if len(entry.Bulks) == 0 {
 					removeCacheEntry = true
 				}
-			}, base.TASKPRIORITY_HIGH)
+			}, base.TASKPRIORITY_NORMAL, base.ThreadPoolDebugId{Category: "CheckCache", Arg: f})
 			return nil
 		}, cacheGlob)
 	}))

@@ -419,7 +419,9 @@ func (x *buildActionGenerator) HeaderUnitActions(dependencies action.ActionSet) 
 				ExportFile:       headerUnitObject,
 				OutputFile:       x.Unit.PrecompiledObject,
 				StaticDeps:       MakeBuildAliases(dependencies...),
-				Options:          action.MakeOptionFlags(action.OPT_ALLOW_SOURCEDEPENDENCIES),
+				Options: action.MakeOptionFlags(
+					action.OPT_ALLOW_SOURCEDEPENDENCIES,
+					action.OPT_HIGH_PRIORITY /* bottleneck all compilation actions from this unit */),
 			})
 		if err != nil {
 			return action.ActionSet{}, err
@@ -454,7 +456,10 @@ func (x *buildActionGenerator) PrecompilerHeaderActions(dependencies action.Acti
 				OutputFile:       x.Unit.PrecompiledObject,
 				StaticDeps:       MakeBuildAliases(dependencies...),
 				// PCH object should not be stored in cache, but objects compiled with it can still be stored if we track PCH inputs instead of PCH outputs
-				Options: action.MakeOptionFlags(action.OPT_PROPAGATE_INPUTS, action.OPT_ALLOW_SOURCEDEPENDENCIES),
+				Options: action.MakeOptionFlags(
+					action.OPT_PROPAGATE_INPUTS,
+					action.OPT_ALLOW_SOURCEDEPENDENCIES,
+					action.OPT_HIGH_PRIORITY /* bottleneck all compilation actions from this unit */),
 			})
 		if err != nil {
 			return action.ActionSet{}, err

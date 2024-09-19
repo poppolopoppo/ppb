@@ -50,12 +50,27 @@ var GetChromeTracingFlags = func() func() *ChromeTracingFlags {
 				chromeTracingFile := NewThreadSafeChromeTracing(runtime.NumCPU())
 
 				bg.OnBuildNodeStart(func(bn utils.BuildNode) error {
-					chromeTracingFile.Event(ChromeTracingBegin(buildGraphTid, bn.Alias().String(), base.GetTypename(bn.GetBuildable())))
+					chromeTracingFile.Event(ChromeTracingBegin(buildGraphTid, fmt.Sprintf("Prepare(%v)", bn.Alias()), base.GetTypename(bn.GetBuildable())))
 					return nil
 				})
 
 				bg.OnBuildNodeFinished(func(bn utils.BuildNode) error {
-					chromeTracingFile.Event(ChromeTracingEnd(buildGraphTid, bn.Alias().String(), base.GetTypename(bn.GetBuildable())))
+					chromeTracingFile.Event(ChromeTracingEnd(buildGraphTid, fmt.Sprintf("Prepare(%v)", bn.Alias()), base.GetTypename(bn.GetBuildable())))
+					return nil
+				})
+				base.GetGlobalThreadPool().OnWorkStart(func(tpwe base.ThreadPoolWorkEvent) error {
+					chromeTracingFile.Event(ChromeTracingBegin(
+						tpwe.Context.GetThreadDebugName(),
+						tpwe.DebugId.String(),
+						tpwe.Priority.String()))
+					return nil
+				})
+
+				base.GetGlobalThreadPool().OnWorkFinished(func(tpwe base.ThreadPoolWorkEvent) error {
+					chromeTracingFile.Event(ChromeTracingEnd(
+						tpwe.Context.GetThreadDebugName(),
+						tpwe.DebugId.String(),
+						tpwe.Priority.String()))
 					return nil
 				})
 
