@@ -998,8 +998,12 @@ func (ufs *UFSFrontEnd) Copy(src, dst Filename) error {
 			return err
 		}
 
-		return ufs.Create(dst, func(w io.Writer) error {
-			return base.CopyWithProgress(dst.Basename, info.Size(), w, r)
+		return ufs.CreateFile(dst, func(w *os.File) error {
+			if err := base.SetMTime(w, info.ModTime()); err == nil {
+				return base.CopyWithProgress(dst.Basename, info.Size(), w, r)
+			} else {
+				return err
+			}
 		})
 	})
 }

@@ -265,7 +265,7 @@ func CleanPath(in string) string {
 	// Those checks are cheap compared to the followings
 	in = filepath.Clean(in)
 
-	// Maximize cache usage by always convert to lower-case on Windows
+	// Maximize cache usage by always converting to lower-case on Windows
 	var query = StringVar(strings.ToLower(in))
 
 	// /!\ EvalSymlinks() is **SUPER** expansive !
