@@ -156,62 +156,58 @@ func downloadFromCache(resp *http.Response) (utils.Filename, downloadCacheResult
 func DownloadFile(dst utils.Filename, src url.URL) (int64, error) {
 	base.LogVerbose(LogDownload, "downloading url '%v' to '%v'...", src.String(), dst.String())
 
-	var written int64
-	cacheFile, shouldCache := utils.Filename{}, false
-	err := utils.UFS.CreateFile(dst, func(w *os.File) error {
-		client := http.Client{
-			CheckRedirect: func(r *http.Request, _ []*http.Request) error {
-				r.URL.Opaque = r.URL.Path
-				return nil
-			},
-		}
-		defer client.CloseIdleConnections()
+	client := http.Client{
+		CheckRedirect: func(r *http.Request, _ []*http.Request) error {
+			r.URL.Opaque = r.URL.Path
+			return nil
+		},
+	}
+	defer client.CloseIdleConnections()
 
-		resp, err := client.Get(src.String())
+	resp, err := client.Get(src.String())
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	cacheFile, cacheResult := downloadFromCache(resp)
+
+	if cacheResult == nil { // cache hit
+		base.LogDebug(LogDownload, "cache hit on '%v'", cacheFile)
+
+		cacheInfo, err := cacheFile.Info()
 		if err != nil {
-			return err
+			return 0, err
 		}
-		defer resp.Body.Close()
 
-		var cacheResult downloadCacheResult
-		cacheFile, cacheResult = downloadFromCache(resp)
-		if cacheResult == nil { // cache hit
-			base.LogDebug(LogDownload, "cache hit on '%v'", cacheFile)
+		if dstInfo, err := dst.Info(); err == nil && cacheInfo.ModTime() == dstInfo.ModTime() && cacheInfo.Size() == dstInfo.Size() {
+			// destination size and mtime are already matching, skip copy file
+			base.LogVerbose(LogDownload, "skipping copy of %q, since mod time and size perfectly match", cacheFile)
+			return dstInfo.Size(), nil
+		}
 
-			return utils.UFS.OpenFile(cacheFile, func(r *os.File) (err error) {
-				info, err := r.Stat()
-				if err == nil {
-					err = base.SetMTime(w, info.ModTime()) // keep mtime consistent
-				}
-				if err != nil {
-					return err
-				}
+		err = utils.UFS.Copy(cacheFile, dst)
+		return cacheInfo.Size(), err
 
-				err = base.CopyWithProgress(dst.Basename, info.Size(), w, r)
-				written += info.Size()
-				return
-			})
+	} else { // cache miss
+		written, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+		if err != nil {
+			return 0, err
+		}
 
-		} else { // cache miss
-			shouldCache = cacheResult.ShouldCache() // cachable ?
+		err = utils.UFS.CreateFile(dst, func(w *os.File) error {
+			return base.CopyWithProgress(dst.Basename, int64(written), w, resp.Body)
+		})
 
-			written, err = strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
-			if err == nil {
-				err = base.CopyWithProgress(dst.Basename, int64(written), w, resp.Body)
+		if err == nil && cacheResult.ShouldCache() {
+			base.LogDebug(LogDownload, "cache store in '%v'", cacheFile)
+			if err := utils.UFS.Copy(dst, cacheFile); err != nil {
+				base.LogWarning(LogDownload, "failed to cache download with %v", err)
 			}
 		}
 
-		return err
-	})
-
-	if err == nil && shouldCache {
-		base.LogDebug(LogDownload, "cache store in '%v'", cacheFile)
-		if err := utils.UFS.Copy(dst, cacheFile); err != nil {
-			base.LogWarning(LogDownload, "failed to cache download with %v", err)
-		}
+		return written, err
 	}
-
-	return written, err
 }
 
 var re_metaRefreshRedirect = regexp.MustCompile(`(?i)<meta.*http-equiv="refresh".*content=".*url=(.*)".*?/>`)
