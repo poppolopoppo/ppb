@@ -1249,7 +1249,7 @@ func (x *AutoCompleteCommand) Run(cc CommandContext) error {
 	command := x.Command.Get()
 
 	inputs := base.MakeStringerSet(x.Inputs...)
-	inputs.RemoveAll("--")
+	bSkipFlags := inputs.RemoveAll(`--`)
 
 	for i := len(inputs); i > 0; i-- {
 		if inputs[i-1] == `-and` {
@@ -1282,9 +1282,11 @@ func (x *AutoCompleteCommand) Run(cc CommandContext) error {
 		}
 
 		autocomplete = base.NewAutoComplete(input, x.MaxResults.Get())
-		autocomplete.Append(&GlobalParsableFlags)
+		if !bSkipFlags { // further command flags are ignored when `--` is specified on the command-line
+			autocomplete.Add(`-and`, "concatenate 2 commands to execute multiple tasks in the same run")
+			autocomplete.Append(&GlobalParsableFlags)
+		}
 		autocomplete.Append(cmd)
-		autocomplete.Add("-and", "concatenate 2 commands to execute multiple tasks in the same run")
 	}
 
 	base.LogDebug(LogCommand, "auto-complete arguments [%v](%v), complete argument = %v", x.Command, strings.Join(inputs, ", "), x.CompleteArg)

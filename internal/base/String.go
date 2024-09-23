@@ -368,7 +368,7 @@ func (set StringSet) String() string {
 func (set *StringSet) Set(in string) error {
 	set.Clear()
 	for _, x := range strings.Split(in, ",") {
-		set.Append(x)
+		set.Append(strings.TrimSpace(x))
 	}
 	return nil
 }

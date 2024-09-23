@@ -270,21 +270,31 @@ type AutoCompletable interface {
 	AutoComplete(AutoComplete)
 }
 
+type notAutoCompletableError struct{}
+
+func (x notAutoCompletableError) Error() string {
+	return "type of argument does not implement AutoCompletable"
+}
+
+var NotAutoCompletableError error = notAutoCompletableError{}
+
 type BasicAutoComplete struct {
-	entries    []AutoCompleteResult
-	maxResults int
 	similarity StringSimilarity
+	entries    []AutoCompleteResult
+	input      string
+	maxResults int
 }
 
 func NewAutoComplete(input string, maxResults int) BasicAutoComplete {
 	return BasicAutoComplete{
-		entries:    make([]AutoCompleteResult, 0, maxResults),
-		maxResults: maxResults,
 		similarity: NewJaroWinklerSimilarity(input, 3),
+		entries:    make([]AutoCompleteResult, 0, maxResults),
+		input:      input,
+		maxResults: maxResults,
 	}
 }
 func (x *BasicAutoComplete) Input() string {
-	return x.similarity.Input()
+	return x.input
 }
 func (x *BasicAutoComplete) Any(anon interface{}) error {
 	if autocomplete, ok := anon.(AutoCompletable); ok {
@@ -369,6 +379,8 @@ type PrefixedAutoComplete struct {
 }
 
 func NewPrefixedAutoComplete(prefix, description string, inner AutoComplete) PrefixedAutoComplete {
+	AssertNotIn(prefix, "")
+	AssertNotIn(inner, nil)
 	return PrefixedAutoComplete{
 		prefix:      prefix,
 		description: description,
@@ -390,7 +402,10 @@ func (x *PrefixedAutoComplete) Append(in AutoCompletable) {
 	in.AutoComplete(x)
 }
 func (x *PrefixedAutoComplete) Add(in, description string) float32 {
-	return x.inner.Add(x.prefix+in, fmt.Sprint(x.description, ": ", description))
+	if len(x.description) > 0 {
+		description = fmt.Sprint(x.description, ": ", description)
+	}
+	return x.inner.Add(x.prefix+in, description)
 }
 func (x *PrefixedAutoComplete) Results() []AutoCompleteResult {
 	return x.inner.Results()
@@ -472,14 +487,13 @@ func (x GatherAutoComplete) ClearResults() {
  ***************************************/
 
 func DidYouMean[T AutoCompletable](in string) (string, error) {
-	in = strings.ToLower(in)
 	autocomplete := NewAutoComplete(in, 3)
 
 	var defaultValue T
 	defaultValue.AutoComplete(&autocomplete)
 
 	results := autocomplete.Results()
-	if len(results) > 0 && strings.ToLower(results[0].Text) == in {
+	if len(results) > 0 && strings.EqualFold(results[0].Text, in) {
 		return results[0].Text, nil
 	}
 

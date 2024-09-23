@@ -736,6 +736,18 @@ func (x *InheritableSlice[T, P]) AutoComplete(in AutoComplete) {
 	var defaultValue T
 	var anon interface{} = P(&defaultValue)
 	if autocomplete, ok := anon.(AutoCompletable); ok {
+		// try to parse `-Switch=List0,List1,...,UnterminatedInput`
+		if off1 := strings.LastIndex(in.Input(), `,`); off1 >= 0 {
+			if off0 := strings.Index(in.Input(), `=`); off0 >= 0 {
+				if off0 <= off1 {
+					// prefix results by previous results, eg `List0,List1,...,`, except for `UnterminatedInput`
+					prefixed := NewPrefixedAutoComplete(in.Input()[off0+1:off1+1], "", in)
+					autocomplete.AutoComplete(&prefixed)
+					return
+				}
+			}
+		}
+
 		autocomplete.AutoComplete(in)
 	}
 }
