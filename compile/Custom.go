@@ -27,8 +27,8 @@ func (rules *CustomRules) String() string {
 func (rules *CustomRules) GetConfig() *CustomRules {
 	return rules
 }
-func (rules *CustomRules) GetCompiler() Compiler {
-	compiler, err := utils.FindGlobalBuildable[Compiler](rules.CompilerAlias.Alias())
+func (rules *CustomRules) GetCompiler(bg utils.BuildGraphReadPort) Compiler {
+	compiler, err := utils.FindBuildable[Compiler](bg, rules.CompilerAlias.Alias())
 	base.LogPanicIfFailed(LogCompile, err)
 	return compiler
 }

@@ -61,8 +61,8 @@ func (x *PlatformAlias) UnmarshalText(data []byte) error {
 var AllPlatforms base.SharedMapT[string, Platform]
 
 type Platform interface {
-	GetCompiler() BuildFactoryTyped[Compiler]
 	GetPlatform() *PlatformRules
+	GetCompiler() BuildFactoryTyped[Compiler]
 	Buildable
 	fmt.Stringer
 }
@@ -94,7 +94,7 @@ func (rules *PlatformRules) Serialize(ar base.Archive) {
 	ar.Serializable(&rules.Facet)
 }
 
-func (rules *PlatformRules) Decorate(_ *CompileEnv, unit *Unit) error {
+func (rules *PlatformRules) Decorate(_ BuildGraphReadPort, _ *CompileEnv, unit *Unit) error {
 	unit.Facet.Defines.Append("TARGET_PLATFORM=" + rules.Os)
 	return nil
 }
@@ -132,7 +132,7 @@ func (x *PlatformRules) Build(bc BuildContext) error {
 	return nil
 }
 
-func GetAllPlatformAliases() (result []PlatformAlias) {
+func GetAllPlatformAliases(bg BuildGraphReadPort) (result []PlatformAlias) {
 	platforms := AllPlatforms.Values()
 	result = make([]PlatformAlias, len(platforms))
 	for i, it := range platforms {
@@ -181,7 +181,7 @@ func GetPlatformFromUserInput(in PlatformAlias) (result Platform, err error) {
 		return platform, nil
 	}
 
-	if found, err := base.DidYouMean[PlatformAlias](strings.ToLower(in.String())); err == nil {
+	if found, err := base.DidYouMean[PlatformAlias](in.String()); err == nil {
 		platform, ok := AllPlatforms.Get(found)
 		base.AssertIn(ok, true)
 		return platform, nil

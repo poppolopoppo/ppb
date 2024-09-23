@@ -8,7 +8,9 @@ import (
 )
 
 type BuildInitializer interface {
-	BuildGraph() BuildGraph
+	BuildGraphWritePort
+
+	GetBuildOptions() *BuildOptions
 
 	DependsOn(...BuildAlias) error
 
@@ -36,10 +38,7 @@ func (x BuildableNotFound) Error() string {
 	return fmt.Sprintf("buildable not found: %q", x.Alias)
 }
 
-func FindGlobalBuildable[T Buildable](alias BuildAlias) (result T, err error) {
-	return FindBuildable[T](CommandEnv.BuildGraph(), alias)
-}
-func FindBuildable[T Buildable](graph BuildGraph, alias BuildAlias) (result T, err error) {
+func FindBuildable[T Buildable](graph BuildGraphReadPort, alias BuildAlias) (result T, err error) {
 	var node BuildNode
 	if node, err = graph.Expect(alias); err == nil {
 		result = node.GetBuildable().(T)
@@ -53,9 +52,9 @@ type BuildFactoryTyped[T Buildable] interface {
 	Need(BuildInitializer, ...BuildOptionFunc) (T, error)
 	Output(BuildContext, ...BuildOptionFunc) (T, error)
 
-	Init(BuildGraph, ...BuildOptionFunc) (T, error)
-	Prepare(BuildGraph, ...BuildOptionFunc) base.Future[T]
-	Build(BuildGraph, ...BuildOptionFunc) base.Result[T]
+	Init(BuildGraphWritePort, ...BuildOptionFunc) (T, error)
+	Prepare(BuildGraphWritePort, ...BuildOptionFunc) base.Future[T]
+	Build(BuildGraphWritePort, ...BuildOptionFunc) base.Result[T]
 }
 
 func MakeBuildFactory[T any, B interface {
@@ -94,35 +93,35 @@ func (x buildFactoryWrapped[T]) Output(bc BuildContext, opts ...BuildOptionFunc)
 		return none, err
 	}
 }
-func (x buildFactoryWrapped[T]) Init(bg BuildGraph, options ...BuildOptionFunc) (result T, err error) {
+func (x buildFactoryWrapped[T]) Init(bg BuildGraphWritePort, options ...BuildOptionFunc) (result T, err error) {
 	var node *buildNode
-	node, err = InitBuildFactory(bg.(*buildGraph), x, options...)
+	node, err = InitBuildFactory(bg, x, options...)
 	if err == nil {
 		result = node.Buildable.(T)
 	}
 	return
 }
-func (x buildFactoryWrapped[T]) Prepare(bg BuildGraph, options ...BuildOptionFunc) base.Future[T] {
+func (x buildFactoryWrapped[T]) Prepare(bg BuildGraphWritePort, options ...BuildOptionFunc) base.Future[T] {
 	future := PrepareBuildFactory(bg, x, options...)
 	return base.MapFuture(future, func(it BuildResult) (T, error) {
 		return it.Buildable.(T), nil
 	})
 }
-func (x buildFactoryWrapped[T]) Build(bg BuildGraph, options ...BuildOptionFunc) base.Result[T] {
+func (x buildFactoryWrapped[T]) Build(bg BuildGraphWritePort, options ...BuildOptionFunc) base.Result[T] {
 	return x.Prepare(bg, options...).Join()
 }
 
-func InitBuildFactory(bg BuildGraph, factory BuildFactory, opts ...BuildOptionFunc) (*buildNode, error) {
-	return buildInit(bg.(*buildGraph), factory, opts...)
+func InitBuildFactory(bg BuildGraphWritePort, factory BuildFactory, opts ...BuildOptionFunc) (*buildNode, error) {
+	return buildInit(bg.(buildGraphWritePortPrivate), factory, opts...)
 }
-func PrepareBuildFactory(bg BuildGraph, factory BuildFactory, opts ...BuildOptionFunc) base.Future[BuildResult] {
+func PrepareBuildFactory(bg BuildGraphWritePort, factory BuildFactory, opts ...BuildOptionFunc) base.Future[BuildResult] {
 	node, err := InitBuildFactory(bg, factory, opts...)
 	if err != nil {
 		return base.MakeFutureError[BuildResult](err)
 	}
 
 	bo := NewBuildOptions(opts...)
-	return bg.(*buildGraph).launchBuild(node, &bo)
+	return bg.(buildGraphWritePortPrivate).launchBuild(node, &bo)
 }
 
 /***************************************
@@ -130,19 +129,19 @@ func PrepareBuildFactory(bg BuildGraph, factory BuildFactory, opts ...BuildOptio
  ***************************************/
 
 type buildInitializer struct {
-	graph   *buildGraph
+	buildGraphWritePortPrivate
 	options BuildOptions
 
 	staticDeps BuildAliases
 	sync.Mutex
 }
 
-func buildInit(g *buildGraph, factory BuildFactory, opts ...BuildOptionFunc) (*buildNode, error) {
+func buildInit(g buildGraphWritePortPrivate, factory BuildFactory, opts ...BuildOptionFunc) (*buildNode, error) {
 	context := buildInitializer{
-		graph:      g,
-		options:    NewBuildOptions(opts...),
-		staticDeps: BuildAliases{},
-		Mutex:      sync.Mutex{},
+		buildGraphWritePortPrivate: g,
+		options:                    NewBuildOptions(opts...),
+		staticDeps:                 BuildAliases{},
+		Mutex:                      sync.Mutex{},
 	}
 
 	buildable, err := factory.Create(&context)
@@ -156,15 +155,15 @@ func buildInit(g *buildGraph, factory BuildFactory, opts ...BuildOptionFunc) (*b
 	base.Assert(func() bool { return node.Alias().Equals(buildable.Alias()) })
 	return node.(*buildNode), nil
 }
-func (x *buildInitializer) BuildGraph() BuildGraph {
-	return x.graph
+func (x *buildInitializer) GetBuildOptions() *BuildOptions {
+	return &x.options
 }
 func (x *buildInitializer) DependsOn(aliases ...BuildAlias) error {
 	x.Lock()
 	defer x.Unlock()
 
 	for _, alias := range aliases {
-		if node, err := x.graph.Expect(alias); err == nil {
+		if node, err := x.Expect(alias); err == nil {
 			x.staticDeps.Append(node.Alias())
 		} else {
 			return err
@@ -175,7 +174,7 @@ func (x *buildInitializer) DependsOn(aliases ...BuildAlias) error {
 }
 func (x *buildInitializer) NeedBuildable(aliasable BuildAliasable, opts ...BuildOptionFunc) (Buildable, error) {
 	alias := aliasable.Alias()
-	if node, err := x.graph.Expect(alias); err == nil {
+	if node, err := x.Expect(alias); err == nil {
 		x.Lock()
 		defer x.Unlock()
 		x.staticDeps.Append(alias)
@@ -185,7 +184,7 @@ func (x *buildInitializer) NeedBuildable(aliasable BuildAliasable, opts ...Build
 	}
 }
 func (x *buildInitializer) NeedFactory(factory BuildFactory, opts ...BuildOptionFunc) (Buildable, error) {
-	node, err := buildInit(x.graph, factory,
+	node, err := buildInit(x.buildGraphWritePortPrivate, factory,
 		OptionBuildRecurse(&x.options, nil),
 		OptionBuildOverride(opts...))
 	if err != nil {
@@ -201,7 +200,7 @@ func (x *buildInitializer) NeedFactory(factory BuildFactory, opts ...BuildOption
 func (x *buildInitializer) NeedFactories(factories ...BuildFactory) error {
 	aliases := make(BuildAliases, len(factories))
 	for i, factory := range factories {
-		node, err := buildInit(x.graph, factory, OptionBuildRecurse(&x.options, nil))
+		node, err := buildInit(x.buildGraphWritePortPrivate, factory, OptionBuildRecurse(&x.options, nil))
 		if err != nil {
 			return err
 		}

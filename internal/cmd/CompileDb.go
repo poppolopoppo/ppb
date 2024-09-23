@@ -15,7 +15,8 @@ var CommandCompileDb = utils.NewCommand(
 	utils.OptionCommandRun(func(cc utils.CommandContext) error {
 		base.LogClaim(utils.LogCommand, "generation json compilation database in %q", utils.UFS.Intermediate)
 
-		bg := utils.CommandEnv.BuildGraph()
+		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "Configure"})
+		defer bg.Close()
 
 		for _, future := range base.Map(func(ea compile.EnvironmentAlias) base.Future[*compile.CompilationDatabaseBuilder] {
 			return compile.BuildCompilationDatabase(ea).Prepare(bg)

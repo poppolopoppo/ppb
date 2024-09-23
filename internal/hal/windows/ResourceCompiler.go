@@ -74,7 +74,7 @@ func (res *ResourceCompiler) CreateAction(_ *compile.Unit, _ compile.PayloadType
 	return &rules
 }
 
-func (res *ResourceCompiler) Decorate(_ *compile.CompileEnv, u *compile.Unit) error {
+func (res *ResourceCompiler) Decorate(_ utils.BuildGraphReadPort, _ *compile.CompileEnv, u *compile.Unit) error {
 	if u.Payload == compile.PAYLOAD_SHAREDLIB {
 		// Generate minimal resources for DLLs
 		u.CompilerOptions.Append("/q")

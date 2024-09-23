@@ -36,9 +36,9 @@ type ActionCache interface {
 	GetEntryExtname() string
 	GetBulkExtname() string
 
-	CacheKey(artifact *CacheArtifact) (ActionCacheKey, error)
-	CacheRead(key ActionCacheKey, artifact *CacheArtifact) error
-	CacheWrite(key ActionCacheKey, artifact *CacheArtifact) error
+	CacheKey(bg BuildGraphWritePort, artifact *CacheArtifact) (ActionCacheKey, error)
+	CacheRead(bg BuildGraphWritePort, key ActionCacheKey, artifact *CacheArtifact) error
+	CacheWrite(bg BuildGraphWritePort, key ActionCacheKey, artifact *CacheArtifact) error
 }
 
 var actionCacheStats *ActionCacheStats
@@ -49,8 +49,8 @@ type actionCache struct {
 	stats ActionCacheStats
 }
 
-var GetActionCache = base.Memoize(func() ActionCache {
-	result := BuildActionCache(GetActionFlags().CachePath).Build(CommandEnv.BuildGraph())
+func GetActionCache(bg BuildGraphWritePort) ActionCache {
+	result := BuildActionCache(GetActionFlags().CachePath).Build(bg)
 	if result.Failure() == nil {
 		// store global access to cache stats
 		actionCacheStats = &result.Success().stats
@@ -63,7 +63,7 @@ var GetActionCache = base.Memoize(func() ActionCache {
 		}
 	}
 	return result.Success()
-})
+}
 
 func BuildActionCache(path Directory) BuildFactoryTyped[*actionCache] {
 	return MakeBuildFactory(func(bi BuildInitializer) (actionCache, error) {
@@ -98,9 +98,9 @@ func (x *actionCache) GetCachePath() Directory {
 	return x.path
 }
 
-func (x *actionCache) CacheKey(artitfact *CacheArtifact) (ActionCacheKey, error) {
+func (x *actionCache) CacheKey(bg BuildGraphWritePort, artitfact *CacheArtifact) (ActionCacheKey, error) {
 	digests := internal_io.PrepareFileDigests(
-		CommandEnv.BuildGraph(), len(artitfact.InputFiles),
+		bg, len(artitfact.InputFiles),
 		func(i int) Filename { return artitfact.InputFiles[i] })
 
 	fingerprint, err := base.SerializeAnyFingerprint(func(ar base.Archive) error {
@@ -125,7 +125,7 @@ func (x *actionCache) CacheKey(artitfact *CacheArtifact) (ActionCacheKey, error)
 	return ActionCacheKey(fingerprint), err
 }
 
-func (x *actionCache) CacheRead(key ActionCacheKey, artifact *CacheArtifact) error {
+func (x *actionCache) CacheRead(bg BuildGraphWritePort, key ActionCacheKey, artifact *CacheArtifact) error {
 	base.Assert(func() bool { return artifact.InputFiles.IsSorted() })
 	base.Assert(func() bool { return artifact.OutputFiles.IsSorted() })
 
@@ -135,7 +135,7 @@ func (x *actionCache) CacheRead(key ActionCacheKey, artifact *CacheArtifact) err
 	entry := ActionCacheEntry{Key: key}
 	err := entry.LoadEntry(x.path)
 	if err == nil {
-		err = entry.CacheRead(artifact)
+		err = entry.CacheRead(bg, artifact)
 	}
 
 	if err == nil {
@@ -147,7 +147,7 @@ func (x *actionCache) CacheRead(key ActionCacheKey, artifact *CacheArtifact) err
 	}
 	return err
 }
-func (x *actionCache) CacheWrite(key ActionCacheKey, artifact *CacheArtifact) (err error) {
+func (x *actionCache) CacheWrite(bg BuildGraphWritePort, key ActionCacheKey, artifact *CacheArtifact) (err error) {
 	base.Assert(func() bool { return artifact.InputFiles.IsSorted() })
 	base.Assert(func() bool { return artifact.DependencyFiles.IsSorted() })
 	base.Assert(func() bool { return artifact.OutputFiles.IsSorted() })
@@ -158,7 +158,7 @@ func (x *actionCache) CacheWrite(key ActionCacheKey, artifact *CacheArtifact) (e
 	entry := ActionCacheEntry{Key: key}
 	if err = entry.LoadEntry(x.path); err != nil {
 		var dirty bool
-		if dirty, err = entry.CacheWrite(x.path, artifact); err == nil {
+		if dirty, err = entry.CacheWrite(bg, x.path, artifact); err == nil {
 			if dirty {
 				if err = entry.WriteEntry(x.path); err == nil {
 					atomic.AddInt32(&x.stats.CacheStore, 1)
@@ -212,10 +212,10 @@ type ActionCacheBulk struct {
 	Digests []internal_io.FileDigest
 }
 
-func NewActionCacheBulk(cachePath Directory, key ActionCacheKey, inputs FileSet) (bulk ActionCacheBulk, err error) {
+func NewActionCacheBulk(bg BuildGraphWritePort, cachePath Directory, key ActionCacheKey, inputs FileSet) (bulk ActionCacheBulk, err error) {
 	bulk.Digests = make([]internal_io.FileDigest, len(inputs))
 
-	digests := internal_io.PrepareFileDigests(CommandEnv.BuildGraph(), len(inputs),
+	digests := internal_io.PrepareFileDigests(bg, len(inputs),
 		func(i int) Filename { return inputs[i] })
 
 	var fingerprint base.Fingerprint
@@ -240,8 +240,8 @@ func NewActionCacheBulk(cachePath Directory, key ActionCacheKey, inputs FileSet)
 func (x *ActionCacheBulk) Equals(y ActionCacheBulk) bool {
 	return x.Path.Equals(y.Path)
 }
-func (x *ActionCacheBulk) CacheHit(options ...BuildOptionFunc) error {
-	digests := internal_io.PrepareFileDigests(CommandEnv.BuildGraph(),
+func (x *ActionCacheBulk) CacheHit(bg BuildGraphWritePort, options ...BuildOptionFunc) error {
+	digests := internal_io.PrepareFileDigests(bg,
 		len(x.Digests),
 		func(i int) Filename { return x.Digests[i].Source },
 		options...)
@@ -378,9 +378,9 @@ func (x *ActionCacheEntry) Serialize(ar base.Archive) {
 	ar.Serializable((*base.Fingerprint)(&x.Key))
 	base.SerializeSlice(ar, &x.Bulks)
 }
-func (x *ActionCacheEntry) CacheRead(artifact *CacheArtifact) error {
+func (x *ActionCacheEntry) CacheRead(bg BuildGraphWritePort, artifact *CacheArtifact) error {
 	for _, bulk := range x.Bulks {
-		if err := bulk.CacheHit(); err == nil {
+		if err := bulk.CacheHit(bg); err == nil {
 			retrieved, err := bulk.Inflate(UFS.Root)
 
 			if err == nil && !retrieved.Equals(artifact.OutputFiles) {
@@ -403,8 +403,8 @@ func (x *ActionCacheEntry) CacheRead(artifact *CacheArtifact) error {
 	}
 	return actionCacheMissError{x.Key}
 }
-func (x *ActionCacheEntry) CacheWrite(cachePath Directory, artifact *CacheArtifact) (bool, error) {
-	bulk, err := NewActionCacheBulk(cachePath, x.Key, artifact.InputFiles.Concat(artifact.DependencyFiles...))
+func (x *ActionCacheEntry) CacheWrite(bg BuildGraphWritePort, cachePath Directory, artifact *CacheArtifact) (bool, error) {
+	bulk, err := NewActionCacheBulk(bg, cachePath, x.Key, artifact.InputFiles.Concat(artifact.DependencyFiles...))
 	if err != nil {
 		return false, err
 	}

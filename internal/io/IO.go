@@ -129,7 +129,7 @@ func BuildFileDigest(source utils.Filename) utils.BuildFactoryTyped[*FileDigest]
 	})
 }
 
-func PrepareFileDigests(bg utils.BuildGraph, n int, filenames func(int) utils.Filename, options ...utils.BuildOptionFunc) []base.Future[*FileDigest] {
+func PrepareFileDigests(bg utils.BuildGraphWritePort, n int, filenames func(int) utils.Filename, options ...utils.BuildOptionFunc) []base.Future[*FileDigest] {
 	results := make([]base.Future[*FileDigest], n)
 	for i := range results {
 		results[i] = BuildFileDigest(filenames(i)).Prepare(bg, options...)

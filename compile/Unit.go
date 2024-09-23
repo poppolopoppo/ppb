@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 
 	internal_io "github.com/poppolopoppo/ppb/internal/io"
 
@@ -72,7 +73,10 @@ func (x *TargetAlias) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *TargetAlias) AutoComplete(in base.AutoComplete) {
-	moduleAliases, err := NeedAllModuleAliases(CommandEnv.BuildGraph().GlobalContext())
+	bg := CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "AutoCompleteTargetAlias"}, utils.BUILDGRAPH_QUIET)
+	defer bg.Close()
+
+	moduleAliases, err := NeedAllModuleAliases(bg.GlobalContext())
 	if err != nil {
 		base.LogWarningOnce(base.LogAutoComplete, "failed to load build modules: %v", err)
 		return
@@ -88,6 +92,7 @@ func (x *TargetAlias) AutoComplete(in base.AutoComplete) {
 		}
 		return nil
 	})
+
 	base.LogPanicIfFailed(base.LogAutoComplete, err)
 }
 
@@ -96,7 +101,7 @@ func (x *TargetAlias) AutoComplete(in base.AutoComplete) {
  ***************************************/
 
 type UnitDecorator interface {
-	Decorate(env *CompileEnv, unit *Unit) error
+	Decorate(bg BuildGraphReadPort, env *CompileEnv, unit *Unit) error
 	fmt.Stringer
 }
 
@@ -161,37 +166,37 @@ func (unit *Unit) String() string {
 	return unit.Alias().String()
 }
 
-func (unit *Unit) GetEnvironment() (*CompileEnv, error) {
-	return FindGlobalBuildable[*CompileEnv](unit.TargetAlias.EnvironmentAlias.Alias())
+func (unit *Unit) GetEnvironment(bg BuildGraphReadPort) (*CompileEnv, error) {
+	return FindBuildable[*CompileEnv](bg, unit.TargetAlias.EnvironmentAlias.Alias())
 }
-func (unit *Unit) GetBuildModule() (Module, error) {
-	return FindBuildModule(unit.TargetAlias.ModuleAlias)
+func (unit *Unit) GetBuildModule(bg BuildGraphReadPort) (Module, error) {
+	return FindBuildModule(bg, unit.TargetAlias.ModuleAlias)
 }
-func (unit *Unit) GetBuildCompiler() (Compiler, error) {
-	return FindGlobalBuildable[Compiler](unit.CompilerAlias.Alias())
+func (unit *Unit) GetBuildCompiler(bg BuildGraphReadPort) (Compiler, error) {
+	return FindBuildable[Compiler](bg, unit.CompilerAlias.Alias())
 }
-func (unit *Unit) GetBuildPreprocessor() (Compiler, error) {
-	return FindGlobalBuildable[Compiler](unit.PreprocessorAlias.Alias())
+func (unit *Unit) GetBuildPreprocessor(bg BuildGraphReadPort) (Compiler, error) {
+	return FindBuildable[Compiler](bg, unit.PreprocessorAlias.Alias())
 }
 
-func (unit *Unit) GetModule() *ModuleRules {
-	if module, err := unit.GetBuildModule(); err == nil {
+func (unit *Unit) GetModule(bg BuildGraphReadPort) *ModuleRules {
+	if module, err := unit.GetBuildModule(bg); err == nil {
 		return module.GetModule()
 	} else {
 		base.LogPanicErr(LogCompile, err)
 		return nil
 	}
 }
-func (unit *Unit) GetCompiler() *CompilerRules {
-	if compiler, err := unit.GetBuildCompiler(); err == nil {
+func (unit *Unit) GetCompiler(bg BuildGraphReadPort) *CompilerRules {
+	if compiler, err := unit.GetBuildCompiler(bg); err == nil {
 		return compiler.GetCompiler()
 	} else {
 		base.LogPanicErr(LogCompile, err)
 		return nil
 	}
 }
-func (unit *Unit) GetPreprocessor() *CompilerRules {
-	if compiler, err := unit.GetBuildPreprocessor(); err == nil {
+func (unit *Unit) GetPreprocessor(bg BuildGraphReadPort) *CompilerRules {
+	if compiler, err := unit.GetBuildPreprocessor(bg); err == nil {
 		return compiler.GetCompiler()
 	} else {
 		base.LogPanicErr(LogCompile, err)
@@ -205,12 +210,12 @@ func (unit *Unit) GetFacet() *Facet {
 func (unit *Unit) DebugString() string {
 	return base.PrettyPrint(unit)
 }
-func (unit *Unit) Decorate(env *CompileEnv, decorator ...UnitDecorator) error {
+func (unit *Unit) Decorate(bg BuildGraphReadPort, env *CompileEnv, decorator ...UnitDecorator) error {
 	base.LogVeryVerbose(LogCompile, "unit %v: decorate with [%v]", unit.TargetAlias, base.MakeStringer(func() string {
 		return base.Join(",", decorator...).String()
 	}))
 	for _, x := range decorator {
-		if err := x.Decorate(env, unit); err != nil {
+		if err := x.Decorate(bg, env, unit); err != nil {
 			return err
 		}
 	}
@@ -297,7 +302,7 @@ func (unit *Unit) Build(bc BuildContext) error {
 		TargetAlias: unit.TargetAlias,
 	}
 
-	compileEnv, err := unit.GetEnvironment()
+	compileEnv, err := unit.GetEnvironment(bc)
 	if err != nil {
 		return err
 	}
@@ -308,7 +313,7 @@ func (unit *Unit) Build(bc BuildContext) error {
 	}
 	compiler := compilerBuildable.(Compiler)
 
-	moduleRules, err := FindBuildable[*ModuleRules](bc.BuildGraph(), unit.TargetAlias.ModuleAlias.Alias())
+	moduleRules, err := FindBuildable[*ModuleRules](bc, unit.TargetAlias.ModuleAlias.Alias())
 	if err != nil {
 		return err
 	}
@@ -326,7 +331,7 @@ func (unit *Unit) Build(bc BuildContext) error {
 	unit.GeneratedDir = compileEnv.GeneratedDir().AbsoluteFolder(relativePath)
 	unit.IntermediateDir = compileEnv.IntermediateDir().AbsoluteFolder(relativePath)
 	unit.CompilerAlias = compileEnv.CompilerAlias
-	unit.CppRules = compileEnv.GetCpp(&expandedModule)
+	unit.CppRules = compileEnv.GetCpp(bc, &expandedModule)
 	unit.Environment = compiler.GetCompiler().Environment
 	unit.Payload = compileEnv.GetPayloadType(&expandedModule, unit.Link)
 	unit.OutputFile = unit.GetPayloadOutput(compiler,
@@ -368,7 +373,7 @@ func (unit *Unit) Build(bc BuildContext) error {
 	unit.Facet = NewFacet()
 	unit.Facet.Append(compileEnv, &expandedModule)
 
-	if err := unit.Decorate(compileEnv, &expandedModule, compileEnv.GetPlatform(), compileEnv.GetConfig()); err != nil {
+	if err := unit.Decorate(bc, compileEnv, &expandedModule, compileEnv.GetPlatform(bc), compileEnv.GetConfig(bc)); err != nil {
 		return err
 	}
 
@@ -388,7 +393,7 @@ func (unit *Unit) Build(bc BuildContext) error {
 
 	unit.Facet.PerformSubstitutions()
 
-	if err := unit.Decorate(compileEnv, compiler.GetCompiler()); err != nil {
+	if err := unit.Decorate(bc, compileEnv, compiler.GetCompiler()); err != nil {
 		return err
 	}
 
@@ -424,13 +429,13 @@ func (unit *Unit) Build(bc BuildContext) error {
 	return err
 }
 
-func FindBuildUnit(target TargetAlias) (*Unit, error) {
-	return FindGlobalBuildable[*Unit](target.Alias())
+func FindBuildUnit(bg BuildGraphReadPort, target TargetAlias) (*Unit, error) {
+	return FindBuildable[*Unit](bg, target.Alias())
 }
 
-func ForeachBuildUnits(ea EnvironmentAlias, each func(*Unit) error, ma ...ModuleAlias) error {
+func ForeachBuildUnits(bg BuildGraphReadPort, ea EnvironmentAlias, each func(*Unit) error, ma ...ModuleAlias) error {
 	for _, it := range ma {
-		unit, err := FindBuildUnit(TargetAlias{EnvironmentAlias: ea, ModuleAlias: it})
+		unit, err := FindBuildUnit(bg, TargetAlias{EnvironmentAlias: ea, ModuleAlias: it})
 		if err != nil {
 			return err
 		}
@@ -537,7 +542,7 @@ func (unit *Unit) linkModuleDependencies(bc BuildContext, compileEnv *CompileEnv
 		case PAYLOAD_STATICLIB, PAYLOAD_SHAREDLIB:
 			switch vis {
 			case PUBLIC, PRIVATE:
-				if other.GetModule().ModuleType == MODULE_LIBRARY {
+				if other.GetModule(bc).ModuleType == MODULE_LIBRARY {
 					unit.addLinkDependency(other)
 				} else {
 					unit.addCompileDependency(other)

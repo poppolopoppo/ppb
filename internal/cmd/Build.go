@@ -42,12 +42,6 @@ func (x *BuildCommand) Init(ci utils.CommandContext) error {
 }
 func (x *BuildCommand) Prepare(cc utils.CommandContext) error {
 	actionFlags := action.GetActionFlags()
-
-	// async prepare action cache early if cache is enabled
-	if actionFlags.CacheMode.HasRead() || actionFlags.CacheMode.HasWrite() {
-		go action.GetActionCache()
-	}
-
 	// async prepare action distribution early if distrubution is enabled
 	if actionFlags.DistMode.Enabled() {
 		go action.GetActionDist()
@@ -58,7 +52,8 @@ func (x *BuildCommand) Prepare(cc utils.CommandContext) error {
 func (x *BuildCommand) Run(cc utils.CommandContext) error {
 	base.LogClaim(utils.LogCommand, "build <%v>...", base.JoinString(">, <", x.Targets...))
 
-	bg := utils.CommandEnv.BuildGraph()
+	bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "Build"})
+	defer bg.Close()
 
 	// select target that match input by globbing
 	if x.Glob.Get() {
@@ -80,7 +75,7 @@ func (x *BuildCommand) Run(cc utils.CommandContext) error {
 
 		for i, target := range x.Targets {
 			// verify module path and correct case if necessary
-			if module, err := compile.GetModuleFromUserInput(target.ModuleAlias); err == nil {
+			if module, err := compile.GetModuleFromUserInput(bg, target.ModuleAlias); err == nil {
 				target.ModuleAlias = module.GetModule().ModuleAlias
 			} else {
 				return err
@@ -124,10 +119,10 @@ func (x *BuildCommand) Run(cc utils.CommandContext) error {
 
 	return nil
 }
-func (x *BuildCommand) doBuild(bg utils.BuildGraph, targets []*compile.TargetActions) error {
+func (x *BuildCommand) doBuild(bg utils.BuildGraphWritePort, targets []*compile.TargetActions) error {
 	aliases := utils.BuildAliases{}
 	for _, ta := range targets {
-		if tp, err := ta.GetOutputPayload(); err == nil {
+		if tp, err := ta.GetOutputPayload(bg); err == nil {
 			aliases.Append(tp.Alias())
 			base.LogVerbose(utils.LogCommand, "selected <%v> actions: %v", tp.Alias(), tp.ActionAliases)
 		} else {
@@ -140,10 +135,10 @@ func (x *BuildCommand) doBuild(bg utils.BuildGraph, targets []*compile.TargetAct
 		utils.OptionWarningOnMissingOutputIf(!x.Rebuild.Get()))
 	return err
 }
-func (x *BuildCommand) cleanBuild(bg utils.BuildGraph, targets []*compile.TargetActions) error {
+func (x *BuildCommand) cleanBuild(bg utils.BuildGraphWritePort, targets []*compile.TargetActions) error {
 	aliases := action.ActionAliases{}
 	for _, ta := range targets {
-		if err := ta.ForeachPayload(func(tp *compile.TargetPayload) error {
+		if err := ta.ForeachPayload(bg, func(tp *compile.TargetPayload) error {
 			aliases.Append(tp.ActionAliases...)
 			return nil
 		}); err != nil {
@@ -151,7 +146,7 @@ func (x *BuildCommand) cleanBuild(bg utils.BuildGraph, targets []*compile.Target
 		}
 	}
 
-	actions, err := action.GetBuildActions(aliases...)
+	actions, err := action.GetBuildActions(bg, aliases...)
 	if err != nil {
 		return err
 	}

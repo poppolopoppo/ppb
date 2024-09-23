@@ -27,8 +27,8 @@ type UnityFile struct {
 func MakeUnityFileAlias(output utils.Filename) utils.BuildAlias {
 	return utils.MakeBuildAlias("Unity", output.Dirname.Path, output.Basename)
 }
-func FindUnityFile(output utils.Filename) (*UnityFile, error) {
-	return utils.FindGlobalBuildable[*UnityFile](MakeUnityFileAlias(output))
+func FindUnityFile(bg utils.BuildGraphReadPort, output utils.Filename) (*UnityFile, error) {
+	return utils.FindBuildable[*UnityFile](bg, MakeUnityFileAlias(output))
 }
 
 func (x UnityFile) Alias() utils.BuildAlias {
@@ -302,7 +302,7 @@ func (unit *Unit) GetSourceFiles(bc utils.BuildContext) (sourceFiles utils.FileS
 		// finally, create output file if it does not exist already:
 		// this way the action code does not now about unity files at all, and graph remains consistent
 		// create output file with a static dependency pointing to its creator (e.g x.node here)
-		if _, err = utils.PrepareOutputFile(bc.BuildGraph(), unityFile.Output, utils.MakeBuildAliases(unityFile)); err != nil {
+		if _, err = utils.PrepareOutputFile(bc, unityFile.Output, utils.MakeBuildAliases(unityFile)); err != nil {
 			return
 		}
 	}

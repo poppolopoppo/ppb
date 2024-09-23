@@ -42,7 +42,8 @@ func (x *RunCommand) Init(ci utils.CommandContext) error {
 func (x *RunCommand) Run(cc utils.CommandContext) error {
 	base.LogClaim(utils.LogCommand, "run <%v>...", x.Program)
 
-	bg := utils.CommandEnv.BuildGraph()
+	bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "Run"})
+	defer bg.Close()
 
 	// make sure selected program actions are generated
 	_, asyncGenerate := bg.Build(&x.Program)

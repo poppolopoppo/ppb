@@ -74,7 +74,9 @@ func (x *ImportActionsCommand) Init(ci utils.CommandContext) error {
 func (x *ImportActionsCommand) Run(cc utils.CommandContext) error {
 	base.LogClaim(utils.LogCommand, "import <%v>...", base.JoinString(">, <", x.InputFiles...))
 
-	bg := utils.CommandEnv.BuildGraph()
+	bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "ImportActions"})
+	defer bg.Close()
+
 	buildAliases := utils.BuildAliases{}
 	exportFileToAction := make(map[utils.Filename]*ImportedAction)
 
@@ -122,10 +124,10 @@ func (x *ImportActionsCommand) Run(cc utils.CommandContext) error {
 			}
 
 			var err error
-			if model.DynamicInputs, err = action.GetBuildActions(base.Map(action.NewActionAlias, it.DynamicInputFiles...)...); err != nil {
+			if model.DynamicInputs, err = action.GetBuildActions(bg, base.Map(action.NewActionAlias, it.DynamicInputFiles...)...); err != nil {
 				return err
 			}
-			if model.Prerequisites, err = action.GetBuildActions(it.DynamicDependencies...); err != nil {
+			if model.Prerequisites, err = action.GetBuildActions(bg, it.DynamicDependencies...); err != nil {
 				return err
 			}
 
@@ -168,11 +170,12 @@ var CommandExportActions = newJsonExportCommand(
 	"export-action",
 	"export selection compilation actions to Json",
 	func(cc utils.CommandContext, args *ExportNodeArgs[action.ActionAlias, *action.ActionAlias], yield jsonExportYieldFunc) error {
-		bg := utils.CommandEnv.BuildGraph()
+		bg := utils.CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "ExportAction"})
+		defer bg.Close()
 
 		var filteredActions action.ActionSet
 		for _, a := range args.Aliases {
-			ba, err := action.FindBuildAction(a)
+			ba, err := action.FindBuildAction(bg, a)
 			if err != nil {
 				return err
 			}
@@ -241,69 +244,23 @@ var CommandExportActions = newJsonExportCommand(
  ***************************************/
 
 type dependencyBuildContext struct {
-	inner utils.BuildContext
+	utils.BuildContext
 
 	OnFileNeeded base.PublicEvent[[]utils.Filename]
 	OnFileOutput base.PublicEvent[[]utils.Filename]
-}
-
-func (x *dependencyBuildContext) GetBuildContext() utils.BuildContext {
-	return x
-}
-
-func (x *dependencyBuildContext) BuildGraph() utils.BuildGraph { return x.inner.BuildGraph() }
-func (x *dependencyBuildContext) CheckForAbort() error         { return x.inner.CheckForAbort() }
-
-func (x *dependencyBuildContext) GetStaticDependencies() []utils.BuildResult {
-	return x.inner.GetStaticDependencies()
-}
-func (x *dependencyBuildContext) Annotate(annotations ...utils.BuildAnnotateFunc) {
-	x.inner.Annotate(annotations...)
-}
-func (x *dependencyBuildContext) OnBuilt(it func(utils.BuildNode) error) {
-	x.inner.OnBuilt(it)
 }
 
 func (x *dependencyBuildContext) OutputFile(files ...utils.Filename) error {
 	if err := x.OnFileOutput.Invoke(files); err != nil {
 		return err
 	}
-	return x.inner.OutputFile(files...)
+	return x.BuildContext.OutputFile(files...)
 }
 func (x *dependencyBuildContext) NeedFiles(files ...utils.Filename) error {
 	if err := x.OnFileNeeded.Invoke(files); err != nil {
 		return err
 	}
-	return x.inner.NeedFiles(files...)
-}
-
-func (x *dependencyBuildContext) DependsOn(aliases ...utils.BuildAlias) error {
-
-	return x.inner.DependsOn(aliases...)
-}
-func (x *dependencyBuildContext) NeedBuildable(buildables utils.BuildAliasable, opts ...utils.BuildOptionFunc) (utils.Buildable, error) {
-	return x.inner.NeedBuildable(buildables, opts...)
-}
-func (x *dependencyBuildContext) NeedFactory(factory utils.BuildFactory, opts ...utils.BuildOptionFunc) (utils.Buildable, error) {
-	return x.inner.NeedFactory(factory, opts...)
-}
-func (x *dependencyBuildContext) NeedFactories(factories ...utils.BuildFactory) error {
-	return x.inner.NeedFactories(factories...)
-}
-func (x *dependencyBuildContext) NeedDirectories(directories ...utils.Directory) error {
-	return x.inner.NeedDirectories(directories...)
-}
-func (x *dependencyBuildContext) NeedBuildAliasables(n int, buildAliasables func(int) utils.BuildAliasable, onBuildResult func(int, utils.BuildResult) error) error {
-	return x.inner.NeedBuildAliasables(n, buildAliasables, onBuildResult)
-}
-func (x *dependencyBuildContext) NeedBuildResult(results ...utils.BuildResult) {
-	x.inner.NeedBuildResult(results...)
-}
-func (x *dependencyBuildContext) OutputNode(factories ...utils.BuildFactory) error {
-	return x.inner.OutputNode(factories...)
-}
-func (x *dependencyBuildContext) OutputFactory(factory utils.BuildFactory, opts ...utils.BuildOptionFunc) (utils.Buildable, error) {
-	return x.inner.OutputFactory(factory, opts...)
+	return x.BuildContext.NeedFiles(files...)
 }
 
 /***************************************
@@ -330,7 +287,7 @@ func (x *DependencyOutputAction) Build(bc utils.BuildContext) error {
 	dependencySourceRE := regexp.MustCompile(x.DependencySourceRegexp)
 
 	// check static inputs files
-	for _, it := range bc.GetStaticDependencies() {
+	for _, it := range bc.GetStaticDependencyBuildResults() {
 		switch buildable := it.Buildable.(type) {
 		case utils.BuildableSourceFile:
 			if dependencySourceRE.MatchString(buildable.GetSourceFile().Basename) {
@@ -344,7 +301,7 @@ func (x *DependencyOutputAction) Build(bc utils.BuildContext) error {
 	}
 
 	// wraps build context to observe dynamic file dependencies
-	observerContext := dependencyBuildContext{inner: bc}
+	observerContext := dependencyBuildContext{BuildContext: bc}
 	observerContext.OnFileNeeded.Add(func(files []utils.Filename) error {
 		dependencyFiles.Append(base.RemoveUnless(func(it utils.Filename) bool {
 			return dependencySourceRE.MatchString(it.Basename)

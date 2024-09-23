@@ -14,7 +14,7 @@ type Facetable interface {
 }
 
 type FacetDecorator interface {
-	Decorate(*CompileEnv, *Unit) error
+	Decorate(utils.BuildGraphReadPort, *CompileEnv, *Unit) error
 }
 
 type VariableDefinition struct {

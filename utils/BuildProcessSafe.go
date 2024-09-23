@@ -2,7 +2,6 @@ package utils
 
 import (
 	"sync"
-	"time"
 
 	"github.com/poppolopoppo/ppb/internal/base"
 
@@ -84,15 +83,6 @@ func (x *GlobalBuildGraph) Abort(err error) {
 		x.protected.BuildGraph.Abort(err)
 	}
 }
-func (x *GlobalBuildGraph) Join() error {
-	x.barrier.Lock()
-	defer x.barrier.Unlock()
-
-	if x.protected != nil {
-		return x.protected.BuildGraph.Join()
-	}
-	return nil
-}
 
 func (x *GlobalBuildGraph) OnBuildGraphLoaded(e base.EventDelegate[BuildGraph]) error {
 	x.barrier.Lock()
@@ -111,15 +101,6 @@ func (x *GlobalBuildGraph) OnBuildGraphSaved(e base.EventDelegate[BuildGraph]) e
 
 	x.onBuildGraphSavedEvent.Add(e)
 	return nil
-}
-
-func (x *GlobalBuildGraph) PrintSummary(startedAt time.Time, level base.LogLevel) {
-	x.barrier.Lock()
-	defer x.barrier.Unlock()
-
-	if x.protected != nil {
-		x.protected.BuildGraph.PrintSummary(startedAt, level)
-	}
 }
 
 /***************************************

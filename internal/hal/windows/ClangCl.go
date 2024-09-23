@@ -37,8 +37,8 @@ type ClangCompiler struct {
 	MsvcCompiler
 }
 
-func (clang *ClangCompiler) GetLlvmProduct() (*LlvmProductInstall, error) {
-	return FindGlobalBuildable[*LlvmProductInstall](clang.LlvmProductInstall)
+func (clang *ClangCompiler) GetLlvmProduct(bg BuildGraphReadPort) (*LlvmProductInstall, error) {
+	return FindBuildable[*LlvmProductInstall](bg, clang.LlvmProductInstall)
 }
 
 /***************************************
@@ -105,20 +105,20 @@ func (clang *ClangCompiler) CreateAction(_ *compile.Unit, _ compile.PayloadType,
 	result.OutputFiles.Append(result.GnuDepFile)
 	return result
 }
-func (clang *ClangCompiler) Decorate(compileEnv *compile.CompileEnv, u *compile.Unit) error {
-	err := clang.MsvcCompiler.Decorate(compileEnv, u)
+func (clang *ClangCompiler) Decorate(bg BuildGraphReadPort, compileEnv *compile.CompileEnv, u *compile.Unit) error {
+	err := clang.MsvcCompiler.Decorate(bg, compileEnv, u)
 	if err != nil {
 		return err
 	}
 
 	// add platform command flags for clang, intellisense is still assuming a cl-like frontend
-	switch compileEnv.GetPlatform().Arch {
+	switch compileEnv.GetPlatform(bg).Arch {
 	case compile.ARCH_ARM, compile.ARCH_X86:
 		u.AddCompilationFlag_NoAnalysis("-m32")
 	case compile.ARCH_ARM64, compile.ARCH_X64:
 		u.AddCompilationFlag_NoAnalysis("-m64")
 	default:
-		base.UnexpectedValue(compileEnv.GetPlatform().Arch)
+		base.UnexpectedValue(compileEnv.GetPlatform(bg).Arch)
 	}
 
 	if u.CppRules.CompilerVerbose.Get() {

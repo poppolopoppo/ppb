@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/poppolopoppo/ppb/internal/base"
+	"github.com/poppolopoppo/ppb/utils"
 
 	internal_io "github.com/poppolopoppo/ppb/internal/io"
 
@@ -15,7 +16,7 @@ import (
 
 type Module interface {
 	GetModule() *ModuleRules
-	GetNamespace() *NamespaceRules
+	GetNamespace(bg BuildGraphReadPort) *NamespaceRules
 	ExpandModule(env *CompileEnv) ModuleRules
 	Buildable
 	base.Serializable
@@ -76,7 +77,9 @@ func (x ModuleAlias) Compare(o ModuleAlias) int {
 	}
 }
 func (x ModuleAlias) AutoComplete(in base.AutoComplete) {
-	modules, err := NeedAllModuleAliases(CommandEnv.BuildGraph().GlobalContext())
+	bg := CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "AutoCompleteModuleAlias"}, utils.BUILDGRAPH_QUIET)
+	defer bg.Close()
+	modules, err := NeedAllModuleAliases(bg.GlobalContext())
 	if err == nil {
 		for _, it := range modules {
 			in.Add(it.String(), it.Alias().String())
@@ -194,11 +197,11 @@ func (rules *ModuleRules) GetModule() *ModuleRules {
 	return rules
 }
 
-func (rules *ModuleRules) GetBuildNamespace() (Namespace, error) {
-	return FindBuildNamespace(rules.ModuleAlias.NamespaceAlias)
+func (rules *ModuleRules) GetBuildNamespace(bg BuildGraphReadPort) (Namespace, error) {
+	return FindBuildNamespace(bg, rules.ModuleAlias.NamespaceAlias)
 }
-func (rules *ModuleRules) GetNamespace() *NamespaceRules {
-	if namespace, err := rules.GetBuildNamespace(); err == nil {
+func (rules *ModuleRules) GetNamespace(bg BuildGraphReadPort) *NamespaceRules {
+	if namespace, err := rules.GetBuildNamespace(bg); err == nil {
 		return namespace.GetNamespace()
 	} else {
 		base.LogPanicErr(LogCompile, err)
@@ -251,8 +254,8 @@ func (rules *ModuleRules) ExpandModule(env *CompileEnv) ModuleRules {
 	return *rules
 }
 
-func (rules *ModuleRules) Decorate(env *CompileEnv, unit *Unit) error {
-	if err := rules.GetNamespace().Decorate(env, unit); err != nil {
+func (rules *ModuleRules) Decorate(bg BuildGraphReadPort, env *CompileEnv, unit *Unit) error {
+	if err := rules.GetNamespace(bg).Decorate(bg, env, unit); err != nil {
 		return err
 	}
 
@@ -392,8 +395,8 @@ func (x *ModuleRules) Build(bc BuildContext) error {
 	return nil
 }
 
-func FindBuildModule(module ModuleAlias) (Module, error) {
-	return FindGlobalBuildable[Module](module.Alias())
+func FindBuildModule(bg BuildGraphReadPort, module ModuleAlias) (Module, error) {
+	return FindBuildable[Module](bg, module.Alias())
 }
 
 func NeedBuildModules(bc BuildContext, moduleAliases ...ModuleAlias) (modules []Module, err error) {
@@ -472,16 +475,16 @@ func ForeachNamespaceModuleAlias(bc BuildContext, namespaceAlias NamespaceAlias,
 	return nil
 }
 
-func GetModuleFromUserInput(in ModuleAlias) (Module, error) {
-	if module, err := FindBuildModule(in); err == nil {
+func GetModuleFromUserInput(bg BuildGraphReadPort, in ModuleAlias) (Module, error) {
+	if module, err := FindBuildModule(bg, in); err == nil {
 		return module, nil
 	}
 
-	if found, err := base.DidYouMean[ModuleAlias](strings.ToLower(in.String())); err == nil {
+	if found, err := base.DidYouMean[ModuleAlias](in.String()); err == nil {
 		if err = in.Set(found); err != nil {
 			return nil, err
 		}
-		return FindBuildModule(in)
+		return FindBuildModule(bg, in)
 	} else {
 		return nil, err
 	}

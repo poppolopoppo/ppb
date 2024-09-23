@@ -96,7 +96,7 @@ func (flags *CommandFlags) Apply() {
 			base.SetEnableInteractiveShell(false)
 			base.GetLogger().SetWriter(outp)
 		} else {
-			base.LogPanicErr(LogCommand, err)
+			return err
 		}
 	}
 
@@ -141,15 +141,28 @@ func (flags *CommandFlags) Apply() {
 	}
 
 	if flags.Summary.Get() || (flags.Ide.Get() && !flags.Quiet.Get()) {
-		CommandEnv.onExit.Add(func(cet *CommandEnvT) error {
-			base.PurgePinnedLogs()
-			if flags.Summary.Get() {
-				// queue print summary if specified on command-line
-				cet.buildGraph.PrintSummary(cet.startedAt, base.LOG_ALL)
-			} else {
-				// ide mode only prints execution time as a feedback for process termination
-				cet.buildGraph.PrintSummary(cet.startedAt, base.LOG_CLAIM)
-			}
+		CommandEnv.OnBuildGraphLoaded(func(bg BuildGraph) error {
+			var startedAt time.Time
+			bg.OnBuildGraphStart(func(_ BuildGraphWritePort) error {
+				startedAt = time.Now()
+				return nil
+			})
+			bg.OnBuildGraphFinished(func(port BuildGraphWritePort) error {
+				if port.PortFlags().Any(BUILDGRAPH_QUIET) {
+					return nil
+				}
+
+				base.PurgePinnedLogs()
+
+				if flags.Summary.Get() {
+					// queue print summary if specified on command-line
+					port.PrintSummary(startedAt, base.LOG_ALL)
+				} else {
+					// ide mode only prints execution time as a feedback for process termination
+					port.PrintSummary(startedAt, base.LOG_CLAIM)
+				}
+				return nil
+			})
 			return nil
 		})
 	}
@@ -159,16 +172,22 @@ func (flags *CommandFlags) Apply() {
 	}
 
 	if flags.RootDir.Valid() {
-		base.LogPanicIfFailed(LogCommand, UFS.MountRootDirectory(flags.RootDir))
+		if err := UFS.MountRootDirectory(flags.RootDir); err != nil {
+			return err
+		}
 	}
 
 	if flags.OutputDir.Valid() {
-		UFS.MountOutputDir(flags.OutputDir)
+		if err := UFS.MountOutputDir(flags.OutputDir); err != nil {
+			return err
+		}
 	}
 
 	if !flags.Jobs.IsInheritable() && flags.Jobs.Get() > 0 {
 		base.GetGlobalThreadPool().Resize(flags.Jobs.Get())
 	}
+
+	return nil
 }
 
 /***************************************
@@ -195,7 +214,7 @@ type CommandEnvT struct {
 
 var CommandEnv *CommandEnvT
 
-func InitCommandEnv(prefix string, args []string, startedAt time.Time) *CommandEnvT {
+func InitCommandEnv(prefix string, args []string, startedAt time.Time) (*CommandEnvT, error) {
 	CommandEnv = &CommandEnvT{
 		prefix:     prefix,
 		persistent: NewPersistentMap(prefix),
@@ -209,7 +228,7 @@ func InitCommandEnv(prefix string, args []string, startedAt time.Time) *CommandE
 	// parse global flags early-on
 	for i, cl := range CommandEnv.commandLines {
 		if err := GlobalParsableFlags.Parse(cl); err != nil {
-			base.LogPanicIfFailed(LogCommand, err)
+			return nil, err
 		}
 		if cl.Empty() { // remove empty command-lines
 			CommandEnv.commandLines = append(CommandEnv.commandLines[0:i], CommandEnv.commandLines[i+1:]...)
@@ -218,7 +237,9 @@ func InitCommandEnv(prefix string, args []string, startedAt time.Time) *CommandE
 	CommandEnv.commandEvents.Add(&GlobalParsableFlags)
 
 	// apply global command flags early-on
-	GetCommandFlags().Apply()
+	if err := GetCommandFlags().Apply(); err != nil {
+		return nil, err
+	}
 
 	// use UFS.Output only after having parsed -OutputDir/RootDir= flags
 	CommandEnv.configPath = UFS.Output.File(fmt.Sprint(".", prefix, "-config.json"))
@@ -253,7 +274,7 @@ func InitCommandEnv(prefix string, args []string, startedAt time.Time) *CommandE
 		CommandPanicF("Ctrl+C pressed %d times in Terminal, panic", maxBeforePanic)
 	}()
 
-	return CommandEnv
+	return CommandEnv, nil
 }
 func (env *CommandEnvT) Prefix() string             { return env.prefix }
 func (env *CommandEnvT) BuildGraph() BuildGraph     { return env.buildGraph.Get(env) }
@@ -343,9 +364,6 @@ func (env *CommandEnvT) Run(defaults ...base.AnyDelegate) error {
 
 	err := env.commandEvents.Run()
 
-	if er := env.buildGraph.Join(); er != nil && err == nil {
-		err = er
-	}
 	if er := env.saveConfig(); er != nil && err == nil {
 		err = er
 	}

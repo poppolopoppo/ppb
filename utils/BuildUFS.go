@@ -61,7 +61,7 @@ func BuildFile(source Filename, staticDeps ...BuildAlias) BuildFactoryTyped[*Fil
 		}, bi.DependsOn(staticDeps...)
 	})
 }
-func PrepareOutputFile(bg BuildGraph, source Filename, staticDeps BuildAliases, options ...BuildOptionFunc) (*FileDependency, error) {
+func PrepareOutputFile(bg BuildGraphWritePort, source Filename, staticDeps BuildAliases, options ...BuildOptionFunc) (*FileDependency, error) {
 	return BuildFile(source, staticDeps...).Init(bg, options...)
 }
 

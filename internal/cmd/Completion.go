@@ -132,7 +132,8 @@ var ListArtifacts = newCompletionCommand(
 	"list-artifacts",
 	"list all known artifacts",
 	func(cc utils.CommandContext, args *CompletionArgs) error {
-		bg := utils.CommandEnv.BuildGraph()
+		bg := utils.CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "ListArtifacts"})
+		defer bg.Close()
 		return openCompletion(args, func(w io.Writer) error {
 			return filterCompletion(args, func(in string) error {
 				var a utils.BuildAlias
@@ -159,7 +160,8 @@ var ListSourceFiles = newCompletionCommand(
 	"list-source-files",
 	"list all known source files",
 	func(cc utils.CommandContext, args *CompletionArgs) error {
-		bg := utils.CommandEnv.BuildGraph()
+		bg := utils.CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "ListSourceFiles"})
+		defer bg.Close()
 		return openCompletion(args, func(w io.Writer) error {
 			var files utils.FileSet
 			bg.Range(func(ba utils.BuildAlias, bn utils.BuildNode) error {
@@ -184,7 +186,8 @@ var ListGeneratedFiles = newCompletionCommand(
 	"list-generated-files",
 	"list all known generated files",
 	func(cc utils.CommandContext, args *CompletionArgs) error {
-		bg := utils.CommandEnv.BuildGraph()
+		bg := utils.CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "ListGeneratedFiles"})
+		defer bg.Close()
 		return openCompletion(args, func(w io.Writer) error {
 			var files utils.FileSet
 			bg.Range(func(ba utils.BuildAlias, bn utils.BuildNode) error {
@@ -238,7 +241,9 @@ var ListPlatforms = newCompletionCommand(
 	"list-platforms",
 	"list all available platforms",
 	func(cc utils.CommandContext, ca *CompletionArgs) error {
-		return printCompletion(ca, base.MakeStringerSet(compile.GetAllPlatformAliases()...))
+		bg := utils.CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "ListPlatforms"})
+		defer bg.Close()
+		return printCompletion(ca, base.MakeStringerSet(compile.GetAllPlatformAliases(bg)...))
 	})
 
 var ListConfigs = newCompletionCommand(
@@ -262,8 +267,9 @@ var ListModules = newCompletionCommand(
 	"list-modules",
 	"list all available modules",
 	func(cc utils.CommandContext, ca *CompletionArgs) error {
-		bc := utils.CommandEnv.BuildGraph().GlobalContext()
-		if moduleAliases, err := compile.NeedAllModuleAliases(bc); err == nil {
+		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "ListModules"})
+		defer bg.Close()
+		if moduleAliases, err := compile.NeedAllModuleAliases(bg.GlobalContext()); err == nil {
 			return printCompletion(ca, base.MakeStringerSet(moduleAliases...))
 		} else {
 			return err
@@ -275,8 +281,10 @@ var ListNamespaces = newCompletionCommand(
 	"list-namespaces",
 	"list all available namespaces",
 	func(cc utils.CommandContext, ca *CompletionArgs) error {
-		bc := utils.CommandEnv.BuildGraph().GlobalContext()
-		moduleAliases, err := compile.NeedAllModuleAliases(bc)
+		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "ListNamespaces"})
+		defer bg.Close()
+
+		moduleAliases, err := compile.NeedAllModuleAliases(bg.GlobalContext())
 		if err != nil {
 			return err
 		}
@@ -302,7 +310,10 @@ var ListTargets = newCompletionCommand(
 	"list-targets",
 	"list all translated targets",
 	func(cc utils.CommandContext, ca *CompletionArgs) error {
-		units, err := compile.NeedAllBuildUnits(utils.CommandEnv.BuildGraph().GlobalContext())
+		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "ListTargets"})
+		defer bg.Close()
+
+		units, err := compile.NeedAllBuildUnits(bg.GlobalContext())
 		if err != nil {
 			return err
 		}
@@ -315,7 +326,10 @@ var ListPrograms = newCompletionCommand(
 	"list-programs",
 	"list all executable targets",
 	func(cc utils.CommandContext, ca *CompletionArgs) error {
-		units, err := compile.NeedAllBuildUnits(utils.CommandEnv.BuildGraph().GlobalContext())
+		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "ListPrograms"})
+		defer bg.Close()
+
+		units, err := compile.NeedAllBuildUnits(bg.GlobalContext())
 		if err != nil {
 			return err
 		}

@@ -29,8 +29,8 @@ func MakeTargetPayloadAlias(ta TargetAlias, payload PayloadType) BuildAlias {
 	return MakeBuildAlias("Payloads", ta.PlatformName, ta.ConfigName, ta.NamespaceName, ta.ModuleName, payload.String())
 }
 
-func FindTargetPayload(targetAlias TargetAlias, payloadType PayloadType) (*TargetPayload, error) {
-	return FindGlobalBuildable[*TargetPayload](
+func FindTargetPayload(bg BuildGraphReadPort, targetAlias TargetAlias, payloadType PayloadType) (*TargetPayload, error) {
+	return FindBuildable[*TargetPayload](bg,
 		MakeTargetPayloadAlias(targetAlias, payloadType))
 }
 
@@ -49,8 +49,8 @@ func (x *TargetPayload) Serialize(ar base.Archive) {
 	base.SerializeSlice(ar, x.ActionAliases.Ref())
 }
 
-func (x *TargetPayload) GetActions() (action.ActionSet, error) {
-	return action.GetBuildActions(x.ActionAliases...)
+func (x *TargetPayload) GetActions(bg BuildGraphReadPort) (action.ActionSet, error) {
+	return action.GetBuildActions(bg, x.ActionAliases...)
 }
 
 /***************************************
@@ -69,8 +69,8 @@ func MakeTargetActionsAlias(ta TargetAlias) BuildAlias {
 	return MakeBuildAlias("Targets", ta.PlatformName, ta.ConfigName, ta.NamespaceName, ta.ModuleName)
 }
 
-func FindTargetActions(targetAlias TargetAlias) (*TargetActions, error) {
-	return FindGlobalBuildable[*TargetActions](MakeTargetActionsAlias(targetAlias))
+func FindTargetActions(bg BuildGraphReadPort, targetAlias TargetAlias) (*TargetActions, error) {
+	return FindBuildable[*TargetActions](bg, MakeTargetActionsAlias(targetAlias))
 }
 
 func NeedTargetActions(bc BuildContext, targetAliases ...TargetAlias) (targets []*TargetActions, err error) {
@@ -78,7 +78,7 @@ func NeedTargetActions(bc BuildContext, targetAliases ...TargetAlias) (targets [
 
 	for i, targetAlias := range targetAliases {
 		var target *TargetActions
-		if target, err = FindTargetActions(targetAlias); err == nil {
+		if target, err = FindTargetActions(bc, targetAlias); err == nil {
 			targets[i] = target
 		} else {
 			return
@@ -101,17 +101,17 @@ func NeedAllTargetActions(bc BuildContext) (targets []*TargetActions, err error)
 func (x *TargetActions) Alias() BuildAlias {
 	return MakeTargetActionsAlias(x.TargetAlias)
 }
-func (x *TargetActions) GetPayload(payloadType PayloadType) (*TargetPayload, error) {
-	targetPayload, err := FindTargetPayload(x.TargetAlias, payloadType)
+func (x *TargetActions) GetPayload(bg BuildGraphReadPort, payloadType PayloadType) (*TargetPayload, error) {
+	targetPayload, err := FindTargetPayload(bg, x.TargetAlias, payloadType)
 	if err == nil {
 		return targetPayload, nil
 	} else {
 		return nil, err
 	}
 }
-func (x *TargetActions) ForeachPayload(each func(*TargetPayload) error) error {
+func (x *TargetActions) ForeachPayload(bg BuildGraphReadPort, each func(*TargetPayload) error) error {
 	return x.PresentPayloads.Range(func(i int, pt PayloadType) error {
-		payload, err := x.GetPayload(pt)
+		payload, err := x.GetPayload(bg, pt)
 		if err == nil {
 			err = each(payload)
 		}
@@ -122,13 +122,13 @@ func (x *TargetActions) Build(bc BuildContext) error {
 	x.OutputType = PAYLOAD_HEADERS
 	x.PresentPayloads.Clear()
 
-	unit, err := FindBuildUnit(x.TargetAlias)
+	unit, err := FindBuildUnit(bc, x.TargetAlias)
 	if err != nil {
 		return err
 	}
 	base.Assert(func() bool { return nil != unit })
 
-	compiler, err := unit.GetBuildCompiler()
+	compiler, err := unit.GetBuildCompiler(bc)
 	if err != nil {
 		return err
 	}
@@ -155,20 +155,20 @@ func (x *TargetActions) Serialize(ar base.Archive) {
 	ar.Serializable(&x.PresentPayloads)
 }
 
-func (x *TargetActions) GetOutputPayload() (*TargetPayload, error) {
-	return x.GetPayload(x.OutputType)
+func (x *TargetActions) GetOutputPayload(bg BuildGraphReadPort) (*TargetPayload, error) {
+	return x.GetPayload(bg, x.OutputType)
 }
-func (x *TargetActions) GetOutputActions() (action.ActionSet, error) {
-	if targetPayload, err := x.GetOutputPayload(); err == nil {
-		return targetPayload.GetActions()
+func (x *TargetActions) GetOutputActions(bg BuildGraphReadPort) (action.ActionSet, error) {
+	if targetPayload, err := x.GetOutputPayload(bg); err == nil {
+		return targetPayload.GetActions(bg)
 	} else {
 		return action.ActionSet{}, err
 	}
 }
 
-func ForeachTargetActions(ea EnvironmentAlias, each func(*TargetActions) error, ma ...ModuleAlias) error {
+func ForeachTargetActions(bg BuildGraphReadPort, ea EnvironmentAlias, each func(*TargetActions) error, ma ...ModuleAlias) error {
 	for _, it := range ma {
-		target, err := FindTargetActions(TargetAlias{EnvironmentAlias: ea, ModuleAlias: it})
+		target, err := FindTargetActions(bg, TargetAlias{EnvironmentAlias: ea, ModuleAlias: it})
 		if err != nil {
 			return err
 		}
@@ -281,7 +281,7 @@ func (x *buildActionGenerator) CreateActions() error {
 
 	if base.IsLogLevelActive(base.LOG_VERYVERBOSE) {
 		x.BuildContext.OnBuilt(func(bn BuildNode) error {
-			allActions, err := targetOutputs.ExpandDependencies(CommandEnv.BuildGraph())
+			allActions, err := targetOutputs.ExpandDependencies(x.BuildContext)
 			if err == nil {
 				base.LogVeryVerbose(LogCompile, "%q outputs %v payload with %d artifacts (%d total actions)", x.Unit, x.Unit.Payload, len(targetOutputs), len(allActions))
 			}
@@ -367,7 +367,7 @@ func (x *buildActionGenerator) CreateAction(
 
 func (x *buildActionGenerator) NeedTargetActions(each func(*TargetActions) error, targets ...TargetAlias) error {
 	for _, targetAlias := range targets {
-		if targetActions, err := FindTargetActions(targetAlias); err == nil {
+		if targetActions, err := FindTargetActions(x, targetAlias); err == nil {
 			if err := x.BuildContext.DependsOn(targetActions.Alias()); err != nil {
 				return err
 			}
@@ -383,7 +383,7 @@ func (x *buildActionGenerator) NeedTargetActions(each func(*TargetActions) error
 func (x *buildActionGenerator) GetOutputActions(targets ...TargetAlias) (action.ActionSet, error) {
 	aliases := action.ActionAliases{}
 	err := x.NeedTargetActions(func(ta *TargetActions) error {
-		if payload, err := ta.GetOutputPayload(); err == nil {
+		if payload, err := ta.GetOutputPayload(x); err == nil {
 			aliases.Append(payload.ActionAliases...)
 		} else {
 			return err
@@ -391,7 +391,7 @@ func (x *buildActionGenerator) GetOutputActions(targets ...TargetAlias) (action.
 		return nil
 	}, targets...)
 	if err == nil {
-		return action.GetBuildActions(aliases...)
+		return action.GetBuildActions(x, aliases...)
 	}
 	return action.ActionSet{}, err
 }
@@ -478,7 +478,7 @@ func (x *buildActionGenerator) PrecompilerHeaderActions(dependencies action.Acti
 func (x *buildActionGenerator) CustomActions() (action.ActionSet, error) {
 	result := action.ActionSet{}
 	for _, custom := range x.Unit.CustomUnits {
-		compiler, err := custom.GetBuildCompiler()
+		compiler, err := custom.GetBuildCompiler(x)
 		if err != nil {
 			return action.ActionSet{}, err
 		}

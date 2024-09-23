@@ -10,6 +10,7 @@ import (
 	"github.com/poppolopoppo/ppb/compile"
 	"github.com/poppolopoppo/ppb/internal/base"
 	internal_io "github.com/poppolopoppo/ppb/internal/io"
+	"github.com/poppolopoppo/ppb/utils"
 
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
@@ -20,7 +21,8 @@ var CommandVcxproj = NewCommand(
 	"vcxproj",
 	"generate projects and solution for Visual Studio",
 	OptionCommandRun(func(cc CommandContext) error {
-		bg := CommandEnv.BuildGraph()
+		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "Vcxproj"})
+		defer bg.Close()
 
 		solutionFile := UFS.Output.File(CommandEnv.Prefix() + ".sln")
 
@@ -260,7 +262,7 @@ func (x *VcxProjectBuilder) Build(bc BuildContext) error {
 	x.VcxProject = VcxProject{}
 
 	// retrieve associated module (1 project == 1 module)
-	module, err := compile.FindBuildModule(x.ModuleAlias)
+	module, err := compile.FindBuildModule(bc, x.ModuleAlias)
 	if err != nil {
 		return err
 	}
@@ -270,7 +272,7 @@ func (x *VcxProjectBuilder) Build(bc BuildContext) error {
 	// retrieve generated units (1 project == n config|plaform configs)
 	var units []*compile.Unit
 	if err = compile.ForeachEnvironmentAlias(func(ea compile.EnvironmentAlias) error {
-		unit, err := compile.FindBuildUnit(compile.TargetAlias{
+		unit, err := compile.FindBuildUnit(bc, compile.TargetAlias{
 			ModuleAlias:      moduleRules.ModuleAlias,
 			EnvironmentAlias: ea,
 		})

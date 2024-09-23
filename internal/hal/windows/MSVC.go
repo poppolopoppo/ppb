@@ -70,14 +70,14 @@ func (msvc *MsvcCompiler) Serialize(ar base.Archive) {
 	ar.Serializable(&msvc.WindowsSDKInstall)
 }
 
-func (msvc *MsvcCompiler) GetWindowsSDK() (*WindowsSDKInstall, error) {
-	return FindGlobalBuildable[*WindowsSDKInstall](msvc.WindowsSDKInstall)
+func (msvc *MsvcCompiler) GetWindowsSDK(bg BuildGraphReadPort) (*WindowsSDKInstall, error) {
+	return FindBuildable[*WindowsSDKInstall](bg, msvc.WindowsSDKInstall)
 }
-func (msvc *MsvcCompiler) GetMsvcProduct() (*MsvcProductInstall, error) {
-	return FindGlobalBuildable[*MsvcProductInstall](msvc.MsvcProductInstall)
+func (msvc *MsvcCompiler) GetMsvcProduct(bg BuildGraphReadPort) (*MsvcProductInstall, error) {
+	return FindBuildable[*MsvcProductInstall](bg, msvc.MsvcProductInstall)
 }
-func (msvc *MsvcCompiler) GetResourceCompiler() (*ResourceCompiler, error) {
-	return FindGlobalBuildable[*ResourceCompiler](msvc.ResourceCompilerInstall)
+func (msvc *MsvcCompiler) GetResourceCompiler(bg BuildGraphReadPort) (*ResourceCompiler, error) {
+	return FindBuildable[*ResourceCompiler](bg, msvc.ResourceCompilerInstall)
 }
 
 /***************************************
@@ -406,10 +406,10 @@ func (msvc *MsvcCompiler) CreateAction(u *Unit, payload PayloadType, model *acti
 	}
 }
 
-func (msvc *MsvcCompiler) AddResources(compileEnv *CompileEnv, u *Unit, rc Filename) error {
+func (msvc *MsvcCompiler) AddResources(bg BuildGraphReadPort, compileEnv *CompileEnv, u *Unit, rc Filename) error {
 	base.LogVeryVerbose(LogWindows, "MSVC: add resource compiler custom unit to %v", u.Alias())
 
-	resourceCompiler, err := msvc.GetResourceCompiler()
+	resourceCompiler, err := msvc.GetResourceCompiler(bg)
 	if err != nil {
 		return err
 	}
@@ -440,10 +440,10 @@ func (msvc *MsvcCompiler) AddResources(compileEnv *CompileEnv, u *Unit, rc Filen
 	resources.LibrarianOptions.Clear()
 	resources.LinkerOptions.Clear()
 
-	if err := resources.Decorate(compileEnv, resources.GetCompiler()); err != nil {
+	if err := resources.Decorate(bg, compileEnv, resources.GetCompiler(bg)); err != nil {
 		return err
 	}
-	resources.Append(resources.GetCompiler()) // compiler options need to be at the end of command-line
+	resources.Append(resources.GetCompiler(bg)) // compiler options need to be at the end of command-line
 
 	u.CustomUnits.Append(resources)
 
@@ -458,9 +458,9 @@ func (msvc *MsvcCompiler) GetPathmap() string {
 		return fmt.Sprintf("/pathmap:%v=%v", UFS.Root, UFS.Root)
 	}
 }
-func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
+func (msvc *MsvcCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv, u *Unit) error {
 	// set architecture options
-	switch compileEnv.GetPlatform().Arch {
+	switch compileEnv.GetPlatform(bg).Arch {
 	case ARCH_X86:
 		u.LibrarianOptions.Append("/MACHINE:x86")
 		u.LinkerOptions.Append("/MACHINE:x86")
@@ -479,7 +479,7 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 			msvc.VSInstallPath.Folder("VC", "Tools", "MSVC", msvc.MinorVer, "lib", "x64"),
 			msvc.VSInstallPath.Folder("VC", "Auxiliary", "VS", "lib", "x64"))
 	default:
-		base.UnexpectedValue(compileEnv.GetPlatform().Arch)
+		base.UnexpectedValue(compileEnv.GetPlatform(bg).Arch)
 	}
 
 	// sanitizer sanity check
@@ -601,7 +601,7 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 	if msvc.WindowsFlags.Analyze.Get() {
 		base.LogVeryVerbose(LogWindows, "%v: using msvc static analysis", u)
 
-		msvcProduct, err := msvc.GetMsvcProduct()
+		msvcProduct, err := msvc.GetMsvcProduct(bg)
 		if err != nil {
 			return err
 		}
@@ -691,7 +691,7 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 	if u.Payload == PAYLOAD_EXECUTABLE || u.Payload == PAYLOAD_SHAREDLIB {
 		resource_rc := u.ModuleDir.File("resource.rc")
 		if resource_rc.Exists() {
-			if err := msvc.AddResources(compileEnv, u, resource_rc); err != nil {
+			if err := msvc.AddResources(bg, compileEnv, u, resource_rc); err != nil {
 				return err
 			}
 		}
@@ -713,13 +713,13 @@ func (msvc *MsvcCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 	if msvc.WindowsFlags.PerfSDK.Get() {
 		base.LogVeryVerbose(LogWindows, "%v: using Windows PerfSDK", u)
 		var perfSDK Directory
-		switch compileEnv.GetPlatform().Arch {
+		switch compileEnv.GetPlatform(bg).Arch {
 		case ARCH_X64:
 			perfSDK = msvc.VSInstallPath.Folder("Team Tools", "Performance Tools", "x64", "PerfSDK")
 		case ARCH_X86:
 			perfSDK = msvc.VSInstallPath.Folder("Team Tools", "Performance Tools", "PerfSDK")
 		default:
-			base.UnexpectedValue(compileEnv.GetPlatform().Arch)
+			base.UnexpectedValue(compileEnv.GetPlatform(bg).Arch)
 		}
 		u.Defines.Append("WITH_VISUALSTUDIO_PERFSDK")
 		u.ExternIncludePaths.Append(perfSDK)

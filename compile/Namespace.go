@@ -51,7 +51,9 @@ func (x *NamespaceAlias) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x *NamespaceAlias) AutoComplete(in base.AutoComplete) {
-	namespaces, err := NeedAllBuildNamespaceAliases(utils.CommandEnv.BuildGraph().GlobalContext())
+	bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "AutoCompleteNamespaceAlias"}, utils.BUILDGRAPH_QUIET)
+	defer bg.Close()
+	namespaces, err := NeedAllBuildNamespaceAliases(bg.GlobalContext())
 	if err == nil {
 		for _, it := range namespaces {
 			in.Add(it.String(), it.Alias().String())
@@ -86,18 +88,18 @@ func (rules *NamespaceRules) GetFacet() *Facet {
 func (rules *NamespaceRules) GetNamespace() *NamespaceRules {
 	return rules
 }
-func (rules *NamespaceRules) GetParentNamespace() Namespace {
-	if namespace, err := FindBuildNamespace(rules.NamespaceParent); err == nil {
+func (rules *NamespaceRules) GetParentNamespace(bg utils.BuildGraphReadPort) Namespace {
+	if namespace, err := FindBuildNamespace(bg, rules.NamespaceParent); err == nil {
 		return namespace
 	} else {
 		base.LogPanicErr(LogCompile, err)
 		return nil
 	}
 }
-func (rules *NamespaceRules) Decorate(env *CompileEnv, unit *Unit) error {
+func (rules *NamespaceRules) Decorate(bg utils.BuildGraphReadPort, env *CompileEnv, unit *Unit) error {
 	if rules.NamespaceParent.Valid() {
-		parent := rules.GetParentNamespace()
-		if err := parent.GetNamespace().Decorate(env, unit); err != nil {
+		parent := rules.GetParentNamespace(bg)
+		if err := parent.GetNamespace().Decorate(bg, env, unit); err != nil {
 			return err
 		}
 	}
@@ -129,8 +131,8 @@ func (x *NamespaceRules) Build(bc utils.BuildContext) error {
 	return nil
 }
 
-func FindBuildNamespace(namespace NamespaceAlias) (Namespace, error) {
-	return utils.FindGlobalBuildable[Namespace](namespace.Alias())
+func FindBuildNamespace(bg utils.BuildGraphReadPort, namespace NamespaceAlias) (Namespace, error) {
+	return utils.FindBuildable[Namespace](bg, namespace.Alias())
 }
 
 func NeedAllBuildNamespaceAliases(bc utils.BuildContext) (namespaceAliases []NamespaceAlias, err error) {
@@ -147,7 +149,7 @@ func NeedAllBuildNamespaceAliases(bc utils.BuildContext) (namespaceAliases []Nam
 }
 
 func ForeachNamespaceChildrenAlias(bc utils.BuildContext, namespaceAlias NamespaceAlias, each func(NamespaceAlias) error) error {
-	namespace, err := utils.FindGlobalBuildable[Namespace](namespaceAlias.Alias())
+	namespace, err := utils.FindBuildable[Namespace](bc, namespaceAlias.Alias())
 	if err != nil {
 		return err
 	}

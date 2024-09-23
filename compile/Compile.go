@@ -53,14 +53,17 @@ var AllCompilationFlags []struct {
 func NewCompilationFlags[T any, P interface {
 	*T
 	CommandParsableFlags
-}](name, description string, flags T) func(BuildInitializer, ...BuildOptionFunc) (P, error) {
+}](name, description string, flags T) func(bi BuildInitializer, opts ...BuildOptionFunc) (P, error) {
 	factory := NewCommandParsableFactory[T, P](name, flags)
+
 	AllCompilationFlags = append(AllCompilationFlags, struct {
 		CommandOptionFunc
 		BuildFactory
 	}{
 		CommandOptionFunc: OptionCommandParsableAccessor(name, description, func() P {
-			if builder, err := factory.Need(CommandEnv.BuildGraph().GlobalContext()); err == nil {
+			bg := CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: name}, BUILDGRAPH_QUIET)
+			defer bg.Close()
+			if builder, err := factory.Need(bg.GlobalContext()); err == nil {
 				return &builder.Flags
 			} else {
 				CommandPanic(err)

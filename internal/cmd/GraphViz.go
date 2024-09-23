@@ -17,7 +17,8 @@ var CommandGraphviz = newExportNodesCommand(
 	"graphviz",
 	"dump build node to graphviz .dot file format",
 	func(cc CommandContext, args *ExportNodeArgs[BuildAlias, *BuildAlias]) error {
-		bg := CommandEnv.BuildGraph()
+		bg := CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "GraphViz"})
+		defer bg.Close()
 
 		nodes := make([]BuildNode, len(args.Aliases))
 		for i, a := range args.Aliases {
@@ -59,7 +60,7 @@ type buildGraphVizNode struct {
 
 type buildGraphViz struct {
 	internal_io.GraphVizFile
-	graph     BuildGraph
+	graph     BuildGraphReadPort
 	visited   map[BuildNode]string
 	subgraphs map[string][]buildGraphVizNode
 	edges     []buildGraphVizEdge
@@ -67,7 +68,7 @@ type buildGraphViz struct {
 	minify    bool
 }
 
-func newBuildGraphViz(graph BuildGraph, w io.Writer, minify bool) buildGraphViz {
+func newBuildGraphViz(graph BuildGraphReadPort, w io.Writer, minify bool) buildGraphViz {
 	return buildGraphViz{
 		graph:        graph,
 		GraphVizFile: internal_io.NewGraphVizFile(w),

@@ -178,13 +178,13 @@ func (rules *CompilerRules) Serialize(ar base.Archive) {
 
 	ar.Serializable(&rules.Facet)
 }
-func (rules *CompilerRules) Decorate(env *CompileEnv, unit *Unit) error {
-	compiler, err := unit.GetBuildCompiler()
+func (rules *CompilerRules) Decorate(bg BuildGraphReadPort, env *CompileEnv, unit *Unit) error {
+	compiler, err := unit.GetBuildCompiler(bg)
 	if err != nil {
 		return err
 	}
 
-	if err = compiler.Decorate(env, unit); err != nil {
+	if err = compiler.Decorate(bg, env, unit); err != nil {
 		return err
 	}
 

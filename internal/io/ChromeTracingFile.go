@@ -49,15 +49,25 @@ var GetChromeTracingFlags = func() func() *ChromeTracingFlags {
 			utils.CommandEnv.OnBuildGraphLoaded(func(bg utils.BuildGraph) error {
 				chromeTracingFile := NewThreadSafeChromeTracing(runtime.NumCPU())
 
-				bg.OnBuildNodeStart(func(bn utils.BuildNode) error {
-					chromeTracingFile.Event(ChromeTracingBegin(buildGraphTid, fmt.Sprintf("Prepare(%v)", bn.Alias()), base.GetTypename(bn.GetBuildable())))
+				bg.OnBuildGraphStart(func(bn utils.BuildGraphWritePort) error {
+					chromeTracingFile.Event(ChromeTracingBegin(buildGraphTid, bn.PortName().String(), "OpenWritePort"))
+					return nil
+				})
+				bg.OnBuildGraphFinished(func(bn utils.BuildGraphWritePort) error {
+					chromeTracingFile.Event(ChromeTracingEnd(buildGraphTid, bn.PortName().String(), "OpenWritePort"))
 					return nil
 				})
 
-				bg.OnBuildNodeFinished(func(bn utils.BuildNode) error {
-					chromeTracingFile.Event(ChromeTracingEnd(buildGraphTid, fmt.Sprintf("Prepare(%v)", bn.Alias()), base.GetTypename(bn.GetBuildable())))
+				bg.OnBuildNodeStart(func(bn utils.BuildNodeEvent) error {
+					chromeTracingFile.Event(ChromeTracingBegin(buildGraphTid, fmt.Sprintf("Prepare(%v)", bn.Node.Alias()), base.GetTypename(bn.Node.GetBuildable())))
 					return nil
 				})
+
+				bg.OnBuildNodeFinished(func(bn utils.BuildNodeEvent) error {
+					chromeTracingFile.Event(ChromeTracingEnd(buildGraphTid, fmt.Sprintf("Prepare(%v)", bn.Node.Alias()), base.GetTypename(bn.Node.GetBuildable())))
+					return nil
+				})
+
 				base.GetGlobalThreadPool().OnWorkStart(func(tpwe base.ThreadPoolWorkEvent) error {
 					chromeTracingFile.Event(ChromeTracingBegin(
 						tpwe.Context.GetThreadDebugName(),

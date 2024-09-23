@@ -161,7 +161,7 @@ func ForeachLocalSourceControlModifications(bc BuildContext, each func(Filename,
 	futures := make([]base.Future[BuildResult], 0, len(files))
 	for _, it := range files {
 		if scm.IsInRepository(it) {
-			futures = append(futures, PrepareBuildFactory(bc.BuildGraph(), BuildFile(it)))
+			futures = append(futures, PrepareBuildFactory(bc, BuildFile(it)))
 		}
 	}
 

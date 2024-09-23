@@ -87,7 +87,8 @@ func (x *BuildAlias) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x BuildAlias) AutoComplete(in base.AutoComplete) {
-	bg := CommandEnv.BuildGraph()
+	bg := CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "AutoCompleteBuildAlias"}, BUILDGRAPH_QUIET)
+	defer bg.Close()
 	for _, a := range bg.Aliases() {
 		in.Add(a.String(), "")
 	}

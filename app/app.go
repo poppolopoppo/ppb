@@ -17,15 +17,20 @@ func WithCommandEnv(prefix string, caller utils.Filename, scope func(*utils.Comm
 
 	utils.UFS.Caller = caller
 
-	env := utils.InitCommandEnv(prefix, os.Args[1:], startedAt)
-	defer env.Close()
+	env, err := utils.InitCommandEnv(prefix, os.Args[1:], startedAt)
+	if err == nil {
+		defer utils.StartProfiling()()
 
-	defer utils.StartProfiling()()
+		hal.InitHAL()
+		utils.InitUtils()
 
-	hal.InitHAL()
-	utils.InitUtils()
-
-	err := scope(env)
+		defer func() {
+			if er := env.Close(); er != nil && err == nil {
+				err = er
+			}
+		}()
+		err = scope(env)
+	}
 
 	if err != nil {
 		base.LogForwardln("")

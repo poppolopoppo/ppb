@@ -30,7 +30,10 @@ var CommandDistClean = newCompletionCommand(
 			re := utils.MakeGlobRegexp(base.MakeStringerSet(args.GlobPatterns...)...)
 			base.LogClaim(utils.LogCommand, "dist-clean all targets matching /%v/", re)
 
-			units, err := compile.NeedAllBuildUnits(utils.CommandEnv.BuildGraph().GlobalContext())
+			bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "DistClean"})
+			defer bg.Close()
+
+			units, err := compile.NeedAllBuildUnits(bg.GlobalContext())
 			if err != nil {
 				return err
 			}

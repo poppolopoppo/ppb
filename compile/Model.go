@@ -79,7 +79,7 @@ func (x *NamespaceModel) Build(bc utils.BuildContext) error {
 		Facet:            x.Facet,
 	}
 
-	if namespace, err := x.GetNamespaceModel(); err == nil && namespace != nil {
+	if namespace, err := x.GetNamespaceModel(bc); err == nil && namespace != nil {
 		rules.NamespaceParent = namespace.GetNamespaceAlias()
 		x.applyModelExtensions(&namespace.ExtensionModel)
 	} else if err != nil {
@@ -195,7 +195,7 @@ func (x *ModuleModel) Build(bc utils.BuildContext) error {
 		return err
 	}
 
-	namespace, err := x.GetNamespaceModel()
+	namespace, err := x.GetNamespaceModel(bc)
 	if err != nil {
 		return err
 	}
@@ -403,9 +403,9 @@ func (x *ExtensionModel) GetAbsoluteName() string {
 		return x.Name
 	}
 }
-func (x *ExtensionModel) GetNamespaceModel() (*NamespaceModel, error) {
+func (x *ExtensionModel) GetNamespaceModel(bg utils.BuildGraphReadPort) (*NamespaceModel, error) {
 	if len(x.Namespace) > 0 {
-		return utils.FindGlobalBuildable[*NamespaceModel](utils.MakeBuildAlias("Model", x.Namespace))
+		return utils.FindBuildable[*NamespaceModel](bg, utils.MakeBuildAlias("Model", x.Namespace))
 	} else {
 		return nil, nil
 	}

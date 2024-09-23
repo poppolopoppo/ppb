@@ -22,7 +22,10 @@ var CommandCheckCache = utils.NewCommand(
 	utils.OptionCommandRun(func(cc utils.CommandContext) error {
 		utils.GetCommandFlags().Summary.Enable()
 
-		cache := action.GetActionCache()
+		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "CheckCache"})
+		defer bg.Close()
+
+		cache := action.GetActionCache(bg)
 		cachePath := cache.GetCachePath()
 
 		tempPath := utils.UFS.Transient.Folder("check-cache")
@@ -132,7 +135,9 @@ var CheckSerialize = utils.NewCommand(
 	"check-serialize",
 	"write and load every node, then check for differences",
 	utils.OptionCommandRun(func(cc utils.CommandContext) error {
-		bg := utils.CommandEnv.BuildGraph()
+		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "CheckSerialize"})
+		defer bg.Close()
+
 		aliases := bg.Aliases()
 
 		pbar := base.LogProgress(0, int64(len(aliases)), "check-serialize")
@@ -377,7 +382,10 @@ var CommandCheckBuild = newBuildAliasesCommand(
 	"check-build",
 	"build graph aliases passed as input parameters",
 	func(cc utils.CommandContext, args *BuildAliasesArgs) error {
-		_, err := utils.CommandEnv.BuildGraph().BuildMany(args.Aliases,
+		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "CheckBuild"})
+		defer bg.Close()
+
+		_, err := bg.BuildMany(args.Aliases,
 			utils.OptionBuildForceIf(utils.GetCommandFlags().Force.Get()))
 		return err
 	})
@@ -387,7 +395,8 @@ var CheckFingerprint = newBuildAliasesCommand(
 	"check-fingerprint",
 	"recompute nodes fingerprint and see if they match with the stamp stored in build graph",
 	func(cc utils.CommandContext, args *BuildAliasesArgs) error {
-		bg := utils.CommandEnv.BuildGraph()
+		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "CheckFingerprint"})
+		defer bg.Close()
 
 		for _, a := range args.Aliases {
 			base.LogVerbose(utils.LogCommand, "find build graph node named %q", a)
@@ -441,12 +450,14 @@ var DependencyChain = newBuildAliasesCommand(
 			return fmt.Errorf("dependency-chain: must pass at least 2 targets")
 		}
 
+		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "DependencyChain"})
+		defer bg.Close()
+
 		// print the dependency chain found
 
 		for i := 1; i < len(args.Aliases); i++ {
 			// build graph will use Dijkstra to find the shortest path between the 2 nodes
-			buildGraph := utils.CommandEnv.BuildGraph()
-			chain, err := buildGraph.GetDependencyChain(args.Aliases[0], args.Aliases[i],
+			chain, err := bg.GetDependencyChain(args.Aliases[0], args.Aliases[i],
 				// weight by link type, favor output > static > dynamic
 				func(bdl utils.BuildDependencyLink) float32 { return float32(bdl.Type) })
 			if err != nil {
@@ -458,7 +469,7 @@ var DependencyChain = newBuildAliasesCommand(
 				base.LogForwardf("%s[%d] %s: %s", indent, i, link.Type, link.Alias)
 
 				if args.Detailed.Get() {
-					node, err := buildGraph.Expect(link.Alias)
+					node, err := bg.Expect(link.Alias)
 					if err != nil {
 						return err
 					}
@@ -478,7 +489,8 @@ var DependencyFiles = newBuildAliasesCommand(
 	"dependency-files",
 	"list all file dependencies for input nodes",
 	func(cc utils.CommandContext, args *BuildAliasesArgs) error {
-		bg := utils.CommandEnv.BuildGraph()
+		bg := utils.CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "DependencyFiles"})
+		defer bg.Close()
 
 		files, err := bg.GetDependencyInputFiles(true, args.Aliases...)
 		if err != nil {
@@ -501,7 +513,8 @@ var OutputFiles = newBuildAliasesCommand(
 	"output-files",
 	"list all output files for input nodes",
 	func(cc utils.CommandContext, args *BuildAliasesArgs) error {
-		bg := utils.CommandEnv.BuildGraph()
+		bg := utils.CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "OutputFiles"})
+		defer bg.Close()
 
 		files, err := bg.GetDependencyOutputFiles(args.Aliases...)
 		if err != nil {

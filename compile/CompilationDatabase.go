@@ -78,21 +78,21 @@ func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
 
 	expandedActions := make(action.ActionSet, 0, len(moduleAliases))
 
-	err = ForeachTargetActions(x.EnvironmentAlias, func(targetActions *TargetActions) error {
+	err = ForeachTargetActions(bc, x.EnvironmentAlias, func(targetActions *TargetActions) error {
 		if _, err := bc.NeedBuildable(targetActions); err != nil {
 			return err
 		}
 
 		base.LogTrace(LogCompileDb, "%v: retrieved target actions %q with %d payloads", x.EnvironmentAlias, targetActions.Alias(), targetActions.PresentPayloads.Len())
 
-		actions, err := targetActions.GetOutputActions()
+		actions, err := targetActions.GetOutputActions(bc)
 		if err != nil {
 			return err
 		}
 
 		base.LogTrace(LogCompileDb, "%v: retrieved %d output actions for target %q", x.EnvironmentAlias, len(actions), targetActions.Alias())
 
-		if err := actions.AppendDependencies(bc.BuildGraph(), &expandedActions); err != nil {
+		if err := actions.AppendDependencies(bc, &expandedActions); err != nil {
 			return err
 		}
 
@@ -107,7 +107,7 @@ func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
 	for _, a := range expandedActions {
 		rules := a.GetAction()
 
-		inputFiles := rules.GetStaticInputFiles(bc.BuildGraph())
+		inputFiles := rules.GetStaticInputFiles(bc)
 		if len(inputFiles) == 0 {
 			base.LogTrace(LogCompileDb, "%v: action %q has no file input", x.EnvironmentAlias, rules.Alias())
 			continue // librarian or linker actions have dynamic inputs, but we are not interested in them here anyway
@@ -129,7 +129,7 @@ func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
 		base.LogVeryVerbose(LogCompileDb, "%v: found source file -> %q", x.EnvironmentAlias, actionCmd.File)
 
 		for _, input := range inputFiles {
-			if unityFile, err := FindUnityFile(input); err == nil {
+			if unityFile, err := FindUnityFile(bc, input); err == nil {
 				base.LogVerbose(LogCompileDb, "%v: expand unity file %q action inputs for compilation database", x.EnvironmentAlias, unityFile.Alias())
 
 				for _, source := range unityFile.Inputs {

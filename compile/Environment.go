@@ -97,34 +97,34 @@ func (env *CompileEnv) Serialize(ar base.Archive) {
 	SerializeParsableFlags(ar, &env.CompileFlags)
 }
 
-func (env *CompileEnv) GetBuildPlatform() (Platform, error) {
-	return FindGlobalBuildable[Platform](env.EnvironmentAlias.PlatformAlias.Alias())
+func (env *CompileEnv) GetBuildPlatform(bg BuildGraphReadPort) (Platform, error) {
+	return FindBuildable[Platform](bg, env.EnvironmentAlias.PlatformAlias.Alias())
 }
-func (env *CompileEnv) GetBuildConfig() (*BuildConfig, error) {
-	return FindGlobalBuildable[*BuildConfig](env.EnvironmentAlias.ConfigurationAlias.Alias())
+func (env *CompileEnv) GetBuildConfig(bg BuildGraphReadPort) (*BuildConfig, error) {
+	return FindBuildable[*BuildConfig](bg, env.EnvironmentAlias.ConfigurationAlias.Alias())
 }
-func (env *CompileEnv) GetBuildCompiler() (Compiler, error) {
-	return FindGlobalBuildable[Compiler](env.CompilerAlias.Alias())
+func (env *CompileEnv) GetBuildCompiler(bg BuildGraphReadPort) (Compiler, error) {
+	return FindBuildable[Compiler](bg, env.CompilerAlias.Alias())
 }
 
-func (env *CompileEnv) GetPlatform() *PlatformRules {
-	if platform, err := env.GetBuildPlatform(); err == nil {
+func (env *CompileEnv) GetPlatform(bg BuildGraphReadPort) *PlatformRules {
+	if platform, err := env.GetBuildPlatform(bg); err == nil {
 		return platform.GetPlatform()
 	} else {
 		base.LogPanicErr(LogCompile, err)
 		return nil
 	}
 }
-func (env *CompileEnv) GetConfig() *ConfigRules {
-	if config, err := env.GetBuildConfig(); err == nil {
+func (env *CompileEnv) GetConfig(bg BuildGraphReadPort) *ConfigRules {
+	if config, err := env.GetBuildConfig(bg); err == nil {
 		return config.GetConfig()
 	} else {
 		base.LogPanicErr(LogCompile, err)
 		return nil
 	}
 }
-func (env *CompileEnv) GetCompiler() *CompilerRules {
-	if compiler, err := env.GetBuildCompiler(); err == nil {
+func (env *CompileEnv) GetCompiler(bg BuildGraphReadPort) *CompilerRules {
+	if compiler, err := env.GetBuildCompiler(bg); err == nil {
 		return compiler.GetCompiler()
 	} else {
 		base.LogPanicErr(LogCompile, err)
@@ -140,17 +140,17 @@ func (env *CompileEnv) GeneratedDir() Directory {
 func (env *CompileEnv) IntermediateDir() Directory {
 	return UFS.Intermediate.Folder(env.Family()...)
 }
-func (env *CompileEnv) GetCpp(module *ModuleRules) CppRules {
+func (env *CompileEnv) GetCpp(bg BuildGraphReadPort, module *ModuleRules) CppRules {
 	result := CppRules{}
 	result.Inherit((*CppRules)(&env.CompileFlags))
 
 	if module != nil {
 		result.Inherit(&module.CppRules)
 	}
-	if config := env.GetConfig(); config != nil {
-		result.Inherit(&env.GetConfig().CppRules)
+	if config := env.GetConfig(bg); config != nil {
+		result.Inherit(&env.GetConfig(bg).CppRules)
 	}
-	if compiler := env.GetCompiler(); compiler != nil {
+	if compiler := env.GetCompiler(bg); compiler != nil {
 		base.Inherit(&result.CppStd, compiler.CppStd)
 	}
 
@@ -222,7 +222,7 @@ func (env *CompileEnv) Build(bc BuildContext) error {
 		return err
 	}
 
-	if platform, err := env.GetBuildPlatform(); err == nil {
+	if platform, err := env.GetBuildPlatform(bc); err == nil {
 		if compiler, err := platform.GetCompiler().Need(bc); err == nil {
 			env.CompilerAlias = compiler.GetCompiler().CompilerAlias
 		} else {
@@ -242,7 +242,7 @@ func (env *CompileEnv) Build(bc BuildContext) error {
 		"BUILD_"+strings.Join(env.Family(), "_"))
 
 	env.Facet.IncludePaths.Append(UFS.Source)
-	env.Facet.Append(env.GetPlatform(), env.GetConfig(), env.GetCompiler())
+	env.Facet.Append(env.GetPlatform(bc), env.GetConfig(bc), env.GetCompiler(bc))
 
 	return nil
 }

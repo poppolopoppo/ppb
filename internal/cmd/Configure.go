@@ -14,7 +14,9 @@ var CommandConfigure = utils.NewCommand(
 	utils.OptionCommandRun(func(cc utils.CommandContext) error {
 		base.LogClaim(utils.LogCommand, "configure compilation graph with %q as root", utils.CommandEnv.RootFile())
 
-		bg := utils.CommandEnv.BuildGraph()
+		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "Configure"})
+		defer bg.Close()
+
 		_, err := compile.NeedAllTargetActions(bg.GlobalContext())
 		return err
 	}),

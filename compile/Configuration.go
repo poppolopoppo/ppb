@@ -92,7 +92,7 @@ func (rules *ConfigRules) Serialize(ar base.Archive) {
 	ar.Serializable(&rules.Facet)
 }
 
-func (rules *ConfigRules) Decorate(_ *CompileEnv, unit *Unit) error {
+func (rules *ConfigRules) Decorate(_ BuildGraphReadPort, _ *CompileEnv, unit *Unit) error {
 	switch unit.Payload {
 	case PAYLOAD_HEADERS:
 	case PAYLOAD_EXECUTABLE, PAYLOAD_OBJECTLIST, PAYLOAD_STATICLIB:
@@ -268,7 +268,7 @@ func GetConfigurationFromUserInput(in ConfigurationAlias) (Configuration, error)
 		return config, nil
 	}
 
-	if found, err := base.DidYouMean[ConfigurationAlias](strings.ToLower(in.String())); err == nil {
+	if found, err := base.DidYouMean[ConfigurationAlias](in.String()); err == nil {
 		config, ok := AllConfigurations.Get(found)
 		base.AssertIn(ok, true)
 		return config, nil

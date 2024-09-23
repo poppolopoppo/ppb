@@ -12,7 +12,6 @@ type BuildNode interface {
 	BuildAliasable
 
 	GetBuildStamp() BuildStamp
-	GetBuildStats() BuildStats
 	GetBuildable() Buildable
 
 	DependsOn(...BuildAlias) bool
@@ -38,13 +37,29 @@ type BuildableSourceDirectory interface {
 }
 
 /***************************************
+ * Build State
+ ***************************************/
+type buildState struct {
+	future base.AtomicFuture[BuildResult]
+	stats  BuildStats
+
+	*buildNode
+}
+
+func (state *buildState) GetBuildNode() BuildNode {
+	state.RLock()
+	defer state.RUnlock()
+	return state.buildNode
+}
+func (state *buildState) GetBuildStats() BuildStats {
+	state.RLock()
+	defer state.RUnlock()
+	return state.stats
+}
+
+/***************************************
  * Build Node
  ***************************************/
-
-type buildState struct {
-	stats BuildStats
-	sync.RWMutex
-}
 
 type buildNode struct {
 	BuildAlias BuildAlias
@@ -57,8 +72,7 @@ type buildNode struct {
 	OutputFiles BuildDependencies
 	OutputNodes BuildAliases
 
-	state  buildState
-	future base.AtomicFuture[BuildResult]
+	sync.RWMutex
 }
 
 func newBuildNode(alias BuildAlias, builder Buildable) *buildNode {
@@ -67,27 +81,14 @@ func newBuildNode(alias BuildAlias, builder Buildable) *buildNode {
 	return &buildNode{
 		BuildAlias: alias,
 		Buildable:  builder,
-		Stamp:      BuildStamp{},
-
-		Static:      BuildDependencies{},
-		Dynamic:     BuildDependencies{},
-		OutputFiles: BuildDependencies{},
-		OutputNodes: BuildAliases{},
-
-		state: buildState{
-			stats:   BuildStats{},
-			RWMutex: sync.RWMutex{},
-		},
-
-		future: base.AtomicFuture[BuildResult]{},
 	}
 }
 func (node *buildNode) Alias() BuildAlias { return node.BuildAlias }
 func (node *buildNode) String() string    { return node.BuildAlias.String() }
 
 func (node *buildNode) IsMuted() bool {
-	node.state.RLock()
-	defer node.state.RUnlock()
+	node.RLock()
+	defer node.RUnlock()
 	switch node.Buildable.(type) {
 	case *FileDependency, BuildableSourceFile:
 		return true
@@ -101,38 +102,33 @@ func (node *buildNode) IsMuted() bool {
 }
 
 func (node *buildNode) GetBuildable() Buildable {
-	node.state.RLock()
-	defer node.state.RUnlock()
+	node.RLock()
+	defer node.RUnlock()
 	return node.Buildable
 }
 func (node *buildNode) GetBuildStamp() BuildStamp {
-	node.state.RLock()
-	defer node.state.RUnlock()
+	node.RLock()
+	defer node.RUnlock()
 	return node.Stamp
 }
-func (node *buildNode) GetBuildStats() BuildStats {
-	node.state.RLock()
-	defer node.state.RUnlock()
-	return node.state.stats
-}
 func (node *buildNode) GetStaticDependencies() BuildAliases {
-	node.state.RLock()
-	defer node.state.RUnlock()
+	node.RLock()
+	defer node.RUnlock()
 	return node.Static.Aliases()
 }
 func (node *buildNode) GetDynamicDependencies() BuildAliases {
-	node.state.RLock()
-	defer node.state.RUnlock()
+	node.RLock()
+	defer node.RUnlock()
 	return node.Dynamic.Aliases()
 }
 func (node *buildNode) GetOutputDependencies() BuildAliases {
-	node.state.RLock()
-	defer node.state.RUnlock()
+	node.RLock()
+	defer node.RUnlock()
 	return append(node.OutputFiles.Aliases(), node.OutputNodes...)
 }
 func (node *buildNode) GetDependencyLinks(includeOutputs bool) []BuildDependencyLink {
-	node.state.RLock()
-	defer node.state.RUnlock()
+	node.RLock()
+	defer node.RUnlock()
 	result := make([]BuildDependencyLink, 0, len(node.Static)+len(node.Dynamic)+len(node.OutputFiles)+len(node.OutputNodes))
 	for _, it := range node.Static {
 		result = append(result, BuildDependencyLink{Alias: it.Alias, Type: DEPENDENCY_STATIC})
@@ -151,8 +147,8 @@ func (node *buildNode) GetDependencyLinks(includeOutputs bool) []BuildDependency
 	return result
 }
 func (node *buildNode) DependsOn(aliases ...BuildAlias) bool {
-	node.state.RLock()
-	defer node.state.RUnlock()
+	node.RLock()
+	defer node.RUnlock()
 	for _, a := range aliases {
 		if _, ok := node.Static.IndexOf(a); ok {
 			return true

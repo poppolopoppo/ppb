@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -82,143 +81,120 @@ func (x *BuildStats) resumeTimer() {
  ***************************************/
 
 type buildEvents struct {
-	onBuildGraphStartEvent    base.ConcurrentEvent[BuildGraph]
-	onBuildGraphFinishedEvent base.ConcurrentEvent[BuildGraph]
+	onBuildGraphStartEvent    base.ConcurrentEvent[BuildGraphWritePort]
+	onBuildGraphFinishedEvent base.ConcurrentEvent[BuildGraphWritePort]
 
-	onBuildNodeStartEvent    base.ConcurrentEvent[BuildNode]
-	onBuildNodeFinishedEvent base.ConcurrentEvent[BuildNode]
-
-	graphEventBarrier sync.Mutex
-	numRunningTasks   int32
+	onBuildNodeStartEvent    base.ConcurrentEvent[BuildNodeEvent]
+	onBuildNodeFinishedEvent base.ConcurrentEvent[BuildNodeEvent]
 }
 
 func newBuildEvents() (result buildEvents) {
-	result.numRunningTasks = -1 // 0 is reserved when running
-
 	if base.EnableInteractiveShell() {
 		var pbar base.ProgressScope
 
-		result.onBuildGraphStartEvent.Add(func(bg BuildGraph) error {
-			pbar = base.LogSpinner("Build Graph ")
+		result.onBuildGraphStartEvent.Add(func(bgwp BuildGraphWritePort) error {
+			if !bgwp.PortFlags().Any(BUILDGRAPH_QUIET) {
+				pbar = base.LogSpinner(bgwp.PortName().String())
+			} else {
+				pbar = nil
+			}
 			return nil
 		})
-		result.onBuildNodeStartEvent.Add(func(bn BuildNode) error {
-			pbar.Grow(1)
-			pbar.Log("Built %d / %d nodes (workload: %d)", pbar.Progress(), pbar.Len(), base.GetGlobalThreadPool().GetWorkload())
+		result.onBuildGraphFinishedEvent.Add(func(bgwp BuildGraphWritePort) (err error) {
+			if !base.IsNil(pbar) {
+				err = pbar.Close()
+				pbar = nil
+			}
+			return
+		})
+
+		result.onBuildNodeStartEvent.Add(func(bne BuildNodeEvent) error {
+			if !base.IsNil(pbar) {
+				pbar.Grow(1)
+				pbar.Log("Built %d / %d nodes (workload: %d)", pbar.Progress(), pbar.Len(), base.GetGlobalThreadPool().GetWorkload())
+			}
 			return nil
 		})
-		result.onBuildNodeFinishedEvent.Add(func(bn BuildNode) error {
-			pbar.Inc()
-			pbar.Log("Built %d / %d nodes (workload: %d)", pbar.Progress(), pbar.Len(), base.GetGlobalThreadPool().GetWorkload())
+		result.onBuildNodeFinishedEvent.Add(func(bne BuildNodeEvent) error {
+			if !base.IsNil(pbar) {
+				pbar.Inc()
+				pbar.Log("Built %d / %d nodes (workload: %d)", pbar.Progress(), pbar.Len(), base.GetGlobalThreadPool().GetWorkload())
+			}
 			return nil
-		})
-		result.onBuildGraphFinishedEvent.Add(func(bg BuildGraph) error {
-			return pbar.Close()
 		})
 	}
 	return
 }
 
-func (g *buildGraph) hasRunningTasks() bool {
-	return atomic.LoadInt32(&g.numRunningTasks) >= 0
-}
-
-func (g *buildEvents) OnBuildGraphStart(e base.EventDelegate[BuildGraph]) base.DelegateHandle {
-	base.Assert(func() bool { return atomic.LoadInt32(&g.numRunningTasks) == -1 })
+func (g *buildEvents) OnBuildGraphStart(e base.EventDelegate[BuildGraphWritePort]) base.DelegateHandle {
 	return g.onBuildGraphStartEvent.Add(e)
 }
-func (g *buildEvents) OnBuildNodeStart(e base.EventDelegate[BuildNode]) base.DelegateHandle {
-	base.Assert(func() bool { return atomic.LoadInt32(&g.numRunningTasks) == -1 })
+func (g *buildEvents) OnBuildNodeStart(e base.EventDelegate[BuildNodeEvent]) base.DelegateHandle {
 	return g.onBuildNodeStartEvent.Add(e)
 }
-func (g *buildEvents) OnBuildNodeFinished(e base.EventDelegate[BuildNode]) base.DelegateHandle {
-	base.Assert(func() bool { return atomic.LoadInt32(&g.numRunningTasks) == -1 })
+func (g *buildEvents) OnBuildNodeFinished(e base.EventDelegate[BuildNodeEvent]) base.DelegateHandle {
 	return g.onBuildNodeFinishedEvent.Add(e)
 }
-func (g *buildEvents) OnBuildGraphFinished(e base.EventDelegate[BuildGraph]) base.DelegateHandle {
-	base.Assert(func() bool { return atomic.LoadInt32(&g.numRunningTasks) == -1 })
+func (g *buildEvents) OnBuildGraphFinished(e base.EventDelegate[BuildGraphWritePort]) base.DelegateHandle {
 	return g.onBuildGraphFinishedEvent.Add(e)
 }
 
 func (g *buildEvents) RemoveOnBuildGraphStart(h base.DelegateHandle) bool {
-	base.Assert(func() bool { return atomic.LoadInt32(&g.numRunningTasks) == -1 })
 	return g.onBuildGraphStartEvent.Remove(h)
 }
 func (g *buildEvents) RemoveOnBuildNodeStart(h base.DelegateHandle) bool {
-	base.Assert(func() bool { return atomic.LoadInt32(&g.numRunningTasks) == -1 })
 	return g.onBuildNodeStartEvent.Remove(h)
 }
 func (g *buildEvents) RemoveOnBuildNodeFinished(h base.DelegateHandle) bool {
-	base.Assert(func() bool { return atomic.LoadInt32(&g.numRunningTasks) == -1 })
 	return g.onBuildNodeFinishedEvent.Remove(h)
 }
 func (g *buildEvents) RemoveOnBuildGraphFinished(h base.DelegateHandle) bool {
-	base.Assert(func() bool { return atomic.LoadInt32(&g.numRunningTasks) == -1 })
 	return g.onBuildGraphFinishedEvent.Remove(h)
 }
 
-func (g *buildEvents) onBuildNodeStart_ThreadSafe(graph *buildGraph, node *buildNode) {
-	base.LogDebug(LogBuildEvent, "%v -> %T: build start", node.BuildAlias, node.GetBuildable())
+func (g *buildGraphWritePort) onBuildGraphStart_ThreadSafe() {
+	base.LogDebug(LogBuildEvent, "build graph start <%v>", g.name)
 
-	if atomic.LoadInt32(&g.numRunningTasks) == -1 {
-		g.onBuildGraphStart_ThreadSafe(graph)
-	}
-
-	atomic.AddInt32(&g.numRunningTasks, 1)
-
-	g.onBuildNodeStartEvent.Invoke(node)
+	g.onBuildGraphStartEvent.Invoke(g)
 }
-func (g *buildEvents) onBuildNodeFinished_ThreadSafe(graph *buildGraph, node *buildNode) {
-	base.LogDebug(LogBuildEvent, "%v -> %T: build finished", node.BuildAlias, node.GetBuildable())
+func (g *buildGraphWritePort) onBuildGraphFinished_ThreadSafe() {
+	base.LogDebug(LogBuildEvent, "build graph finished <%v>", g.name)
 
-	atomic.AddInt32(&g.numRunningTasks, -1)
-
-	g.onBuildNodeFinishedEvent.Invoke(node)
-
-	if atomic.LoadInt32(&g.numRunningTasks) == 0 {
-		g.onBuildGraphFinished_ThreadSafe(graph)
-	}
+	g.onBuildGraphFinishedEvent.Invoke(g)
 }
 
-func (g *buildEvents) onBuildGraphStart_ThreadSafe(graph *buildGraph) {
-	g.graphEventBarrier.Lock()
-	defer g.graphEventBarrier.Unlock()
+func (g *buildGraphWritePort) onBuildNodeStart_ThreadSafe(node *buildState) {
+	base.LogDebug(LogBuildEvent, "<%v> %v -> %T: build start", g.name, node.BuildAlias, node.GetBuildable())
 
-	if atomic.LoadInt32(&g.numRunningTasks) == -1 {
-		g.onBuildGraphStartEvent.Invoke(graph)
-		atomic.StoreInt32(&g.numRunningTasks, 0)
-	}
+	g.onBuildNodeStartEvent.Invoke(BuildNodeEvent{
+		Port: g,
+		Node: node,
+	})
 }
-func (g *buildEvents) onBuildGraphFinished_ThreadSafe(graph *buildGraph) {
-	g.graphEventBarrier.Lock()
-	defer g.graphEventBarrier.Unlock()
+func (g *buildGraphWritePort) onBuildNodeFinished_ThreadSafe(node *buildState) {
+	base.LogDebug(LogBuildEvent, "<%v> %v -> %T: build finished", g.name, node.BuildAlias, node.GetBuildable())
 
-	if atomic.LoadInt32(&g.numRunningTasks) == 0 {
-		g.onBuildGraphFinishedEvent.Invoke(graph)
-		atomic.StoreInt32(&g.numRunningTasks, -1)
-	}
+	g.onBuildNodeFinishedEvent.Invoke(BuildNodeEvent{
+		Port: g,
+		Node: node,
+	})
 }
 
 /***************************************
  * Build Summary
  ***************************************/
 
-func (g *buildGraph) PrintSummary(startedAt time.Time, level base.LogLevel) {
-	/***************************************
-	 * Total duration (always)
-	 ***************************************/
-
+func (g *buildGraphWritePort) PrintSummary(startedAt time.Time, level base.LogLevel) {
+	// Total duration (always)
 	totalDuration := time.Since(startedAt)
 	base.LogForwardf("\nProgram took %.3f seconds to run", totalDuration.Seconds())
 
-	/***************************************
-	 * Build durationl (if something was built)
-	 ***************************************/
+	// Build durationl (if something was built)
 	if !level.IsVisible(base.LOG_INFO) {
 		return
 	}
 
-	stats := g.GetBuildStats()
+	stats := g.GetAggregatedBuildStats()
 	if stats.Count == 0 {
 		return
 	}
@@ -228,9 +204,7 @@ func (g *buildGraph) PrintSummary(startedAt time.Time, level base.LogLevel) {
 		base.GetGlobalThreadPool().GetArity(),
 		float32(stats.Duration.Exclusive)/float32(totalDuration))
 
-	/***************************************
-	 * Most expansive nodes built
-	 ***************************************/
+	// Most expansive nodes built
 	if !level.IsVisible(base.LOG_VERBOSE) {
 		return
 	}
@@ -238,10 +212,15 @@ func (g *buildGraph) PrintSummary(startedAt time.Time, level base.LogLevel) {
 	base.LogForwardf("\nMost expansive nodes built:")
 
 	for i, node := range g.GetMostExpansiveNodes(10, false) {
-		ns := node.GetBuildStats()
+		ns, ok := g.GetBuildStats(node)
+		if !ok || ns.Count == 0 {
+			continue
+		}
+
 		fract := ns.Duration.Exclusive.Seconds() / stats.Duration.Exclusive.Seconds()
 
-		sstep := base.Smootherstep(ns.Duration.Exclusive.Seconds() / totalDuration.Seconds()) // use percent of blocking duration
+		// use percent of blocking duration
+		sstep := base.Smootherstep(ns.Duration.Exclusive.Seconds() / totalDuration.Seconds())
 		rowColor := base.NewColdHotColor(math.Sqrt(sstep))
 
 		annotation := ""
@@ -267,25 +246,27 @@ func (g *buildGraph) PrintSummary(startedAt time.Time, level base.LogLevel) {
 			base.ANSI_RESET)
 	}
 
-	/***************************************
-	 * Critical path
-	 ***************************************/
+	// Critical path
 	if !level.IsVisible(base.LOG_VERYVERBOSE) {
 		return
 	}
 
-	criticalPath := g.GetCriticalPathNodes()
+	criticalPath, maxTime := g.GetCriticalPathNodes()
 	if len(criticalPath) < 2 {
 		return
 	}
 
-	base.LogForwardf("\nCritical path:")
+	base.LogForwardf("\nCritical path: (%6.3f s)", maxTime.Seconds())
 
 	for depth, node := range criticalPath {
-		ns := node.GetBuildStats()
-		fract := ns.Duration.Inclusive.Seconds() / stats.Duration.Inclusive.Seconds()
+		ns, ok := g.GetBuildStats(node)
+		if !ok || ns.Count == 0 {
+			continue
+		}
 
-		sstep := base.Smootherstep(ns.Duration.Inclusive.Seconds() / totalDuration.Seconds()) // use percent of blocking duration
+		fract := ns.Duration.Inclusive.Seconds() / stats.Duration.Inclusive.Seconds()
+		// use percent of blocking duration
+		sstep := base.Smootherstep(ns.Duration.Inclusive.Seconds() / totalDuration.Seconds())
 		rowColor := base.NewColdHotColor(math.Sqrt(sstep))
 
 		annotation := ``

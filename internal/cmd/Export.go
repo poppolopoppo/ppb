@@ -80,8 +80,11 @@ var ExportConfig = newJsonExportCommand(
 	"export-config",
 	"export configuration to json",
 	func(cc utils.CommandContext, args *ExportNodeArgs[compile.ConfigurationAlias, *compile.ConfigurationAlias], yield jsonExportYieldFunc) error {
+		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "ExportConfig"})
+		defer bg.Close()
+
 		for _, a := range args.Aliases {
-			result := compile.GetBuildConfig(a).Build(utils.CommandEnv.BuildGraph())
+			result := compile.GetBuildConfig(a).Build(bg)
 
 			err := result.Failure()
 			if err == nil {
@@ -99,8 +102,11 @@ var ExportPlatform = newJsonExportCommand(
 	"export-platform",
 	"export platform to json",
 	func(cc utils.CommandContext, args *ExportNodeArgs[compile.PlatformAlias, *compile.PlatformAlias], yield jsonExportYieldFunc) error {
+		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "ExportPlatform"})
+		defer bg.Close()
+
 		for _, a := range args.Aliases {
-			result := compile.GetBuildPlatform(a).Build(utils.CommandEnv.BuildGraph())
+			result := compile.GetBuildPlatform(a).Build(bg)
 
 			err := result.Failure()
 			if err == nil {
@@ -118,8 +124,11 @@ var ExportModule = newJsonExportCommand(
 	"export-module",
 	"export parsed module to json",
 	func(cc utils.CommandContext, args *ExportNodeArgs[compile.ModuleAlias, *compile.ModuleAlias], yield jsonExportYieldFunc) error {
+		bg := utils.CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "ExportModule"})
+		defer bg.Close()
+
 		for _, a := range args.Aliases {
-			module, err := compile.FindBuildModule(a)
+			module, err := compile.FindBuildModule(bg, a)
 			if err == nil {
 				err = yield(module)
 			}
@@ -135,8 +144,11 @@ var ExportNamespace = newJsonExportCommand(
 	"export-namespace",
 	"export parsed namespace to json",
 	func(cc utils.CommandContext, args *ExportNodeArgs[compile.NamespaceAlias, *compile.NamespaceAlias], yield jsonExportYieldFunc) error {
+		bg := utils.CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "ExportNamespace"})
+		defer bg.Close()
+
 		for _, a := range args.Aliases {
-			namespace, err := compile.FindBuildNamespace(a)
+			namespace, err := compile.FindBuildNamespace(bg, a)
 			if err == nil {
 				err = yield(namespace)
 			}
@@ -152,8 +164,11 @@ var ExportUnit = newJsonExportCommand(
 	"export-unit",
 	"export translated unit to json",
 	func(cc utils.CommandContext, args *ExportNodeArgs[compile.TargetAlias, *compile.TargetAlias], yield jsonExportYieldFunc) error {
+		bg := utils.CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "ExportUnit"})
+		defer bg.Close()
+
 		for _, a := range args.Aliases {
-			namespace, err := compile.FindBuildUnit(a)
+			namespace, err := compile.FindBuildUnit(bg, a)
 			if err == nil {
 				err = yield(namespace)
 			}
@@ -169,7 +184,9 @@ var ExportNode = newJsonExportCommand(
 	"export-node",
 	"export build node to json",
 	func(cc utils.CommandContext, args *ExportNodeArgs[utils.BuildAlias, *utils.BuildAlias], yield jsonExportYieldFunc) error {
-		bg := utils.CommandEnv.BuildGraph()
+		bg := utils.CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "ExportNode"})
+		defer bg.Close()
+
 		for _, a := range args.Aliases {
 			node, err := bg.Expect(a)
 			if err == nil {

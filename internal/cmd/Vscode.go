@@ -22,7 +22,10 @@ var Vscode = NewCommand(
 		outputDir := UFS.Root.Folder(".vscode")
 		base.LogClaim(LogCommand, "generating VSCode workspace in '%v'", outputDir)
 
-		result := BuildVscode(outputDir).Build(CommandEnv.BuildGraph(), OptionBuildForce)
+		bg := CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "Vscode"})
+		defer bg.Close()
+
+		result := BuildVscode(outputDir).Build(bg, OptionBuildForce)
 		return result.Failure()
 	}))
 
@@ -141,13 +144,13 @@ func (vsc *VscodeBuilder) c_cpp_properties(bc BuildContext, moduleAliases []comp
 		}
 
 		var intelliSenseMode string
-		switch env.GetPlatform().Os {
+		switch env.GetPlatform(bc).Os {
 		case "Linux":
 			intelliSenseMode = fmt.Sprintf("linux-%s-x64", env.CompilerAlias.CompilerFamily)
 		case "Windows":
 			intelliSenseMode = fmt.Sprintf("windows-%s-x64", env.CompilerAlias.CompilerFamily)
 		default:
-			base.UnexpectedValue(env.GetPlatform().Os)
+			base.UnexpectedValue(env.GetPlatform(bc).Os)
 		}
 
 		compileDb, err := compile.BuildCompilationDatabase(env.EnvironmentAlias).Need(bc)
@@ -157,7 +160,7 @@ func (vsc *VscodeBuilder) c_cpp_properties(bc BuildContext, moduleAliases []comp
 
 		defines := base.StringSet{}
 		includePaths := DirSet{}
-		if err := compile.ForeachBuildUnits(env.EnvironmentAlias, func(u *compile.Unit) error {
+		if err := compile.ForeachBuildUnits(bc, env.EnvironmentAlias, func(u *compile.Unit) error {
 			defines.AppendUniq(u.Defines...)
 			includePaths.AppendUniq(u.IncludePaths...)
 			return nil
@@ -172,10 +175,10 @@ func (vsc *VscodeBuilder) c_cpp_properties(bc BuildContext, moduleAliases []comp
 
 		configurations = append(configurations, base.JsonMap{
 			"name":             env.EnvironmentAlias.String(),
-			"compilerPath":     env.GetCompiler().Executable.String(),
+			"compilerPath":     env.GetCompiler(bc).Executable.String(),
 			"compileCommands":  compileDb.OutputFile,
 			"cStandard":        "c17",
-			"cppStandard":      strings.ToLower(env.GetCpp(nil).CppStd.String()),
+			"cppStandard":      strings.ToLower(env.GetCpp(bc, nil).CppStd.String()),
 			"defines":          defines,
 			"includePath":      includePaths,
 			"intelliSenseMode": intelliSenseMode,

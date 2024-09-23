@@ -57,7 +57,9 @@ func (x ActionAlias) Compare(o ActionAlias) int {
 	return x.ExportFile.Compare(o.ExportFile)
 }
 func (x ActionAlias) AutoComplete(in base.AutoComplete) {
-	utils.CommandEnv.BuildGraph().Range(func(ba utils.BuildAlias, bn utils.BuildNode) error {
+	bg := utils.CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "AutoCompleteActionAlias"}, utils.BUILDGRAPH_QUIET)
+	defer bg.Close()
+	bg.Range(func(ba utils.BuildAlias, bn utils.BuildNode) error {
 		switch buildable := bn.GetBuildable().(type) {
 		case Action:
 			in.Add(buildable.GetAction().GetGeneratedFile().String(), "")
@@ -102,7 +104,7 @@ func (x *ActionRules) GetActionAlias() ActionAlias {
 }
 func (x *ActionRules) GetGeneratedFile() utils.Filename { return x.OutputFiles[x.ExportIndex] }
 
-func (x *ActionRules) AppendDependentActions(bg utils.BuildGraph, result *ActionSet) error {
+func (x *ActionRules) AppendDependentActions(bg utils.BuildGraphReadPort, result *ActionSet) error {
 	buildNode, err := bg.Expect(x.Alias())
 	if err != nil {
 		return err
@@ -115,7 +117,7 @@ func (x *ActionRules) AppendDependentActions(bg utils.BuildGraph, result *Action
 		}
 	}
 
-	if prerequisites, err := GetBuildActions(x.Prerequisites...); err == nil {
+	if prerequisites, err := GetBuildActions(bg, x.Prerequisites...); err == nil {
 		result.AppendUniq(prerequisites...)
 	} else {
 		return err
@@ -124,7 +126,7 @@ func (x *ActionRules) AppendDependentActions(bg utils.BuildGraph, result *Action
 	return nil
 }
 
-func (x *ActionRules) GetStaticInputFiles(bg utils.BuildGraph) (results utils.FileSet) {
+func (x *ActionRules) GetStaticInputFiles(bg utils.BuildGraphReadPort) (results utils.FileSet) {
 	node, err := bg.Expect(x.Alias())
 	base.LogPanicIfFailed(LogAction, err)
 
@@ -156,7 +158,7 @@ func (x *ActionRules) Build(bc utils.BuildContext) error {
 func (x *ActionRules) BuildWithSourceDependencies(bc utils.BuildContext, sourceDependencies ActionSourceDependencies) error {
 	// consolidate static input files
 	var staticInputFiles, excludedInputFiles utils.FileSet
-	for _, it := range bc.GetStaticDependencies() {
+	for _, it := range bc.GetStaticDependencyBuildResults() {
 		if err := harvestActionInputFiles(bc, it, &staticInputFiles, &excludedInputFiles); err != nil {
 			return err
 		}
@@ -172,13 +174,13 @@ func (x *ActionRules) BuildWithSourceDependencies(bc utils.BuildContext, sourceD
 	flags := GetActionFlags()
 	if x.Options.Has(OPT_ALLOW_CACHEREAD) && flags.CacheMode.HasRead() {
 		var err error
-		cacheArtifact, cacheKey, err = createActionCacheArtifact(&x.CommandRules, staticInputFiles, x.OutputFiles)
+		cacheArtifact, cacheKey, err = createActionCacheArtifact(bc, &x.CommandRules, staticInputFiles, x.OutputFiles)
 		if err != nil {
 			return err
 		}
 		hasValidCacheArtifact = true
 
-		if err = GetActionCache().CacheRead(cacheKey, &cacheArtifact); err == nil {
+		if err = GetActionCache(bc).CacheRead(bc, cacheKey, &cacheArtifact); err == nil {
 			wasRetrievedFromCache = true // cache-hit
 			bc.Annotate(utils.AnnocateBuildComment(`CACHE`))
 
@@ -215,7 +217,7 @@ func (x *ActionRules) BuildWithSourceDependencies(bc utils.BuildContext, sourceD
 		// whole input files set = static + dynamic
 		if x.Options.Has(OPT_ALLOW_CACHEWRITE) && flags.CacheMode.HasWrite() {
 			if !hasValidCacheArtifact {
-				if cacheArtifact, cacheKey, err = createActionCacheArtifact(&x.CommandRules, staticInputFiles, x.OutputFiles); err != nil {
+				if cacheArtifact, cacheKey, err = createActionCacheArtifact(bc, &x.CommandRules, staticInputFiles, x.OutputFiles); err != nil {
 					return err
 				}
 			}
@@ -230,7 +232,7 @@ func (x *ActionRules) BuildWithSourceDependencies(bc utils.BuildContext, sourceD
 					}
 					return nil
 				})
-				return asyncCacheWriteAction(cacheKey, &cacheArtifact)
+				return asyncCacheWriteAction(bc, cacheKey, &cacheArtifact)
 			})
 		}
 	}
@@ -275,7 +277,7 @@ func harvestActionInputFiles(bc utils.BuildContext, br utils.BuildResult, result
 		}
 
 		if rules.Options.Has(OPT_PROPAGATE_INPUTS) {
-			inputs, err := bc.BuildGraph().GetDependencyInputFiles(false, br.BuildAlias)
+			inputs, err := bc.GetDependencyInputFiles(false, br.BuildAlias)
 			if err != nil {
 				return err
 			}
@@ -299,11 +301,9 @@ func harvestActionInputFiles(bc utils.BuildContext, br utils.BuildResult, result
 	return nil
 }
 
-func asyncCacheWriteAction(cacheKey ActionCacheKey, cacheArtifact *CacheArtifact) error {
+func asyncCacheWriteAction(bg utils.BuildGraphWritePort, cacheKey ActionCacheKey, cacheArtifact *CacheArtifact) error {
 	// queue a task with all heavy work to avoid slowing hot path of actions exection
 	base.GetGlobalThreadPool().Queue(func(base.ThreadContext) {
-		bg := utils.CommandEnv.BuildGraph()
-
 		// disable caching when inputs have unversioned modifications
 		writeToCache := true
 		if _, err := utils.ForeachLocalSourceControlModifications(bg.GlobalContext(), func(modified utils.Filename, state utils.SourceControlState) error {
@@ -317,7 +317,7 @@ func asyncCacheWriteAction(cacheKey ActionCacheKey, cacheArtifact *CacheArtifact
 		// finally write compiled artifacts to the cache
 		if writeToCache {
 			cacheArtifact.DependencyFiles.Sort()
-			err := GetActionCache().CacheWrite(cacheKey, cacheArtifact)
+			err := GetActionCache(bg).CacheWrite(bg, cacheKey, cacheArtifact)
 			base.LogPanicIfFailed(LogActionCache, err)
 		}
 	}, base.TASKPRIORITY_LOW, base.ThreadPoolDebugId{Category: "AsyncCacheWrite", Arg: cacheArtifact.OutputFiles[0]}) // executing tasks has more priority than caching results
@@ -325,7 +325,7 @@ func asyncCacheWriteAction(cacheKey ActionCacheKey, cacheArtifact *CacheArtifact
 	return nil
 }
 
-func createActionCacheArtifact(command *CommandRules, inputFiles, outputFiles utils.FileSet) (CacheArtifact, ActionCacheKey, error) {
+func createActionCacheArtifact(bg utils.BuildGraphWritePort, command *CommandRules, inputFiles, outputFiles utils.FileSet) (CacheArtifact, ActionCacheKey, error) {
 	var cacheArtifact CacheArtifact
 	cacheArtifact.Command = *command
 	cacheArtifact.InputFiles = inputFiles
@@ -333,7 +333,7 @@ func createActionCacheArtifact(command *CommandRules, inputFiles, outputFiles ut
 	cacheArtifact.OutputFiles = outputFiles
 	cacheArtifact.OutputFiles.Sort()
 
-	cacheKey, err := GetActionCache().CacheKey(&cacheArtifact)
+	cacheKey, err := GetActionCache(bg).CacheKey(bg, &cacheArtifact)
 	return cacheArtifact, cacheKey, err
 }
 
@@ -471,7 +471,7 @@ func (x *ActionSet) AppendUniq(actions ...Action) {
 func (x ActionSet) Concat(actions ...Action) ActionSet {
 	return base.AppendComparable_CheckUniq(x, actions...)
 }
-func (x ActionSet) ExpandDependencies(bg utils.BuildGraph) (ActionSet, error) {
+func (x ActionSet) ExpandDependencies(bg utils.BuildGraphReadPort) (ActionSet, error) {
 	var result ActionSet = base.CopySlice(x...)
 
 	for i := 0; i < len(result); i++ {
@@ -482,7 +482,7 @@ func (x ActionSet) ExpandDependencies(bg utils.BuildGraph) (ActionSet, error) {
 
 	return base.ReverseSlice(result...), nil
 }
-func (x ActionSet) AppendDependencies(bg utils.BuildGraph, result *ActionSet) error {
+func (x ActionSet) AppendDependencies(bg utils.BuildGraphReadPort, result *ActionSet) error {
 	before := len(*result)
 	result.AppendUniq(x...)
 
@@ -509,11 +509,11 @@ func (x ActionSet) GetExportFiles() (results utils.FileSet) {
 	return
 }
 
-func FindBuildAction(alias ActionAlias) (Action, error) {
-	return utils.FindGlobalBuildable[Action](alias.Alias())
+func FindBuildAction(bg utils.BuildGraphReadPort, alias ActionAlias) (Action, error) {
+	return utils.FindBuildable[Action](bg, alias.Alias())
 }
 
-func ForeachBuildAction(bg utils.BuildGraph, each func(utils.BuildNode, Action) error) error {
+func ForeachBuildAction(bg utils.BuildGraphReadPort, each func(utils.BuildNode, Action) error) error {
 	return bg.Range(func(ba utils.BuildAlias, bn utils.BuildNode) error {
 		switch buildable := bn.GetBuildable().(type) {
 		case Action:
@@ -523,10 +523,10 @@ func ForeachBuildAction(bg utils.BuildGraph, each func(utils.BuildNode, Action) 
 	})
 }
 
-func GetBuildActions(aliases ...ActionAlias) (ActionSet, error) {
+func GetBuildActions(bg utils.BuildGraphReadPort, aliases ...ActionAlias) (ActionSet, error) {
 	result := make(ActionSet, len(aliases))
 	for i, alias := range aliases {
-		if action, err := FindBuildAction(alias); err == nil {
+		if action, err := FindBuildAction(bg, alias); err == nil {
 			base.Assert(func() bool { return nil != action })
 			result[i] = action
 		} else {

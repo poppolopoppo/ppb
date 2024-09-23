@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -39,30 +40,31 @@ type BuildResult struct {
 	Buildable Buildable
 }
 
+type BuildState interface {
+	BuildNode
+	GetBuildStats() BuildStats
+}
 type BuildNodeEvent struct {
-	Alias     BuildAlias
-	Buildable Buildable
+	Port BuildGraphWritePort
+	Node BuildState
 }
 
-type BuildGraph interface {
+type BuildGraphPortFlags byte
+
+const (
+	BUILDGRAPH_NONE  BuildGraphPortFlags = iota
+	BUILDGRAPH_QUIET                     // do not print a summary when enabled
+)
+
+type BuildGraphReadPort interface {
+	base.Closable
+
+	PortName() base.ThreadPoolDebugId
+	PortFlags() base.EnumSet[BuildGraphPortFlags, *BuildGraphPortFlags]
+
 	Aliases() BuildAliases
-	Range(each func(BuildAlias, BuildNode) error) error
-
-	Dirty() bool
-
-	GlobalContext(options ...BuildOptionFunc) BuildContext
-
 	Expect(alias BuildAlias) (BuildNode, error)
-	Create(buildable Buildable, staticDeps BuildAliases, options ...BuildOptionFunc) BuildNode
-	Build(alias BuildAliasable, options ...BuildOptionFunc) (BuildNode, base.Future[BuildResult])
-	BuildMany(aliases BuildAliases, options ...BuildOptionFunc) ([]BuildResult, error)
-
-	Abort(error)
-	Join() error
-
-	Load(io.Reader) error
-	PostLoad()
-	Save(io.Writer) error
+	Range(each func(BuildAlias, BuildNode) error) error
 
 	GetStaticDependencies(BuildNode) []BuildNode
 	GetDynamicDependencies(BuildNode) []BuildNode
@@ -72,25 +74,50 @@ type BuildGraph interface {
 	GetDependencyInputFiles(recursive bool, queue ...BuildAlias) (FileSet, error)
 	GetDependencyOutputFiles(queue ...BuildAlias) (FileSet, error)
 	GetDependencyLinks(a BuildAlias, includeOutputs bool) ([]BuildDependencyLink, error)
+}
 
-	GetBuildStats() BuildStats
-	GetCriticalPathNodes() []BuildNode
-	GetMostExpansiveNodes(n int, inclusive bool) []BuildNode
+type BuildGraphWritePort interface {
+	BuildGraphReadPort
+
+	GlobalContext(options ...BuildOptionFunc) BuildContext
+
+	Join() error
+
+	Create(buildable Buildable, staticDeps BuildAliases, options ...BuildOptionFunc) BuildNode
+	Build(alias BuildAliasable, options ...BuildOptionFunc) (BuildNode, base.Future[BuildResult])
+	BuildMany(aliases BuildAliases, options ...BuildOptionFunc) ([]BuildResult, error)
+
+	GetAggregatedBuildStats() BuildStats
+	GetBuildStats(node BuildNode) (BuildStats, bool)
+	GetCriticalPathNodes() ([]BuildState, time.Duration)
+	GetMostExpansiveNodes(n int, inclusive bool) []BuildState
 
 	PrintSummary(startedAt time.Time, level base.LogLevel)
+}
 
-	OnBuildGraphStart(base.EventDelegate[BuildGraph]) base.DelegateHandle
-	OnBuildNodeStart(base.EventDelegate[BuildNode]) base.DelegateHandle
-	OnBuildNodeFinished(base.EventDelegate[BuildNode]) base.DelegateHandle
-	OnBuildGraphFinished(base.EventDelegate[BuildGraph]) base.DelegateHandle
+type BuildGraph interface {
+	base.Equatable[BuildGraph]
+	base.Serializable
+
+	Abort(error)
+	Dirty() bool
+
+	Load(io.Reader) error
+	PostLoad()
+	Save(io.Writer) error
+
+	OpenReadPort(name base.ThreadPoolDebugId, flags ...BuildGraphPortFlags) BuildGraphReadPort
+	OpenWritePort(name base.ThreadPoolDebugId, flags ...BuildGraphPortFlags) BuildGraphWritePort
+
+	OnBuildGraphStart(base.EventDelegate[BuildGraphWritePort]) base.DelegateHandle
+	OnBuildNodeStart(base.EventDelegate[BuildNodeEvent]) base.DelegateHandle
+	OnBuildNodeFinished(base.EventDelegate[BuildNodeEvent]) base.DelegateHandle
+	OnBuildGraphFinished(base.EventDelegate[BuildGraphWritePort]) base.DelegateHandle
 
 	RemoveOnBuildGraphStart(base.DelegateHandle) bool
 	RemoveOnBuildNodeStart(base.DelegateHandle) bool
 	RemoveOnBuildNodeFinished(base.DelegateHandle) bool
 	RemoveOnBuildGraphFinished(base.DelegateHandle) bool
-
-	base.Equatable[BuildGraph]
-	base.Serializable
 }
 
 /***************************************
@@ -98,39 +125,46 @@ type BuildGraph interface {
  ***************************************/
 
 type buildGraph struct {
-	flags   *CommandFlags
-	nodes   *base.ShardedMapT[BuildAlias, *buildNode]
-	options BuildOptions
-	stats   BuildStats
+	nodes *base.ShardedMapT[BuildAlias, *buildNode]
+	flags *CommandFlags
 
-	revision int32
-	abort    atomic.Pointer[error]
+	portBarrier sync.RWMutex
+	abort       atomic.Pointer[error]
+	dirty       atomic.Bool
+	revision    atomic.Int32
 
 	buildEvents
 }
+type buildGraphReadPort struct {
+	*buildGraph
 
-func NewBuildGraph(flags *CommandFlags, options ...BuildOptionFunc) BuildGraph {
+	name     base.ThreadPoolDebugId
+	flags    base.EnumSet[BuildGraphPortFlags, *BuildGraphPortFlags]
+	revision int32
+}
+
+type buildGraphWritePortPrivate interface {
+	BuildGraphWritePort
+	launchBuild(node *buildNode, options *BuildOptions) base.Future[BuildResult]
+	buildMany(n int, nodes func(int, *BuildOptions) (*buildNode, error), onResults func(int, BuildResult) error, opts ...BuildOptionFunc) error
+	launchBuildMany(n int, nodes func(int, *BuildOptions) (*buildNode, error), opts ...BuildOptionFunc) base.Future[[]BuildResult]
+}
+type buildGraphWritePort struct {
+	buildGraphReadPort
+
+	state base.SharedMapT[BuildAlias, *buildState]
+	stats BuildStats
+
+	numRunningTasks atomic.Int32
+}
+
+func NewBuildGraph(flags *CommandFlags) BuildGraph {
 	result := &buildGraph{
 		flags:       flags,
-		nodes:       base.NewShardedMap[BuildAlias, *buildNode](1000),
-		options:     NewBuildOptions(options...),
-		revision:    0,
 		buildEvents: newBuildEvents(),
+		nodes:       base.NewShardedMap[BuildAlias, *buildNode](1000),
 	}
 	return result
-}
-
-func (g *buildGraph) Aliases() (result BuildAliases) {
-	result = g.nodes.Keys()
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Compare(result[j]) < 0
-	})
-	return
-}
-func (g *buildGraph) Range(each func(BuildAlias, BuildNode) error) error {
-	return g.nodes.Range(func(key BuildAlias, node *buildNode) error {
-		return each(key, node)
-	})
 }
 
 func (g *buildGraph) Abort(err error) {
@@ -139,6 +173,7 @@ func (g *buildGraph) Abort(err error) {
 		g.abort.CompareAndSwap(nil, &err)
 	}
 }
+
 func (g *buildGraph) CheckForAbort() error {
 	err := g.abort.Load()
 	if err != nil {
@@ -148,184 +183,50 @@ func (g *buildGraph) CheckForAbort() error {
 }
 
 func (g *buildGraph) Dirty() bool {
-	return atomic.LoadInt32(&g.revision) > 0
+	return g.dirty.Load()
 }
 
-func (g *buildGraph) GlobalContext(options ...BuildOptionFunc) BuildContext {
-	bo := NewBuildOptions(options...)
-	context := makeBuildGraphContext(g, &bo)
-	return &context
+func (g *buildGraph) OpenReadPort(name base.ThreadPoolDebugId, flags ...BuildGraphPortFlags) BuildGraphReadPort {
+	g.portBarrier.RLock()
+	readport := buildGraphReadPort{
+		buildGraph: g,
+		name:       name,
+		flags:      base.MakeEnumSet(flags...),
+		revision:   g.revision.Add(1),
+	}
+	return &readport
+}
+func (x *buildGraphReadPort) Close() error {
+	defer x.portBarrier.RUnlock()
+	x.buildGraph = nil
+	return nil
 }
 
-func (g *buildGraph) findNode(alias BuildAlias) (*buildNode, error) {
-	if node, ok := g.nodes.Get(alias); ok {
-		base.Assert(func() bool { return node.Alias().Equals(alias) })
-		return node, nil
-	} else {
-		base.LogTrace(LogBuildGraph, "Find(%q) -> NOT_FOUND", alias)
-		return nil, BuildableNotFound{Alias: alias}
-	}
-}
-
-func (g *buildGraph) Expect(alias BuildAlias) (node BuildNode, err error) {
-	node, err = g.findNode(alias)
-	return
-}
-
-func (g *buildGraph) Create(buildable Buildable, static BuildAliases, options ...BuildOptionFunc) BuildNode {
-	bo := NewBuildOptions(options...)
-
-	var node *buildNode
-	var loaded bool
-
-	alias := buildable.Alias()
-	base.AssertErr(func() error {
-		if alias.Valid() {
-			return nil
-		}
-		return fmt.Errorf("invalid alias for <%T>", buildable)
-	})
-	base.LogTrace(LogBuildGraph, "create <%T> node %q (force: %v, dirty: %v)", buildable, alias, bo.Force, bo.Dirty)
-
-	if node, loaded = g.nodes.Get(alias); !loaded {
-		base.Assert(func() bool {
-			makeCaseInsensitive := func(in string) string {
-				return SanitizePath(strings.ToLower(in), '/')
-			}
-			lowerAlias := makeCaseInsensitive(alias.String())
-			for _, key := range g.nodes.Keys() {
-				lowerKey := makeCaseInsensitive(key.String())
-				if lowerKey == lowerAlias {
-					if key != alias {
-						base.LogError(LogBuildGraph, "alias already registered with different case:\n\t add: %v\n\tfound: %v", alias, key)
-						return false
-					}
-					break
-				}
-			}
-			return true
-		})
-
-		// first optimistic Get() to avoid newBuildNode() bellow
-		node, loaded = g.nodes.FindOrAdd(alias, newBuildNode(alias, buildable))
-	}
-
-	// quick reject if a node with same alias already exists
-	if loaded && !(bo.Force || bo.Dirty) {
-		return node
-	}
-
-	defer base.LogPanicIfFailed(LogBuildGraph, bo.OnBuilt.Invoke(node))
-
-	node.state.Lock()
-	defer node.state.Unlock()
-
-	base.Assert(func() bool { return alias == node.Alias() })
-	base.AssertSameType(node.Buildable, buildable)
-
-	base.LogPanicIfFailed(LogBuildGraph, bo.OnLaunched.Invoke(node))
-
-	dirty := !loaded || len(static) != len(node.Static)
-	newStaticDeps := make(BuildDependencies, 0, len(static))
-
-	for _, a := range static {
-		var oldStamp BuildStamp
-		if old, hit := node.Static.IndexOf(a); hit {
-			oldStamp = node.Static[old].Stamp
-		} else {
-			dirty = true
-		}
-		newStaticDeps = append(newStaticDeps, BuildDependency{
-			Alias: a,
-			Stamp: oldStamp,
-		})
-	}
-
-	if !dirty {
-		if bo.Dirty {
-			dirty = true
-		} else if bo.Force { // compare content of buildable objects
-			dirty = MakeBuildFingerprint(buildable) != MakeBuildFingerprint(node.Buildable)
-		}
-	}
-
-	node.Buildable = buildable
-	node.Static = newStaticDeps
-
-	if dirty {
-		base.LogDebug(LogBuildGraph, "%v: dirty <%v> node depending on %v%v", alias,
-			base.MakeStringer(func() string { return reflect.TypeOf(node.Buildable).String() }),
-			node.Static.Aliases(),
-			base.Blend("", " (forced update)", bo.Force))
-
-		node.makeDirty_AssumeLocked()
-		node.Static.makeDirty()
-
-		g.makeDirty("created dirty node")
-	}
-
-	base.AssertErr(func() error {
-		if node.Buildable.Alias().Equals(alias) {
-			return nil
-		}
-		return fmt.Errorf("%v: node alias do not match buildable -> %q",
-			alias, base.MakeStringer(func() string {
-				return node.Buildable.Alias().String()
-			}))
-	})
-	return node
-}
-
-func (g *buildGraph) Build(it BuildAliasable, options ...BuildOptionFunc) (BuildNode, base.Future[BuildResult]) {
-	a := it.Alias()
-	base.AssertErr(func() error {
-		if a.Valid() {
-			return nil
-		}
-		return fmt.Errorf("invalid alias for <%T>", it)
-	})
-
-	if node, err := g.findNode(a); err == nil {
-		bo := NewBuildOptions(options...)
-		return node, g.launchBuild(node, &bo)
-	} else {
-		return nil, base.MakeFutureError[BuildResult](fmt.Errorf("build: unknown node %q", a))
-	}
-}
-
-func (g *buildGraph) BuildMany(targets BuildAliases, options ...BuildOptionFunc) (results []BuildResult, err error) {
-	results = make([]BuildResult, targets.Len())
-	err = g.buildMany(targets.Len(),
-		func(i int, _ *BuildOptions) (*buildNode, error) {
-			return g.findNode(targets[i])
+func (g *buildGraph) OpenWritePort(name base.ThreadPoolDebugId, flags ...BuildGraphPortFlags) BuildGraphWritePort {
+	g.portBarrier.Lock()
+	writePort := buildGraphWritePort{
+		buildGraphReadPort: buildGraphReadPort{
+			buildGraph: g,
+			name:       name,
+			flags:      base.MakeEnumSet(flags...),
+			revision:   g.revision.Add(1),
 		},
-		func(i int, br BuildResult) error {
-			results[i] = br
-			return nil
-		},
-		options...)
-	return
-}
-
-func (g *buildGraph) Join() (lastErr error) {
-	for lastErr == nil && g.hasRunningTasks() {
-		lastErr = g.nodes.Range(func(_ BuildAlias, node *buildNode) error {
-			if node != nil {
-				if future := node.future.Load(); future != nil {
-					return future.Join().Failure()
-				}
-			}
-			return nil
-		})
 	}
+	writePort.onBuildGraphStart_ThreadSafe()
+	return &writePort
+}
+func (x *buildGraphWritePort) Close() (err error) {
+	defer x.portBarrier.Unlock()
+	err = x.Join()
+	x.onBuildGraphFinished_ThreadSafe()
+	x.buildGraph = nil
 	return
 }
 
 func (g *buildGraph) PostLoad() {
 	if g.flags.Purge.Get() {
-		g.revision = 0
 		g.nodes.Clear()
-		g.makeDirty("clean purge requested")
+		g.makeDirty("purged due to `-F` command-line option")
 	}
 }
 func (g *buildGraph) Serialize(ar base.Archive) {
@@ -352,20 +253,66 @@ func (g *buildGraph) Serialize(ar base.Archive) {
 	}
 }
 func (g *buildGraph) Save(dst io.Writer) error {
-	g.revision = 0
+	g.dirty.Store(false)
 	return base.CompressedArchiveFileWrite(dst, g.Serialize)
 }
 func (g *buildGraph) Load(src io.Reader) error {
-	g.revision = 0
+	g.dirty.Store(false)
 	file, err := base.CompressedArchiveFileRead(src, g.Serialize)
 	base.LogVeryVerbose(LogBuildGraph, "archive version = %v tags = %v", file.Version, file.Tags)
 	return err
 }
+
 func (g *buildGraph) Equals(other BuildGraph) bool {
 	return other.(*buildGraph) == g
 }
 
-func (g *buildGraph) GetStaticDependencies(root BuildNode) (result []BuildNode) {
+func (g *buildGraph) makeDirty(reason string) {
+	if !g.dirty.Swap(true) {
+		base.LogWarningVerbose(LogBuildGraph, "graph was dirtied, need to resave before process exit: %s", reason)
+	}
+}
+
+/***************************************
+ * Build Graph Read Port
+ ***************************************/
+
+func (g *buildGraphReadPort) PortName() base.ThreadPoolDebugId {
+	return g.name
+}
+func (g *buildGraphReadPort) PortFlags() base.EnumSet[BuildGraphPortFlags, *BuildGraphPortFlags] {
+	return g.flags
+}
+
+func (g *buildGraphReadPort) Aliases() (result BuildAliases) {
+	result = g.nodes.Keys()
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Compare(result[j]) < 0
+	})
+	return
+}
+func (g *buildGraphReadPort) Range(each func(BuildAlias, BuildNode) error) error {
+	return g.nodes.Range(func(key BuildAlias, node *buildNode) error {
+		return each(key, node)
+	})
+}
+
+func (g *buildGraphReadPort) findNode(alias BuildAlias) (*buildNode, error) {
+	if node, ok := g.nodes.Get(alias); ok {
+		base.Assert(func() bool { return node.Alias().Equals(alias) })
+		return node, nil
+	} else {
+		base.LogTrace(LogBuildGraph, "Find(%q) -> NOT_FOUND", alias)
+		return nil, BuildableNotFound{Alias: alias}
+	}
+}
+
+func (g *buildGraphReadPort) Expect(alias BuildAlias) (node BuildNode, err error) {
+	node, err = g.findNode(alias)
+	return
+}
+
+func (g *buildGraphReadPort) GetStaticDependencies(root BuildNode) (result []BuildNode) {
 	aliases := root.GetStaticDependencies()
 	result = make([]BuildNode, len(aliases))
 	for i, alias := range aliases {
@@ -376,7 +323,7 @@ func (g *buildGraph) GetStaticDependencies(root BuildNode) (result []BuildNode) 
 	}
 	return
 }
-func (g *buildGraph) GetDynamicDependencies(root BuildNode) (result []BuildNode) {
+func (g *buildGraphReadPort) GetDynamicDependencies(root BuildNode) (result []BuildNode) {
 	aliases := root.GetDynamicDependencies()
 	result = make([]BuildNode, len(aliases))
 	for i, alias := range aliases {
@@ -387,7 +334,7 @@ func (g *buildGraph) GetDynamicDependencies(root BuildNode) (result []BuildNode)
 	}
 	return
 }
-func (g *buildGraph) GetOutputDependencies(root BuildNode) (result []BuildNode) {
+func (g *buildGraphReadPort) GetOutputDependencies(root BuildNode) (result []BuildNode) {
 	aliases := root.GetOutputDependencies()
 	result = make([]BuildNode, len(aliases))
 	for i, alias := range aliases {
@@ -399,20 +346,20 @@ func (g *buildGraph) GetOutputDependencies(root BuildNode) (result []BuildNode) 
 	return
 }
 
-func (g *buildGraph) GetDependencyLinks(a BuildAlias, includeOutputs bool) ([]BuildDependencyLink, error) {
+func (g *buildGraphReadPort) GetDependencyLinks(a BuildAlias, includeOutputs bool) ([]BuildDependencyLink, error) {
 	if node, err := g.Expect(a); err == nil {
 		return node.GetDependencyLinks(includeOutputs), nil
 	} else {
 		return []BuildDependencyLink{}, err
 	}
 }
-func (g *buildGraph) GetDependencyInputFiles(recursive bool, queue ...BuildAlias) (FileSet, error) {
+func (g *buildGraphReadPort) GetDependencyInputFiles(recursive bool, queue ...BuildAlias) (FileSet, error) {
 	var files FileSet
 
 	visiteds := make(map[BuildAlias]bool, 32)
 	visit := func(node *buildNode, recursive bool) {
-		node.state.RLock()
-		defer node.state.RUnlock()
+		node.RLock()
+		defer node.RUnlock()
 
 		switch file := node.Buildable.(type) {
 		case BuildableSourceFile:
@@ -452,13 +399,13 @@ func (g *buildGraph) GetDependencyInputFiles(recursive bool, queue ...BuildAlias
 
 	return files, nil
 }
-func (g *buildGraph) GetDependencyOutputFiles(queue ...BuildAlias) (FileSet, error) {
+func (g *buildGraphReadPort) GetDependencyOutputFiles(queue ...BuildAlias) (FileSet, error) {
 	var files FileSet
 
 	visiteds := make(map[BuildAlias]bool, 32)
 	visit := func(node *buildNode) {
-		node.state.RLock()
-		defer node.state.RUnlock()
+		node.RLock()
+		defer node.RUnlock()
 
 		switch file := node.Buildable.(type) {
 		case BuildableSourceFile:
@@ -497,7 +444,7 @@ func (g *buildGraph) GetDependencyOutputFiles(queue ...BuildAlias) (FileSet, err
 	return files, nil
 }
 
-func (g *buildGraph) GetDependencyChain(src, dst BuildAlias, weight func(BuildDependencyLink) float32) ([]BuildDependencyLink, error) {
+func (g *buildGraphReadPort) GetDependencyChain(src, dst BuildAlias, weight func(BuildDependencyLink) float32) ([]BuildDependencyLink, error) {
 	// https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm#:~:text=in%20some%20topologies.-,Pseudocode,-%5Bedit%5D
 
 	const INDEX_NONE int32 = -1
@@ -587,94 +534,286 @@ func (g *buildGraph) GetDependencyChain(src, dst BuildAlias, weight func(BuildDe
 	return chain, nil
 }
 
-func (g *buildGraph) GetBuildStats() BuildStats {
-	return g.stats
+/***************************************
+ * Build Graph Write Port
+ ***************************************/
+
+func (g *buildGraphWritePort) GlobalContext(options ...BuildOptionFunc) BuildContext {
+	bo := NewBuildOptions(options...)
+	context := makeBuildGraphContext(g, &bo)
+	return &context
 }
-func (g *buildGraph) GetCriticalPathNodes() []BuildNode {
-	type buildNodes = base.SetT[BuildNode]
-	type criticalPath struct {
-		Nodes             buildNodes
-		InclusiveDuration time.Duration
-	}
 
-	var critical criticalPath
+func (g *buildGraphWritePort) Create(buildable Buildable, static BuildAliases, options ...BuildOptionFunc) BuildNode {
+	bo := NewBuildOptions(options...)
 
-	base.LogPanicIfFailed(LogBuildGraph,
-		g.nodes.Range(func(_ BuildAlias, rootNode *buildNode) error {
-			if rootNode.GetBuildStats().Count == 0 ||
-				critical.Nodes.Contains(rootNode) {
-				return nil
-			}
+	var node *buildNode
+	var loaded bool
 
-			queue := make([]criticalPath, 1)
-			queue[0] = criticalPath{Nodes: buildNodes{rootNode}}
-
-			foreachDependency := func(path criticalPath, it BuildAlias) error {
-				if node, err := g.Expect(it); err == nil {
-					base.Assert(func() bool { return !path.Nodes.Contains(node) })
-					queue = append(queue, criticalPath{
-						Nodes:             append(path.Nodes, node),
-						InclusiveDuration: path.InclusiveDuration,
-					})
-					return nil
-				} else {
-					return err
-				}
-			}
-
-			for len(queue) > 0 {
-				path := queue[len(queue)-1]
-				queue = queue[:len(queue)-1]
-
-				tip := path.Nodes[len(path.Nodes)-1]
-
-				path.InclusiveDuration += tip.GetBuildStats().Duration.Exclusive
-				if path.InclusiveDuration > critical.InclusiveDuration {
-					critical = path
-				}
-
-				for _, it := range tip.GetStaticDependencies() {
-					if err := foreachDependency(path, it); err != nil {
-						return err
-					}
-				}
-
-				for _, it := range tip.GetDynamicDependencies() {
-					if err := foreachDependency(path, it); err != nil {
-						return err
-					}
-				}
-			}
-
+	alias := buildable.Alias()
+	base.AssertErr(func() error {
+		if alias.Valid() {
 			return nil
-		}))
-
-	return critical.Nodes
-}
-func (g *buildGraph) GetMostExpansiveNodes(n int, inclusive bool) (results []BuildNode) {
-	results = make([]BuildNode, 0, n)
-
-	predicate := func(a, b BuildNode) bool {
-		return a.(*buildNode).state.stats.Duration.Exclusive > b.(*buildNode).state.stats.Duration.Exclusive
-	}
-	if inclusive {
-		predicate = func(a, b BuildNode) bool {
-			return a.(*buildNode).state.stats.Duration.Inclusive > b.(*buildNode).state.stats.Duration.Inclusive
 		}
-	}
-
-	err := g.nodes.Range(func(key BuildAlias, node *buildNode) error {
-		if node.state.stats.Count != 0 {
-			results = base.AppendBoundedSort(results, n, BuildNode(node), predicate)
-		}
-		return nil
+		return fmt.Errorf("invalid alias for <%T>", buildable)
 	})
-	base.LogPanicIfFailed(LogBuildGraph, err)
+	base.LogTrace(LogBuildGraph, "create <%T> node %q (force: %v, dirty: %v)", buildable, alias, bo.Force, bo.Dirty)
+
+	if node, loaded = g.nodes.Get(alias); !loaded {
+		base.Assert(func() bool {
+			makeCaseInsensitive := func(in string) string {
+				return SanitizePath(strings.ToLower(in), '/')
+			}
+			lowerAlias := makeCaseInsensitive(alias.String())
+			for _, key := range g.nodes.Keys() {
+				lowerKey := makeCaseInsensitive(key.String())
+				if lowerKey == lowerAlias {
+					if key != alias {
+						base.LogError(LogBuildGraph, "alias already registered with different case:\n\t add: %v\n\tfound: %v", alias, key)
+						return false
+					}
+					break
+				}
+			}
+			return true
+		})
+
+		// first optimistic Get() to avoid newBuildNode() bellow
+		node, loaded = g.nodes.FindOrAdd(alias, newBuildNode(alias, buildable))
+	}
+
+	// quick reject if a node with same alias already exists
+	if loaded && !(bo.Force || bo.Dirty) {
+		return node
+	}
+
+	defer base.LogPanicIfFailed(LogBuildGraph, bo.OnBuilt.Invoke(node))
+
+	node.Lock()
+	defer node.Unlock()
+
+	base.Assert(func() bool { return alias == node.Alias() })
+	base.AssertSameType(node.Buildable, buildable)
+
+	base.LogPanicIfFailed(LogBuildGraph, bo.OnLaunched.Invoke(node))
+
+	dirty := !loaded || len(static) != len(node.Static)
+	newStaticDeps := make(BuildDependencies, 0, len(static))
+
+	for _, a := range static {
+		var oldStamp BuildStamp
+		if old, hit := node.Static.IndexOf(a); hit {
+			oldStamp = node.Static[old].Stamp
+		} else {
+			dirty = true
+		}
+		newStaticDeps = append(newStaticDeps, BuildDependency{
+			Alias: a,
+			Stamp: oldStamp,
+		})
+	}
+
+	if !dirty {
+		if bo.Dirty {
+			dirty = true
+		} else if bo.Force { // compare content of buildable objects
+			dirty = MakeBuildFingerprint(buildable) != MakeBuildFingerprint(node.Buildable)
+		}
+	}
+
+	node.Buildable = buildable
+	node.Static = newStaticDeps
+
+	if dirty {
+		base.LogDebug(LogBuildGraph, "%v: dirty <%v> node depending on %v%v", alias,
+			base.MakeStringer(func() string { return reflect.TypeOf(node.Buildable).String() }),
+			node.Static.Aliases(),
+			base.Blend("", " (forced update)", bo.Force))
+
+		node.makeDirty_AssumeLocked()
+		node.Static.makeDirty()
+
+		g.makeDirty("created dirty node")
+	}
+
+	base.AssertErr(func() error {
+		if node.Buildable.Alias().Equals(alias) {
+			return nil
+		}
+		return fmt.Errorf("%v: node alias do not match buildable -> %q",
+			alias, base.MakeStringer(func() string {
+				return node.Buildable.Alias().String()
+			}))
+	})
+	return node
+}
+
+func (g *buildGraphWritePort) Build(it BuildAliasable, options ...BuildOptionFunc) (BuildNode, base.Future[BuildResult]) {
+	a := it.Alias()
+	base.AssertErr(func() error {
+		if a.Valid() {
+			return nil
+		}
+		return fmt.Errorf("invalid alias for <%T>", it)
+	})
+
+	if node, err := g.findNode(a); err == nil {
+		bo := NewBuildOptions(options...)
+		return node, g.launchBuild(node, &bo)
+	} else {
+		return nil, base.MakeFutureError[BuildResult](fmt.Errorf("build: unknown node %q", a))
+	}
+}
+
+func (g *buildGraphWritePort) BuildMany(targets BuildAliases, options ...BuildOptionFunc) (results []BuildResult, err error) {
+	results = make([]BuildResult, targets.Len())
+	err = g.buildMany(targets.Len(),
+		func(i int, _ *BuildOptions) (*buildNode, error) {
+			return g.findNode(targets[i])
+		},
+		func(i int, br BuildResult) error {
+			results[i] = br
+			return nil
+		},
+		options...)
 	return
 }
 
-func (g *buildGraph) makeDirty(reason string) {
-	if atomic.AddInt32(&g.revision, 1) == 1 {
-		base.LogWarningVerbose(LogBuildGraph, "graph was dirtied, need to resave after execution: %s", reason)
+func (g *buildGraphWritePort) hasRunningTasks() bool {
+	return g.numRunningTasks.Load() > 0
+}
+func (g *buildGraphWritePort) Join() (lastErr error) {
+	for lastErr == nil && g.hasRunningTasks() {
+		lastErr = g.state.Range(func(_ BuildAlias, state *buildState) error {
+			if future := state.future.Load(); future != nil {
+				return future.Join().Failure()
+			}
+			return nil
+		})
 	}
+	return
+}
+
+func (g *buildGraphWritePort) GetAggregatedBuildStats() BuildStats {
+	return g.stats
+}
+func (g *buildGraphWritePort) GetBuildStats(node BuildNode) (BuildStats, bool) {
+	if state, ok := g.state.Get(node.Alias()); ok {
+		return state.stats, true
+	} else {
+		return BuildStats{}, false
+	}
+}
+func (g *buildGraphWritePort) GetCriticalPathNodes() ([]BuildState, time.Duration) {
+	defer base.LogBenchmark(LogBuildGraph, "GetCriticalPathNodes(%v)", g.name).Close()
+
+	// first, look for node that finished executing last
+	var lastFinishedNode *buildState
+	g.state.Range(func(_ BuildAlias, node *buildState) error {
+		if lastFinishedNode == nil || lastFinishedNode.stats.GetInclusiveEnd() < node.stats.GetInclusiveEnd() {
+			lastFinishedNode = node
+		}
+		return nil
+	})
+
+	var criticalPath []BuildState
+	var maxTime time.Duration
+
+	// use previous node as root to look for the longest execution path using depth first search
+	var dfs func(*buildState, []BuildState, time.Duration)
+	dfs = func(node *buildState, path []BuildState, prevDuration time.Duration) {
+		// graph must be acyclic
+		base.AssertNotIn(BuildState(node), path...)
+
+		// approximate longest path search by summing inclusive duration
+		totalTime := node.stats.Duration.Inclusive + prevDuration
+		path = append(path, node)
+
+		for _, alias := range node.GetStaticDependencies() {
+			if dep, ok := g.state.Get(alias); ok {
+				dfs(dep, path, totalTime)
+			}
+		}
+
+		for _, alias := range node.GetDynamicDependencies() {
+			if dep, ok := g.state.Get(alias); ok {
+				dfs(dep, path, totalTime)
+			}
+		}
+
+		if totalTime > maxTime {
+			maxTime = totalTime
+			criticalPath = make([]BuildState, len(path))
+			copy(criticalPath, path)
+		}
+	}
+
+	if lastFinishedNode != nil {
+		dfs(lastFinishedNode, []BuildState{}, time.Duration(0))
+
+		// return true duration of execution, instead of accumulated inclusive time
+		var startedAt, finishedAt time.Duration
+		for i, it := range criticalPath {
+			stats := it.GetBuildStats()
+			if t := stats.InclusiveStart; i == 0 || t < startedAt {
+				startedAt = t
+			}
+			if t := stats.GetInclusiveEnd(); i == 0 || t > finishedAt {
+				finishedAt = t
+			}
+		}
+
+		maxTime = finishedAt - startedAt
+	}
+
+	return criticalPath, maxTime
+}
+func (g *buildGraphWritePort) GetMostExpansiveNodes(n int, inclusive bool) []BuildState {
+	results := make([]BuildState, 0, n)
+
+	predicate := func(a, b BuildState) bool {
+		return a.GetBuildStats().Duration.Exclusive > b.GetBuildStats().Duration.Exclusive
+	}
+	if inclusive {
+		predicate = func(a, b BuildState) bool {
+			return a.GetBuildStats().Duration.Inclusive > b.GetBuildStats().Duration.Inclusive
+		}
+	}
+
+	base.LogPanicIfFailed(LogBuildGraph, g.state.Range(func(_ BuildAlias, state *buildState) error {
+		if state.stats.Count != 0 {
+			results = base.AppendBoundedSort(results, n, BuildState(state), predicate)
+		}
+		return nil
+	}))
+
+	return results
+}
+
+/***************************************
+ * Build Graph Read/Write Port Flags
+ ***************************************/
+
+func (x BuildGraphPortFlags) Ord() int32       { return int32(byte(x)) }
+func (x *BuildGraphPortFlags) FromOrd(v int32) { *x = BuildGraphPortFlags(v) }
+func (x BuildGraphPortFlags) String() string {
+	switch x {
+	case BUILDGRAPH_NONE:
+		return "NONE"
+	case BUILDGRAPH_QUIET:
+		return "QUIET"
+	}
+	base.UnexpectedValue(x)
+	return ""
+}
+func (x *BuildGraphPortFlags) Set(in string) error {
+	switch strings.ToUpper(in) {
+	case BUILDGRAPH_NONE.String():
+		*x = BUILDGRAPH_NONE
+	case BUILDGRAPH_QUIET.String():
+		*x = BUILDGRAPH_QUIET
+	default:
+		return base.MakeUnexpectedValueError(x, in)
+	}
+	return nil
 }
