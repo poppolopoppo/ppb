@@ -282,25 +282,41 @@ var gLogManager = LogManager{
 
 func GetLogManager() *LogManager { return &gLogManager }
 
-func (x *LogManager) SetCategoryLevel(name string, level LogLevel) {
-	x.FindOrAddCategory(name).Level = level
+func (x *LogManager) SetCategoryLevel(name LogCategoryName, level LogLevel) error {
+	if category := x.FindOrAddCategory(name); category != nil {
+		category.Level = level
+		return nil
+	} else {
+		return fmt.Errorf("unknown log category: %q", name)
+	}
 }
-func (x *LogManager) FindCategory(name string) *LogCategory {
+func (x *LogManager) FindCategory(name LogCategoryName) *LogCategory {
 	x.barrierRW.RLock()
 	defer x.barrierRW.RUnlock()
-	return x.categories[name]
+	return x.categories[name.String()]
 }
-func (x *LogManager) FindOrAddCategory(name string) (result *LogCategory) {
+func (x *LogManager) FindOrAddCategory(name LogCategoryName) (result *LogCategory) {
 	if result = x.FindCategory(name); result == nil {
+		categoryKey := name.String()
 		x.barrierRW.Lock()
 		defer x.barrierRW.Unlock()
-		if result = x.categories[name]; result == nil {
-			category := MakeLogCategory(name)
+		if result = x.categories[categoryKey]; result == nil {
+			category := MakeLogCategory(categoryKey)
 			result = &category
-			x.categories[name] = result
+			x.categories[categoryKey] = result
 		}
 	}
 	return
+}
+func (x *LogManager) CategoryRange(each func(*LogCategory) error) error {
+	x.barrierRW.RLock()
+	defer x.barrierRW.RUnlock()
+	for _, category := range x.categories {
+		if err := each(category); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 /***************************************
@@ -321,7 +337,26 @@ func MakeLogCategory(name string) LogCategory {
 }
 
 func NewLogCategory(name string) *LogCategory {
-	return gLogManager.FindOrAddCategory(name)
+	return gLogManager.FindOrAddCategory(LogCategoryName{InheritableString: InheritableString(name)})
+}
+
+type LogCategoryName struct {
+	InheritableString
+}
+
+type LogCategorySet = InheritableSlice[LogCategoryName, *LogCategoryName]
+
+func (x LogCategoryName) Equals(o LogCategoryName) bool {
+	return x.InheritableString.Equals(o.InheritableString)
+}
+func (x *LogCategoryName) AutoComplete(in AutoComplete) {
+	err := GetLogManager().CategoryRange(func(lc *LogCategory) error {
+		in.Add(lc.Name, lc.Level.String())
+		return nil
+	})
+	if err != nil {
+		Panic(err)
+	}
 }
 
 /***************************************
@@ -646,9 +681,9 @@ type deferredLogger struct {
 	barrier *sync.Mutex
 }
 
-func newDeferredLogger(logger Logger) deferredLogger {
+func newDeferredLogger(logger Logger) *deferredLogger {
 	barrier := &sync.Mutex{}
-	return deferredLogger{
+	return &deferredLogger{
 		logger:  logger,
 		barrier: barrier,
 		thread: NewFixedSizeThreadPoolEx("logger", 1,
@@ -693,60 +728,60 @@ func newDeferredLogger(logger Logger) deferredLogger {
 			})}
 }
 
-func (x deferredLogger) IsInteractive() bool {
+func (x *deferredLogger) IsInteractive() bool {
 	return x.logger.IsInteractive()
 }
-func (x deferredLogger) IsVisible(level LogLevel) bool {
+func (x *deferredLogger) IsVisible(level LogLevel) bool {
 	return x.logger.IsVisible(level)
 }
 
-func (x deferredLogger) SetLevel(level LogLevel) LogLevel {
+func (x *deferredLogger) SetLevel(level LogLevel) LogLevel {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	return x.logger.SetLevel(level)
 }
-func (x deferredLogger) SetLevelMinimum(level LogLevel) LogLevel {
+func (x *deferredLogger) SetLevelMinimum(level LogLevel) LogLevel {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	return x.logger.SetLevelMinimum(level)
 }
-func (x deferredLogger) SetLevelMaximum(level LogLevel) LogLevel {
+func (x *deferredLogger) SetLevelMaximum(level LogLevel) LogLevel {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	return x.logger.SetLevelMaximum(level)
 }
-func (x deferredLogger) SetShowCategory(enabled bool) {
+func (x *deferredLogger) SetShowCategory(enabled bool) {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	x.logger.SetShowCategory(enabled)
 }
-func (x deferredLogger) SetShowTimestamp(enabled bool) {
+func (x *deferredLogger) SetShowTimestamp(enabled bool) {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	x.logger.SetShowTimestamp(enabled)
 }
-func (x deferredLogger) SetWriter(dst LogWriter) {
+func (x *deferredLogger) SetWriter(dst LogWriter) {
 	x.thread.Queue(func(ThreadContext) {
 		x.logger.SetWriter(dst)
 	}, TASKPRIORITY_NORMAL, ThreadPoolDebugId{})
 }
 
-func (x deferredLogger) Forward(msg ...string) {
+func (x *deferredLogger) Forward(msg ...string) {
 	x.thread.Queue(func(ThreadContext) {
 		x.logger.Forward(msg...)
 	}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
 }
-func (x deferredLogger) Forwardln(msg ...string) {
+func (x *deferredLogger) Forwardln(msg ...string) {
 	x.thread.Queue(func(ThreadContext) {
 		x.logger.Forwardln(msg...)
 	}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
 }
-func (x deferredLogger) Forwardf(msg string, args ...interface{}) {
+func (x *deferredLogger) Forwardf(msg string, args ...interface{}) {
 	x.thread.Queue(func(ThreadContext) {
 		x.logger.Forwardf(msg, args...)
 	}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
 }
-func (x deferredLogger) Log(category *LogCategory, level LogLevel, msg string, args ...interface{}) {
+func (x *deferredLogger) Log(category *LogCategory, level LogLevel, msg string, args ...interface{}) {
 	if x.logger.IsVisible(level) || category.Level.IsVisible(level) {
 		x.thread.Queue(func(ThreadContext) {
 			x.logger.Log(category, level, msg, args...)
@@ -756,7 +791,7 @@ func (x deferredLogger) Log(category *LogCategory, level LogLevel, msg string, a
 		x.thread.Join() // flush log when an error occurred
 	}
 }
-func (x deferredLogger) Write(buf []byte) (n int, err error) {
+func (x *deferredLogger) Write(buf []byte) (n int, err error) {
 	x.thread.Queue(func(tc ThreadContext) {
 		n, err = x.logger.Write(buf)
 		if err == nil {
@@ -766,39 +801,41 @@ func (x deferredLogger) Write(buf []byte) (n int, err error) {
 	x.thread.Join()
 	return
 }
-func (x deferredLogger) Pin(msg string, args ...interface{}) PinScope {
+func (x *deferredLogger) Pin(msg string, args ...interface{}) PinScope {
 	return deferredPinScope{
 		future: MakeWorkerFuture(x.thread, func(ThreadContext) (PinScope, error) {
 			pin := x.logger.Pin(msg, args...)
 			return pin, nil
-		}, TASKPRIORITY_NORMAL, ThreadPoolDebugId{})}
+		}, TASKPRIORITY_HIGH, ThreadPoolDebugId{})}
 }
-func (x deferredLogger) Progress(opts ...ProgressOptionFunc) ProgressScope {
+func (x *deferredLogger) Progress(opts ...ProgressOptionFunc) ProgressScope {
 	return deferredProgressScope{
 		future: MakeWorkerFuture(x.thread, func(ThreadContext) (ProgressScope, error) {
 			pin := x.logger.Progress(opts...)
 			return pin, nil
-		}, TASKPRIORITY_NORMAL, ThreadPoolDebugId{})}
+		}, TASKPRIORITY_HIGH, ThreadPoolDebugId{})}
 }
-func (x deferredLogger) Close(pin PinScope) (err error) {
+func (x *deferredLogger) Close(pin PinScope) error {
 	x.thread.Queue(func(ThreadContext) {
-		err = x.logger.Close(pin)
+		if err := x.logger.Close(pin); err != nil {
+			Panic(err)
+		}
 	}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
-	return
+	return nil
 }
-func (x deferredLogger) Flush() {
+func (x *deferredLogger) Flush() {
 	x.thread.Queue(func(ThreadContext) {
 		x.logger.Flush()
 	}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
 	x.thread.Join()
 }
-func (x deferredLogger) Purge() {
+func (x *deferredLogger) Purge() {
 	x.thread.Queue(func(ThreadContext) {
 		x.logger.Purge()
 	}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
 	x.thread.Join()
 }
-func (x deferredLogger) Refresh() {
+func (x *deferredLogger) Refresh() {
 	x.thread.Queue(func(ThreadContext) {
 		x.logger.Refresh()
 	}, TASKPRIORITY_LOW, ThreadPoolDebugId{})
@@ -813,105 +850,105 @@ type immediateLogger struct {
 	barrier *sync.Mutex
 }
 
-func newImmediateLogger(logger Logger) immediateLogger {
+func newImmediateLogger(logger Logger) *immediateLogger {
 	barrier := &sync.Mutex{}
-	return immediateLogger{
+	return &immediateLogger{
 		logger:  logger,
 		barrier: barrier,
 	}
 }
 
-func (x immediateLogger) IsInteractive() bool {
+func (x *immediateLogger) IsInteractive() bool {
 	return x.logger.IsInteractive()
 }
-func (x immediateLogger) IsVisible(level LogLevel) bool {
+func (x *immediateLogger) IsVisible(level LogLevel) bool {
 	return x.logger.IsVisible(level)
 }
 
-func (x immediateLogger) SetLevel(level LogLevel) LogLevel {
+func (x *immediateLogger) SetLevel(level LogLevel) LogLevel {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	return x.logger.SetLevel(level)
 }
-func (x immediateLogger) SetLevelMinimum(level LogLevel) LogLevel {
+func (x *immediateLogger) SetLevelMinimum(level LogLevel) LogLevel {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	return x.logger.SetLevelMinimum(level)
 }
-func (x immediateLogger) SetLevelMaximum(level LogLevel) LogLevel {
+func (x *immediateLogger) SetLevelMaximum(level LogLevel) LogLevel {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	return x.logger.SetLevelMaximum(level)
 }
-func (x immediateLogger) SetShowCategory(enabled bool) {
+func (x *immediateLogger) SetShowCategory(enabled bool) {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	x.logger.SetShowCategory(enabled)
 }
-func (x immediateLogger) SetShowTimestamp(enabled bool) {
+func (x *immediateLogger) SetShowTimestamp(enabled bool) {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	x.logger.SetShowTimestamp(enabled)
 }
-func (x immediateLogger) SetWriter(dst LogWriter) {
+func (x *immediateLogger) SetWriter(dst LogWriter) {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	x.logger.SetWriter(dst)
 }
 
-func (x immediateLogger) Forward(msg ...string) {
+func (x *immediateLogger) Forward(msg ...string) {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	x.logger.Forward(msg...)
 }
-func (x immediateLogger) Forwardln(msg ...string) {
+func (x *immediateLogger) Forwardln(msg ...string) {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	x.logger.Forwardln(msg...)
 }
-func (x immediateLogger) Forwardf(msg string, args ...interface{}) {
+func (x *immediateLogger) Forwardf(msg string, args ...interface{}) {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	x.logger.Forwardf(msg, args...)
 }
-func (x immediateLogger) Log(category *LogCategory, level LogLevel, msg string, args ...interface{}) {
+func (x *immediateLogger) Log(category *LogCategory, level LogLevel, msg string, args ...interface{}) {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	if category.Level.IsVisible(level) || x.logger.IsVisible(level) {
 		x.logger.Log(category, level, msg, args...)
 	}
 }
-func (x immediateLogger) Write(buf []byte) (int, error) {
+func (x *immediateLogger) Write(buf []byte) (int, error) {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	return x.logger.Write(buf)
 }
-func (x immediateLogger) Pin(msg string, args ...interface{}) PinScope {
+func (x *immediateLogger) Pin(msg string, args ...interface{}) PinScope {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	return x.logger.Pin(msg, args...)
 }
-func (x immediateLogger) Progress(opts ...ProgressOptionFunc) ProgressScope {
+func (x *immediateLogger) Progress(opts ...ProgressOptionFunc) ProgressScope {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	return x.logger.Progress(opts...)
 }
-func (x immediateLogger) Close(pin PinScope) error {
+func (x *immediateLogger) Close(pin PinScope) error {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	return x.logger.Close(pin)
 }
-func (x immediateLogger) Flush() {
+func (x *immediateLogger) Flush() {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	x.logger.Flush()
 }
-func (x immediateLogger) Purge() {
+func (x *immediateLogger) Purge() {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	x.logger.Purge()
 }
-func (x immediateLogger) Refresh() {
+func (x *immediateLogger) Refresh() {
 	x.barrier.Lock()
 	defer x.barrier.Unlock()
 	x.logger.Refresh()
@@ -1009,7 +1046,7 @@ type interactiveWriter struct {
 	output LogWriter
 }
 
-func (x interactiveWriter) Write(buf []byte) (n int, err error) {
+func (x *interactiveWriter) Write(buf []byte) (n int, err error) {
 	if x.logger.hasInflightMessages() {
 		x.logger.detachMessages()
 		n, err = x.output.Write(buf)
@@ -1045,7 +1082,7 @@ func newInteractiveLogger(basic *basicLogger) *interactiveLogger {
 				ip.reset()
 			}),
 	}
-	result.basicLogger.Writer = bufio.NewWriterSize(interactiveWriter{
+	result.basicLogger.Writer = bufio.NewWriterSize(&interactiveWriter{
 		logger: result,
 		output: basic.Writer,
 	}, 4096)
@@ -1067,7 +1104,7 @@ func (x *interactiveLogger) Log(category *LogCategory, level LogLevel, msg strin
 	x.basicLogger.Log(category, level, msg, args...)
 }
 func (x *interactiveLogger) Pin(msg string, args ...interface{}) PinScope {
-	if enableInteractiveShell {
+	if EnableInteractiveShell() {
 		pin := x.recycler.Allocate()
 		pin.Log(msg, args...)
 		pin.first = 1 // considered as a spinner
@@ -1083,7 +1120,7 @@ func (x *interactiveLogger) Pin(msg string, args ...interface{}) PinScope {
 	return basicLogPin{}
 }
 func (x *interactiveLogger) Progress(opts ...ProgressOptionFunc) ProgressScope {
-	if enableInteractiveShell {
+	if EnableInteractiveShell() {
 		po := ProgressOptions{}
 		po.Color = NewPastelizerColor(rand.Float64()).Quantize(true)
 		for _, it := range opts {
@@ -1407,7 +1444,7 @@ func LogBenchmark(category *LogCategory, msg string, args ...interface{}) Benchm
 func CopyWithProgress(context string, totalSize int64, dst io.Writer, src io.Reader) (err error) {
 	pageAlloc := GetBytesRecyclerBySize(totalSize)
 
-	if enableInteractiveShell {
+	if EnableInteractiveShell() {
 		_, err = TransientIoCopyWithProgress(context, totalSize, dst, src, pageAlloc)
 	} else {
 		_, err = TransientIoCopy(dst, src, pageAlloc, totalSize > int64(pageAlloc.Stride()))

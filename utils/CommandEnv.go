@@ -27,7 +27,8 @@ type CommandFlags struct {
 	Jobs           IntVar
 	Color          BoolVar
 	Ide            BoolVar
-	LogAll         base.StringSet
+	LogAll         base.LogCategorySet
+	LogMute        base.LogCategorySet
 	LogImmediate   BoolVar
 	LogFile        Filename
 	OutputDir      Directory
@@ -73,6 +74,7 @@ func (flags *CommandFlags) Flags(cfv CommandFlagsVisitor) {
 	cfv.Variable("Color", "control ansi color output in log messages", &flags.Color)
 	cfv.Variable("Ide", "set output to IDE mode (disable interactive shell)", &flags.Ide)
 	cfv.Variable("LogAll", "force to output all messages for given log categories", &flags.LogAll)
+	cfv.Variable("LogMute", "force mute all messages for given log categories", &flags.LogMute)
 	cfv.Variable("LogImmediate", "disable buffering of log messages", &flags.LogImmediate)
 	cfv.Variable("LogFile", "output log to specified file (default: stdout)", &flags.LogFile)
 	cfv.Variable("OutputDir", "override default output directory", &flags.OutputDir)
@@ -82,9 +84,16 @@ func (flags *CommandFlags) Flags(cfv CommandFlagsVisitor) {
 	cfv.Variable("WX", "consider warnings as errors", &flags.WarningAsError)
 	cfv.Variable("EX", "consider errors as panics", &flags.ErrorAsPanic)
 }
-func (flags *CommandFlags) Apply() {
+func (flags *CommandFlags) Apply() error {
 	for _, category := range flags.LogAll {
-		base.GetLogManager().SetCategoryLevel(category, base.LOG_ALL)
+		if err := base.GetLogManager().SetCategoryLevel(category, base.LOG_ALL); err != nil {
+			return err
+		}
+	}
+	for _, category := range flags.LogMute {
+		if err := base.GetLogManager().SetCategoryLevel(category, base.LOG_ERROR); err != nil {
+			return err
+		}
 	}
 
 	if flags.LogImmediate.Get() {
