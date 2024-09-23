@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 	"path"
@@ -1006,6 +1007,26 @@ func (ufs *UFSFrontEnd) Copy(src, dst Filename) error {
 			}
 		})
 	})
+}
+func (ufs *UFSFrontEnd) Crc32(src Filename) (checksum uint32, err error) {
+	base.LogDebug(LogUFS, "crc32 file '%v'", src)
+	err = ufs.OpenFile(src, func(f *os.File) error {
+		stat, err := f.Stat()
+		FileInfos.SetFileInfo(src, stat, err)
+		if err != nil {
+			return err
+		}
+
+		totalSize := stat.Size()
+		pageAlloc := base.GetBytesRecyclerBySize(totalSize)
+
+		crc := crc32.NewIEEE()
+		if _, err = base.TransientIoCopy(crc, f, pageAlloc, true); err == nil {
+			checksum = crc.Sum32()
+		}
+		return err
+	})
+	return
 }
 func (ufs *UFSFrontEnd) Fingerprint(src Filename, seed base.Fingerprint) (base.Fingerprint, error) {
 	base.LogDebug(LogUFS, "fingerprint file '%v'", src)
