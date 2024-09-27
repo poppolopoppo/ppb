@@ -303,7 +303,7 @@ func (vsc *VscodeBuilder) launch_configs(programAliases compile.ModuleAliases, c
 			"request":    "launch",
 			"mode":       "auto",
 			"program":    UFS.Caller,
-			"buildFlags": "-tags=ppb_debug,debug -pgo=off -gcflags=-N -gcflags=-w",
+			"buildFlags": "-tags=ppb_debug,debug -pgo=off",
 			"args":       "${input:buildPromptCommand} ${input:buildPromptArgument} -Color",
 		},
 		base.JsonMap{
