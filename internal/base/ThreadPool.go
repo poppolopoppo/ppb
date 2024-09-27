@@ -196,6 +196,11 @@ func (x *fixedSizeThreadPool) Queue(task TaskFunc, priority TaskPriority, debugI
 	}
 }
 func (x *fixedSizeThreadPool) Close() {
+	defer func() {
+		close(x.give[TASKPRIORITY_HIGH])
+		close(x.give[TASKPRIORITY_NORMAL])
+		close(x.give[TASKPRIORITY_LOW])
+	}()
 	for i := 0; i < x.numWorkers; i++ {
 		x.give[TASKPRIORITY_LOW] <- TaskQueued{
 			Func: nil, // push a nil task to kill the future
@@ -266,6 +271,29 @@ func onWorkerThreadStart(pool ThreadPool, workerIndex int) ThreadContext {
 func onWorkerThreadStop(pool ThreadPool, workerIndex int) {
 	//runtime.UnlockOSThread() // let acquired thread die with the pool
 }
+
+func (x *fixedSizeThreadPool) runTaskOnWorker(threadContext ThreadContext, task TaskQueued, priority TaskPriority) {
+	x.workload.Add(1)
+	if x.onWorkStartEvent.Bound() {
+		x.onWorkStartEvent.Invoke(ThreadPoolWorkEvent{
+			Context:  threadContext,
+			DebugId:  task.DebugId,
+			Priority: priority,
+		})
+	}
+	defer func() {
+		if x.onWorkFinishedEvent.Bound() {
+			x.onWorkFinishedEvent.Invoke(ThreadPoolWorkEvent{
+				Context:  threadContext,
+				DebugId:  task.DebugId,
+				Priority: priority,
+			})
+		}
+		x.workload.Add(-1)
+	}()
+
+	task.Func(threadContext)
+}
 func (x *fixedSizeThreadPool) threadLoop(threadContext ThreadContext) {
 	for {
 		var task TaskQueued
@@ -283,24 +311,6 @@ func (x *fixedSizeThreadPool) threadLoop(threadContext ThreadContext) {
 			break // worker was killed
 		}
 
-		x.workload.Add(1)
-		if x.onWorkStartEvent.Bound() {
-			x.onWorkStartEvent.Invoke(ThreadPoolWorkEvent{
-				Context:  threadContext,
-				DebugId:  task.DebugId,
-				Priority: priority,
-			})
-		}
-
-		task.Func(threadContext)
-
-		if x.onWorkFinishedEvent.Bound() {
-			x.onWorkFinishedEvent.Invoke(ThreadPoolWorkEvent{
-				Context:  threadContext,
-				DebugId:  task.DebugId,
-				Priority: priority,
-			})
-		}
-		x.workload.Add(-1)
+		x.runTaskOnWorker(threadContext, task, priority)
 	}
 }
