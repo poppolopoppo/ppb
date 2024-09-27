@@ -159,11 +159,19 @@ func (x FourCC) String() string {
 func (x *FourCC) Serialize(ar Archive) {
 	var raw [4]byte
 	if ar.Flags().IsLoading() {
-		ar.Raw(raw[:])
+		ar.Byte(&raw[0])
+		ar.Byte(&raw[1])
+		ar.Byte(&raw[2])
+		ar.Byte(&raw[3])
+
 		*x = BytesToFourCC(raw[0], raw[1], raw[2], raw[3])
 	} else {
 		raw = x.Bytes()
-		ar.Raw(raw[:])
+
+		ar.Byte(&raw[0])
+		ar.Byte(&raw[1])
+		ar.Byte(&raw[2])
+		ar.Byte(&raw[3])
 	}
 }
 
