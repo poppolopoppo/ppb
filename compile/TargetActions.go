@@ -641,7 +641,6 @@ func performArgumentSubstitution(payload PayloadType, model *action.ActionModel)
 	var (
 		allowRelativePath = model.Options.Any(action.OPT_ALLOW_RELATIVEPATH)
 		inputFiles        = model.GetCommandInputFiles()
-		result            = make([]string, 0, len(model.Command.Arguments)+len(inputFiles)+len(model.ExtraFiles)+1)
 		nextInput         = 0
 	)
 	base.Assert(model.ExportFile.Valid)
@@ -652,6 +651,8 @@ func performArgumentSubstitution(payload PayloadType, model *action.ActionModel)
 	case PAYLOAD_STATICLIB, PAYLOAD_SHAREDLIB, PAYLOAD_EXECUTABLE:
 		inputFiles.Append(model.Prerequisites.GetExportFiles()...) // PCHs
 	}
+
+	result := make([]string, 0, len(model.Command.Arguments)+len(inputFiles)+len(model.ExtraFiles))
 
 	for _, arg := range model.Command.Arguments {
 		// substitution rules are inherited from FASTBuild, see https://fastbuild.org/docs/functions/objectlist.html
