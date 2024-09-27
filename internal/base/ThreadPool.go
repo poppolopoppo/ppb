@@ -35,39 +35,6 @@ type ThreadContext interface {
 	GetThreadDebugName() string
 }
 
-type ThreadPoolDebugId struct {
-	Category string
-	Arg      fmt.Stringer
-}
-
-func (x ThreadPoolDebugId) String() string {
-	if len(x.Category) > 0 {
-		if IsNil(x.Arg) {
-			return x.Category
-		} else {
-			return fmt.Sprint(x.Category, ", ", x.Arg.String())
-		}
-	} else if !IsNil(x.Arg) {
-		return x.Arg.String()
-	} else {
-		return ""
-	}
-}
-
-type ThreadPoolWorkEvent struct {
-	Context  ThreadContext
-	DebugId  ThreadPoolDebugId
-	Priority TaskPriority
-}
-
-type ThreadPoolEvents interface {
-	OnWorkStart(EventDelegate[ThreadPoolWorkEvent]) DelegateHandle
-	OnWorkFinished(EventDelegate[ThreadPoolWorkEvent]) DelegateHandle
-
-	RemoveOnWorkStart(DelegateHandle) bool
-	RemoveOnWorkFinished(DelegateHandle) bool
-}
-
 type ThreadPool interface {
 	GetArity() int
 	GetName() string
@@ -91,6 +58,10 @@ var GetGlobalThreadPool = Memoize(func() (result ThreadPool) {
 })
 
 var allThreadPools = []ThreadPool{}
+
+func GetAllThreadPools() []ThreadPool {
+	return allThreadPools
+}
 
 // avoid allocating the global thread pool only to call Join() on it
 func JoinAllThreadPools() {
@@ -119,6 +90,43 @@ func NewThreadContext(threadPool ThreadPool, threadId int32) ThreadContext {
 func (x threadContext) GetThreadId() int32         { return x.threadId }
 func (x threadContext) GetThreadPool() ThreadPool  { return x.threadPool }
 func (x threadContext) GetThreadDebugName() string { return x.threadDebugName }
+
+/***************************************
+ * Thread Pool Events
+ ***************************************/
+
+type ThreadPoolDebugId struct {
+	Category string
+	Arg      fmt.Stringer
+}
+
+type ThreadPoolWorkEvent struct {
+	Context  ThreadContext
+	DebugId  ThreadPoolDebugId
+	Priority TaskPriority
+}
+
+func (x ThreadPoolDebugId) String() string {
+	if len(x.Category) > 0 {
+		if IsNil(x.Arg) {
+			return x.Category
+		} else {
+			return fmt.Sprint(x.Category, ", ", x.Arg.String())
+		}
+	} else if !IsNil(x.Arg) {
+		return x.Arg.String()
+	} else {
+		return ""
+	}
+}
+
+type ThreadPoolEvents interface {
+	OnWorkStart(EventDelegate[ThreadPoolWorkEvent]) DelegateHandle
+	OnWorkFinished(EventDelegate[ThreadPoolWorkEvent]) DelegateHandle
+
+	RemoveOnWorkStart(DelegateHandle) bool
+	RemoveOnWorkFinished(DelegateHandle) bool
+}
 
 /***************************************
  * Fixed Size Thread Pool

@@ -247,17 +247,20 @@ func (g *buildGraph) Serialize(ar base.Archive) {
 	base.SerializeMany(ar, serialize, &pinned)
 	if ar.Flags().IsLoading() && ar.Error() == nil {
 		g.nodes.Clear()
+		g.dirty.Store(false)
+
 		for _, node := range pinned {
 			g.nodes.Add(node.Alias(), node)
 		}
 	}
 }
-func (g *buildGraph) Save(dst io.Writer) error {
-	g.dirty.Store(false)
-	return base.CompressedArchiveFileWrite(dst, g.Serialize)
+func (g *buildGraph) Save(dst io.Writer) (err error) {
+	if err = base.CompressedArchiveFileWrite(dst, g.Serialize); err == nil {
+		g.dirty.Store(false)
+	}
+	return
 }
 func (g *buildGraph) Load(src io.Reader) error {
-	g.dirty.Store(false)
 	file, err := base.CompressedArchiveFileRead(src, g.Serialize)
 	base.LogVeryVerbose(LogBuildGraph, "archive version = %v tags = %v", file.Version, file.Tags)
 	return err

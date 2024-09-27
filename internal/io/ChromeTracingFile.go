@@ -68,28 +68,35 @@ var GetChromeTracingFlags = func() func() *ChromeTracingFlags {
 					return nil
 				})
 
-				base.GetGlobalThreadPool().OnWorkStart(func(tpwe base.ThreadPoolWorkEvent) error {
-					chromeTracingFile.Event(ChromeTracingBegin(
-						tpwe.Context.GetThreadDebugName(),
-						tpwe.DebugId.String(),
-						tpwe.Priority.String()))
-					return nil
-				})
+				// force create all thread pools (because of memoization)
+				base.GetGlobalThreadPool()
+				base.GetIOReadThreadPool()
+				base.GetIOWriteThreadPool()
 
-				base.GetGlobalThreadPool().OnWorkFinished(func(tpwe base.ThreadPoolWorkEvent) error {
-					chromeTracingFile.Event(ChromeTracingEnd(
-						tpwe.Context.GetThreadDebugName(),
-						tpwe.DebugId.String(),
-						tpwe.Priority.String()))
-					return nil
-				})
+				for _, th := range base.GetAllThreadPools() {
+					th.OnWorkStart(func(tpwe base.ThreadPoolWorkEvent) error {
+						chromeTracingFile.Event(ChromeTracingBegin(
+							tpwe.Context.GetThreadDebugName(),
+							tpwe.DebugId.String(),
+							tpwe.Priority.String()))
+						return nil
+					})
+
+					th.OnWorkFinished(func(tpwe base.ThreadPoolWorkEvent) error {
+						chromeTracingFile.Event(ChromeTracingEnd(
+							tpwe.Context.GetThreadDebugName(),
+							tpwe.DebugId.String(),
+							tpwe.Priority.String()))
+						return nil
+					})
+				}
 
 				utils.CommandEnv.OnExit(func(cet *utils.CommandEnvT) error {
 					base.LogClaim(LogChromeTrace, "write chrome trace recording to %q", flags.OutputFile)
 
 					return utils.UFS.CreateBuffered(flags.OutputFile, func(w io.Writer) error {
 						return chromeTracingFile.ExportJson(w)
-					})
+					}, base.TransientPage4KiB)
 				})
 				return nil
 			})

@@ -31,9 +31,9 @@ func (x *BuildGenerated) Alias() utils.BuildAlias {
 	return MakeGeneratedAlias(x.OutputFile)
 }
 func (x *BuildGenerated) Build(bc utils.BuildContext) error {
-	err := utils.UFS.SafeCreate(x.OutputFile, func(w io.Writer) error {
+	err := utils.UFS.CreateBuffered(x.OutputFile, func(w io.Writer) error {
 		return x.Generate(bc, x, w)
-	})
+	}, base.TransientPage4KiB)
 	if err == nil {
 		err = bc.OutputFile(x.OutputFile)
 	}

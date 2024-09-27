@@ -319,10 +319,12 @@ func (f Filename) Compare(o Filename) int {
 	}
 }
 func (f Filename) String() string {
-	if len(f.Dirname.Path) > 0 {
+	if len(f.Basename) > 0 && len(f.Dirname.Path) > 0 {
 		return JoinPath(f.Dirname.Path, f.Basename)
-	} else {
+	} else if len(f.Dirname.Path) == 0 {
 		return f.Basename
+	} else {
+		return f.Dirname.Path
 	}
 }
 
@@ -804,39 +806,26 @@ func (ufs *UFSFrontEnd) Create(dst Filename, write func(io.Writer) error) error 
 		return write(f)
 	})
 }
-func (ufs *UFSFrontEnd) CreateBuffered(dst Filename, write func(io.Writer) error) error {
-	return ufs.Create(dst, func(w io.Writer) error {
-		var buffered bufio.Writer
-		buffered.Reset(w)
-		if err := write(&buffered); err != nil {
-			return err
-		}
-		return buffered.Flush()
-	})
-}
-
-const forceUnsafeCreate = true // os.Rename() is expansive, at least on Windows
-
-func (ufs *UFSFrontEnd) SafeCreate(dst Filename, write func(io.Writer) error) error {
-	if forceUnsafeCreate {
-		return ufs.CreateBuffered(dst, write)
-	} else {
-		ufs.Mkdir(dst.Dirname)
-
-		tmpFilename := dst.ReplaceExt(dst.Ext() + ".tmp")
-		defer os.Remove(tmpFilename.String())
-
-		err := UFS.CreateBuffered(tmpFilename, func(w io.Writer) error {
-			return write(w)
-		})
-
-		if err == nil {
-			if err = os.Rename(tmpFilename.String(), dst.String()); err != nil {
-				base.LogWarning(LogUFS, "SafeCreate: %v", err)
+func (ufs *UFSFrontEnd) CreateBuffered(dst Filename, write func(io.Writer) error, pageAlloc base.BytesRecycler) error {
+	return ufs.CreateFile(dst, func(w *os.File) (err error) {
+		if base.EnableAsyncIO {
+			asyncWriter := base.NewAsyncWriter(w, pageAlloc)
+			defer func() {
+				if er := asyncWriter.Close(); er != nil && err == nil {
+					err = er
+				}
+			}()
+			err = write(&asyncWriter)
+			return
+		} else {
+			var buffered bufio.Writer
+			buffered.Reset(w)
+			if err := write(&buffered); err != nil {
+				return err
 			}
+			return buffered.Flush()
 		}
-		return err
-	}
+	})
 }
 
 type TemporaryFile struct {
@@ -846,11 +835,11 @@ type TemporaryFile struct {
 func (x TemporaryFile) Close() error   { return UFS.Remove(x.Path) }
 func (x TemporaryFile) String() string { return x.Path.String() }
 
-func (ufs *UFSFrontEnd) CreateTemp(prefix string, write func(io.Writer) error) (TemporaryFile, error) {
+func (ufs *UFSFrontEnd) CreateTemp(prefix string, write func(io.Writer) error, pageAlloc base.BytesRecycler) (TemporaryFile, error) {
 	randBytes := [16]byte{}
 	rand.Read(randBytes[:])
 	tmp := UFS.Transient.Folder(prefix).File(hex.EncodeToString(randBytes[:]))
-	return TemporaryFile{tmp}, ufs.CreateBuffered(tmp, write)
+	return TemporaryFile{tmp}, ufs.CreateBuffered(tmp, write, pageAlloc)
 }
 
 func (ufs *UFSFrontEnd) MTime(src Filename) time.Time {
@@ -886,10 +875,21 @@ func (ufs *UFSFrontEnd) Open(src Filename, read func(io.Reader) error) error {
 	})
 }
 func (ufs *UFSFrontEnd) OpenBuffered(src Filename, read func(io.Reader) error) error {
-	return ufs.Open(src, func(r io.Reader) error {
-		var buffered bufio.Reader
-		buffered.Reset(r)
-		return read(&buffered)
+	return ufs.OpenFile(src, func(r *os.File) (err error) {
+		if base.EnableAsyncIO {
+			asyncReader := base.NewAsyncReader(r, base.TransientPage4KiB)
+			defer func() {
+				if er := asyncReader.Close(); er != nil && err == nil {
+					err = er
+				}
+			}()
+			err = read(&asyncReader)
+			return
+		} else {
+			var buffered bufio.Reader
+			buffered.Reset(r)
+			return read(&buffered)
+		}
 	})
 }
 func (ufs *UFSFrontEnd) ReadAll(src Filename) ([]byte, error) {
@@ -1009,7 +1009,7 @@ func (ufs *UFSFrontEnd) Copy(src, dst Filename) error {
 	})
 }
 func (ufs *UFSFrontEnd) Crc32(src Filename) (checksum uint32, err error) {
-	base.LogDebug(LogUFS, "crc32 file '%v'", src)
+	base.LogDebug(LogUFS, "crc32 file %q", src)
 	err = ufs.OpenFile(src, func(f *os.File) error {
 		stat, err := f.Stat()
 		FileInfos.SetFileInfo(src, stat, err)
@@ -1029,7 +1029,7 @@ func (ufs *UFSFrontEnd) Crc32(src Filename) (checksum uint32, err error) {
 	return
 }
 func (ufs *UFSFrontEnd) Fingerprint(src Filename, seed base.Fingerprint) (base.Fingerprint, error) {
-	base.LogDebug(LogUFS, "fingerprint file '%v'", src)
+	base.LogDebug(LogUFS, "fingerprint file %q", src)
 	var fingerprint base.Fingerprint
 	if err := ufs.OpenFile(src, func(f *os.File) error {
 		stat, err := f.Stat()

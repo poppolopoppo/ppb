@@ -246,7 +246,7 @@ func RunProcess(executable utils.Filename, arguments base.StringSet, userOptions
 				}
 			}
 			return nil
-		})
+		}, base.TransientPage4KiB)
 		if err != nil {
 			return err
 		}

@@ -167,7 +167,7 @@ func (x *SlnSolutionBuilder) Build(bc BuildContext) error {
 			base.NewStructuredFile(w, "\t", false),
 			projects...,
 		)
-	}); err != nil {
+	}, base.TransientPage4KiB); err != nil {
 		return err
 	}
 
@@ -909,14 +909,14 @@ func NewVcxProjectGenerator(vcxproject *VcxProject) (result VcxProjectGenerator)
 func (x *VcxProjectGenerator) GenerateAll() error {
 	if err := UFS.CreateBuffered(x.ProjectOutput, func(w io.Writer) error {
 		return x.GenerateVCXProj(internal_io.NewXmlFile(w, false))
-	}); err != nil {
+	}, base.TransientPage4KiB); err != nil {
 		return err
 	}
 
 	// write .vcxproj.filters
 	if err := UFS.CreateBuffered(x.FiltersOutput, func(w io.Writer) error {
 		return x.GenerateVCXProjFilters(internal_io.NewXmlFile(w, false))
-	}); err != nil {
+	}, base.TransientPage4KiB); err != nil {
 		return err
 	}
 	return nil

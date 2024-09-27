@@ -27,7 +27,7 @@ func openCompletion(args *CompletionArgs, closure func(io.Writer) error) error {
 	base.LogVerbose(utils.LogCommand, "completion input parameters = %v", args.GlobPatterns)
 	if args.Output.Valid() {
 		base.LogInfo(utils.LogCommand, "export completion results to %q...", args.Output)
-		return utils.UFS.CreateBuffered(args.Output, closure)
+		return utils.UFS.CreateBuffered(args.Output, closure, base.TransientPage4KiB)
 	} else {
 		return closure(base.GetLogger())
 	}

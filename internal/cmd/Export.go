@@ -32,7 +32,7 @@ func (x *ExportNodeArgs[T, E]) WithOutput(closure func(io.Writer) error) error {
 	base.LogVerbose(utils.LogCommand, "export node aliases = %v", x.Aliases)
 	if x.Output.Valid() {
 		base.LogInfo(utils.LogCommand, "export node results to %q...", x.Output)
-		return utils.UFS.CreateBuffered(x.Output, closure)
+		return utils.UFS.CreateBuffered(x.Output, closure, base.TransientPage4KiB)
 	} else {
 		return closure(base.GetLogger())
 	}

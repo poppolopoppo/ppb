@@ -1,9 +1,14 @@
 package base
 
-type Optional[T any] interface {
-	Valid() bool
-	Get() (T, error)
-	GetOrElse(orElse T) T
+import "errors"
+
+/***************************************
+ * Optional[T] holds a value or an error, with value semantics
+ ***************************************/
+
+type Optional[T any] struct {
+	value T
+	err   error
 }
 
 type optionEmptyError struct{}
@@ -12,40 +17,33 @@ func (x optionEmptyError) Error() string {
 	return "option has no value"
 }
 
-var OptionEmptyError error = optionEmptyError{}
+var ErrEmptyOptional error = errors.New("empty optional")
 
-type Option[T any] struct {
-	value T
-	valid bool
-}
-
-func NewOption[T any](value T) Option[T] {
-	return Option[T]{
+func NewOption[T any](value T) Optional[T] {
+	return Optional[T]{
 		value: value,
-		valid: true,
+	}
+}
+func NoneOption[T any]() Optional[T] {
+	return UnexpectedOption[T](ErrEmptyOptional)
+}
+func UnexpectedOption[T any](err error) Optional[T] {
+	return Optional[T]{
+		err: err,
 	}
 }
 
-func (x Option[T]) Valid() bool {
-	return x.valid
+func (x Optional[T]) Valid() bool {
+	return x.err == nil
 }
-func (x Option[T]) Get() (T, error) {
-	if x.valid {
-		return x.value, nil
-	} else {
-		return x.value, OptionEmptyError
-	}
+func (x Optional[T]) Get() (T, error) {
+	return x.value, x.err
+
 }
-func (x Option[T]) GetOrElse(orElse T) T {
-	if x.valid {
+func (x Optional[T]) GetOrElse(orElse T) T {
+	if x.err == nil {
 		return x.value
 	} else {
 		return orElse
 	}
 }
-
-type None[T any] struct{}
-
-func (x None[T]) Valid() bool               { return false }
-func (x None[T]) Get() (value T, err error) { err = OptionEmptyError; return }
-func (x None[T]) GetOrElse(orElse T) T      { return orElse }

@@ -53,7 +53,7 @@ var getDetoursIOWrapperExecutable = base.Memoize(func() utils.Filename {
 func RunProcessWithDetoursWin32(executable utils.Filename, arguments base.StringSet, options *internal_io.ProcessOptions) error {
 	tempFile, err := utils.UFS.CreateTemp("Detours", func(w io.Writer) error {
 		return nil
-	})
+	}, base.TransientPage64KiB)
 
 	m := sync.Mutex{}
 	m.Lock()

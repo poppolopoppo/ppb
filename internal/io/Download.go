@@ -232,7 +232,7 @@ func DownloadHttpRedirect(dst utils.Filename, src url.URL) (int64, error) {
 	parse := base.TransientBuffer.Allocate()
 	defer base.TransientBuffer.Release(parse)
 
-	_, err = io.Copy(parse, resp.Body)
+	_, err = base.TransientIoCopy(parse, resp.Body, base.TransientPage4KiB, false)
 
 	if err == nil {
 		match := re_metaRefreshRedirect.FindSubmatch(parse.Bytes())

@@ -325,7 +325,7 @@ func (x *DependencyOutputAction) Build(bc utils.BuildContext) error {
 			}
 		}
 		return nil
-	}); err != nil {
+	}, base.TransientPage4KiB); err != nil {
 		return err
 	}
 

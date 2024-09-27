@@ -686,7 +686,7 @@ func (x *MessageCorpus) Add(body MessageBody) {
 		ar.Serializable(body)
 
 		return ar.Close()
-	})
+	}, base.TransientPage4KiB)
 }
 
 /***************************************

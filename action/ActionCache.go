@@ -293,7 +293,7 @@ func (x *ActionCacheBulk) Deflate(root Directory, artifacts ...Filename) error {
 		}
 
 		return zw.Close()
-	})
+	}, base.TransientPage64KiB)
 }
 func (x *ActionCacheBulk) Inflate(dst Directory) (FileSet, error) {
 	inflateStat := StartBuildStats()

@@ -73,7 +73,7 @@ func (x *UnityFile) Build(bc utils.BuildContext) error {
 			}
 		}
 		return nil
-	})
+	}, base.TransientPage4KiB)
 
 	if err == nil {
 		bc.Annotate(

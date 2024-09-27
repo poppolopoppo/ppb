@@ -259,9 +259,11 @@ func InitCommandEnv(prefix string, args []string, startedAt time.Time) (*Command
 	base.LogVerbose(LogCommand, "will load database from %q", CommandEnv.databasePath)
 	base.LogVerbose(LogCommand, "will load modules from %q", CommandEnv.rootFile)
 
-	CommandEnv.onExit.Add(func(*CommandEnvT) error {
-		return FileInfos.PrintStats(base.GetLogger())
-	})
+	if GetCommandFlags().Summary.Get() {
+		CommandEnv.onExit.Add(func(*CommandEnvT) error {
+			return FileInfos.PrintStats(base.GetLogger())
+		})
+	}
 
 	// creates a 'listener' on a new goroutine which will notify the
 	// program if it receives an interrupt from the OS. We then handle this by calling
@@ -396,5 +398,5 @@ func (env *CommandEnvT) saveConfig() error {
 	benchmark := base.LogBenchmark(LogCommand, "saving config to '%v'...", env.configPath)
 	defer benchmark.Close()
 
-	return UFS.SafeCreate(env.configPath, env.persistent.Serialize)
+	return UFS.CreateBuffered(env.configPath, env.persistent.Serialize, base.TransientPage4KiB)
 }
