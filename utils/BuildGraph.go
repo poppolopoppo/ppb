@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -162,7 +163,7 @@ func NewBuildGraph(flags *CommandFlags) BuildGraph {
 	result := &buildGraph{
 		flags:       flags,
 		buildEvents: newBuildEvents(),
-		nodes:       base.NewShardedMap[BuildAlias, *buildNode](1000),
+		nodes:       base.NewShardedMap[BuildAlias, *buildNode](runtime.NumCPU() * 2),
 	}
 	return result
 }
