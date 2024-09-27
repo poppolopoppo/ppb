@@ -256,7 +256,7 @@ func (g *buildGraphWritePort) PrintSummary(startedAt time.Time, level base.LogLe
 		return
 	}
 
-	base.LogForwardf("\nCritical path: (%6.3f s)", maxTime.Seconds())
+	base.LogForwardf("\nCritical path: %5.3f s", maxTime.Seconds())
 
 	for depth, node := range criticalPath {
 		ns, ok := g.GetBuildStats(node)
