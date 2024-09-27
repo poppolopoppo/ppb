@@ -2,7 +2,6 @@ package io
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -121,7 +120,9 @@ func (nonCachableResponse) ShouldCache() bool {
 func downloadFromCache(resp *http.Response) (utils.Filename, downloadCacheResult) {
 	var contentHash []string
 	if contentHash = resp.Header.Values("Content-Md5"); contentHash == nil {
-		contentHash = resp.Header.Values("X-Goog-Hash")
+		if contentHash = resp.Header.Values("X-Goog-Hash"); contentHash == nil {
+			contentHash = resp.Header.Values("X-Ms-Blob-Content-Md5")
+		}
 	}
 
 	if contentHash != nil {
