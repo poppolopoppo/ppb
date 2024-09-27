@@ -26,9 +26,9 @@ var GetIOWriteThreadPool = Memoize(func() (result ThreadPool) {
  * Async IO Copy
  ***************************************/
 
-func AsyncTransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler) (n int64, err error) {
-	err = WithAsyncWriter(dst, pageAlloc, func(w io.Writer) error {
-		return WithAsyncReader(src, pageAlloc, func(r io.Reader) (er error) {
+func AsyncTransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler, priority TaskPriority) (n int64, err error) {
+	err = WithAsyncWriter(dst, pageAlloc, priority, func(w io.Writer) error {
+		return WithAsyncReader(src, pageAlloc, priority, func(r io.Reader) (er error) {
 			n, er = io.Copy(w, r)
 			return
 		})
@@ -51,10 +51,10 @@ type AsyncReader struct {
 	queue  <-chan Optional[asyncIOBlock]
 }
 
-func NewAsyncReaderSize(reader io.Reader, totalSize int64) AsyncReader {
-	return NewAsyncReader(reader, GetBytesRecyclerBySize(totalSize))
+func NewAsyncReaderSize(reader io.Reader, totalSize int64, priority TaskPriority) AsyncReader {
+	return NewAsyncReader(reader, GetBytesRecyclerBySize(totalSize), priority)
 }
-func NewAsyncReader(reader io.Reader, pageAlloc BytesRecycler) AsyncReader {
+func NewAsyncReader(reader io.Reader, pageAlloc BytesRecycler, priority TaskPriority) AsyncReader {
 	Assert(func() bool {
 		if IsNil(reader) {
 			return false
@@ -95,10 +95,9 @@ func NewAsyncReader(reader io.Reader, pageAlloc BytesRecycler) AsyncReader {
 				}
 			}
 		}
-	}, TASKPRIORITY_HIGH,
-		ThreadPoolDebugId{Category: "AsyncRead", Arg: MakeStringer(func() string {
-			return fmt.Sprintf("@%p <%T> blk=%d", reader, reader, pageAlloc.Stride())
-		})})
+	}, priority, ThreadPoolDebugId{Category: "AsyncRead", Arg: MakeStringer(func() string {
+		return fmt.Sprintf("@%p <%T> blk=%d", reader, reader, pageAlloc.Stride())
+	})})
 
 	return AsyncReader{
 		rd:     reader,
@@ -108,7 +107,7 @@ func NewAsyncReader(reader io.Reader, pageAlloc BytesRecycler) AsyncReader {
 	}
 }
 
-func WithAsyncReader(reader io.Reader, pageAlloc BytesRecycler, scope func(io.Reader) error) error {
+func WithAsyncReader(reader io.Reader, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Reader) error) error {
 	if EnableAsyncIO {
 		switch rd := reader.(type) {
 		case *bufio.ReadWriter:
@@ -120,7 +119,7 @@ func WithAsyncReader(reader io.Reader, pageAlloc BytesRecycler, scope func(io.Re
 		case *AsyncReader:
 			return scope(rd)
 		default:
-			asyncReader := NewAsyncReader(rd, pageAlloc)
+			asyncReader := NewAsyncReader(rd, pageAlloc, priority)
 			defer asyncReader.Close()
 			return scope(&asyncReader)
 		}
@@ -176,7 +175,9 @@ func (x *AsyncReader) Close() (err error) {
 	}
 
 	// cancel remote task and release all read buffers in flight
+	AssertNotIn(x.cancel, nil) // Close() already called?
 	close(x.cancel)
+	x.cancel = nil
 	for {
 		if err = x.retrieveNextBlock(); err != nil {
 			break
@@ -261,12 +262,13 @@ type AsyncWriter struct {
 	wg  sync.WaitGroup
 	buf asyncIOBlock
 	err atomic.Pointer[error]
+	pri TaskPriority
 }
 
-func NewAsyncWriterSize(writer io.Writer, totalSize int64) AsyncWriter {
-	return NewAsyncWriter(writer, GetBytesRecyclerBySize(totalSize))
+func NewAsyncWriterSize(writer io.Writer, totalSize int64, priority TaskPriority) AsyncWriter {
+	return NewAsyncWriter(writer, GetBytesRecyclerBySize(totalSize), priority)
 }
-func NewAsyncWriter(writer io.Writer, pageAlloc BytesRecycler) AsyncWriter {
+func NewAsyncWriter(writer io.Writer, pageAlloc BytesRecycler, priority TaskPriority) AsyncWriter {
 	Assert(func() bool {
 		if IsNil(writer) {
 			return false
@@ -281,12 +283,13 @@ func NewAsyncWriter(writer io.Writer, pageAlloc BytesRecycler) AsyncWriter {
 	})
 
 	return AsyncWriter{
-		wr: writer,
-		al: pageAlloc,
+		wr:  writer,
+		al:  pageAlloc,
+		pri: priority,
 	}
 }
 
-func WithAsyncWriter(writer io.Writer, pageAlloc BytesRecycler, scope func(io.Writer) error) error {
+func WithAsyncWriter(writer io.Writer, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Writer) error) error {
 	if EnableAsyncIO {
 		switch wr := writer.(type) {
 		case *bufio.ReadWriter:
@@ -298,7 +301,7 @@ func WithAsyncWriter(writer io.Writer, pageAlloc BytesRecycler, scope func(io.Wr
 		case *AsyncWriter:
 			return scope(wr)
 		default:
-			asyncWriter := NewAsyncWriter(wr, pageAlloc)
+			asyncWriter := NewAsyncWriter(wr, pageAlloc, priority)
 			defer asyncWriter.Close()
 			return scope(&asyncWriter)
 		}
@@ -322,8 +325,7 @@ func (x *AsyncWriter) asyncWriteBuf(buf asyncIOBlock) {
 				x.err.Store(&err)
 			}
 		}
-	}, TASKPRIORITY_NORMAL,
-		ThreadPoolDebugId{Category: "AsyncWriteBuf", Arg: x})
+	}, x.pri, ThreadPoolDebugId{Category: "AsyncWriteBuf", Arg: x})
 }
 func (x *AsyncWriter) asyncWriteRaw(p []byte) {
 	x.wg.Add(1)
@@ -336,8 +338,7 @@ func (x *AsyncWriter) asyncWriteRaw(p []byte) {
 				x.err.Store(&err)
 			}
 		}
-	}, TASKPRIORITY_NORMAL,
-		ThreadPoolDebugId{Category: "AsyncWriteRaw", Arg: x})
+	}, x.pri, ThreadPoolDebugId{Category: "AsyncWriteRaw", Arg: x})
 }
 
 func (x *AsyncWriter) String() string {

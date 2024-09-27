@@ -147,7 +147,7 @@ func TransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler, allo
 	// }
 
 	if useTransientIoCopyOverIoCopy {
-		return AsyncTransientIoCopy(dst, src, pageAlloc)
+		return AsyncTransientIoCopy(dst, src, pageAlloc, TASKPRIORITY_NORMAL)
 	} else {
 		buf := pageAlloc.Allocate()
 		defer pageAlloc.Release(buf)

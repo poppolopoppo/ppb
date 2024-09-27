@@ -809,7 +809,7 @@ func (ufs *UFSFrontEnd) Create(dst Filename, write func(io.Writer) error) error 
 func (ufs *UFSFrontEnd) CreateBuffered(dst Filename, write func(io.Writer) error, pageAlloc base.BytesRecycler) error {
 	return ufs.CreateFile(dst, func(w *os.File) (err error) {
 		if base.EnableAsyncIO {
-			asyncWriter := base.NewAsyncWriter(w, pageAlloc)
+			asyncWriter := base.NewAsyncWriter(w, pageAlloc, base.TASKPRIORITY_NORMAL)
 			defer func() {
 				if er := asyncWriter.Close(); er != nil && err == nil {
 					err = er
@@ -877,7 +877,7 @@ func (ufs *UFSFrontEnd) Open(src Filename, read func(io.Reader) error) error {
 func (ufs *UFSFrontEnd) OpenBuffered(src Filename, read func(io.Reader) error) error {
 	return ufs.OpenFile(src, func(r *os.File) (err error) {
 		if base.EnableAsyncIO {
-			asyncReader := base.NewAsyncReader(r, base.TransientPage4KiB)
+			asyncReader := base.NewAsyncReader(r, base.TransientPage4KiB, base.TASKPRIORITY_NORMAL)
 			defer func() {
 				if er := asyncReader.Close(); er != nil && err == nil {
 					err = er

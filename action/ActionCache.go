@@ -446,7 +446,7 @@ func (x *ActionCacheEntry) OpenEntry(src Filename) error {
 	return UFS.Open(src, func(r io.Reader) error {
 		_, err := base.CompressedArchiveFileRead(r, func(ar base.Archive) {
 			ar.Serializable(x)
-		})
+		}, base.TransientPage64KiB, base.TASKPRIORITY_LOW)
 		return err
 	})
 }
@@ -466,7 +466,7 @@ func (x *ActionCacheEntry) WriteEntry(cachePath Directory) error {
 	return UFS.Create(path, func(w io.Writer) error {
 		return base.CompressedArchiveFileWrite(w, func(ar base.Archive) {
 			ar.Serializable(x)
-		})
+		}, base.TransientPage64KiB, base.TASKPRIORITY_LOW)
 	})
 }
 
