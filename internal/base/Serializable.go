@@ -25,6 +25,14 @@ const (
 	AR_TOLERANT
 )
 
+func GetArchiveFlags() []ArchiveFlag {
+	return []ArchiveFlag{
+		AR_LOADING,
+		AR_DETERMINISM,
+		AR_TOLERANT,
+	}
+}
+
 func (x ArchiveFlag) Ord() int32        { return int32(x) }
 func (x *ArchiveFlag) FromOrd(in int32) { *x = ArchiveFlag(in) }
 func (x *ArchiveFlag) Set(in string) (err error) {
@@ -53,6 +61,25 @@ func (x ArchiveFlag) String() (str string) {
 		UnexpectedValuePanic(x, x)
 	}
 	return
+}
+
+func (x ArchiveFlag) Description() (str string) {
+	switch x {
+	case AR_LOADING:
+		str = "loading indicator, saving when disabled"
+	case AR_DETERMINISM:
+		str = "will sort certain values -like map[]- to keep archive deterministic"
+	case AR_TOLERANT:
+		str = "serialization errors are fatal by default, except if archive is tolerant"
+	default:
+		UnexpectedValue(x)
+	}
+	return
+}
+func (x ArchiveFlag) AutoComplete(in AutoComplete) {
+	for _, it := range GetArchiveFlags() {
+		in.Add(it.String(), it.Description())
+	}
 }
 
 type ArchiveFlags struct {
@@ -470,7 +497,7 @@ func newBasicArchive(flags ...ArchiveFlag) basicArchive {
 		bytes:   TransientPage4KiB.Allocate(),
 		err:     nil,
 		flags: ArchiveFlags{
-			MakeEnumSet(flags...),
+			NewEnumSet(flags...),
 		},
 	}
 	return ar

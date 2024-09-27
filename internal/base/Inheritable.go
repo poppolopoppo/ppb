@@ -624,7 +624,7 @@ func (x *InheritableBool) Set(in string) error {
 	}
 }
 
-func (x *InheritableBool) AutoComplete(in AutoComplete) {
+func (x InheritableBool) AutoComplete(in AutoComplete) {
 	in.Add(INHERITABLE_TRUE.String(), "enabled")
 	in.Add(INHERITABLE_FALSE.String(), "disabled")
 	// in.Add(INHERITABLE_INHERIT.String(), "inherit default value from configuration")

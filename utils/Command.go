@@ -224,6 +224,15 @@ const (
 	COMMANDARG_VARIADIC
 )
 
+func GetCommandArgumentFlags() []CommandArgumentFlag {
+	return []CommandArgumentFlag{
+		COMMANDARG_PERSISTENT,
+		COMMANDARG_CONSUME,
+		COMMANDARG_OPTIONAL,
+		COMMANDARG_VARIADIC,
+	}
+}
+
 func (x CommandArgumentFlag) Ord() int32         { return int32(x) }
 func (x *CommandArgumentFlag) FromOrd(ord int32) { *x = CommandArgumentFlag(ord) }
 func (x CommandArgumentFlag) String() string {
@@ -255,6 +264,26 @@ func (x *CommandArgumentFlag) Set(in string) error {
 		return base.MakeUnexpectedValueError(x, x)
 	}
 	return nil
+}
+func (x CommandArgumentFlag) Description() string {
+	switch x {
+	case COMMANDARG_PERSISTENT:
+		return "value is stored in the config and restored at every launch"
+	case COMMANDARG_CONSUME:
+		return "value does not expect a prefix switch, and should be consumed from command-line first free argument"
+	case COMMANDARG_OPTIONAL:
+		return "value does not need to specified on the command-line"
+	case COMMANDARG_VARIADIC:
+		return "multiple values can be specified"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x CommandArgumentFlag) AutoComplete(in base.AutoComplete) {
+	for _, it := range GetCommandArgumentFlags() {
+		in.Add(it.String(), it.Description())
+	}
 }
 
 type CommandArgumentFlags = base.EnumSet[CommandArgumentFlag, *CommandArgumentFlag]
@@ -295,7 +324,7 @@ func (x *commandBasicArgument) Details() CommandArgumentDetails {
 func (x *commandBasicArgument) HasFlag(flag CommandArgumentFlag) bool {
 	return x.Flags.Has(flag)
 }
-func (x *commandBasicArgument) AutoComplete(in base.AutoComplete) {
+func (x commandBasicArgument) AutoComplete(in base.AutoComplete) {
 	if len(x.Short) > 0 {
 		in.Add(x.Short, x.Description)
 	}
@@ -395,7 +424,7 @@ func OptionCommandConsumeArg[T any, P interface {
 			CommandArgumentDetails{
 				Long:        name,
 				Description: description,
-				Flags:       base.MakeEnumSet(append(flags, COMMANDARG_CONSUME)...),
+				Flags:       base.NewEnumSet(append(flags, COMMANDARG_CONSUME)...),
 			},
 		},
 	})
@@ -464,7 +493,7 @@ func OptionCommandConsumeMany[T any, P interface {
 			CommandArgumentDetails{
 				Long:        name,
 				Description: description,
-				Flags:       base.MakeEnumSet(append(flags, COMMANDARG_CONSUME, COMMANDARG_VARIADIC)...),
+				Flags:       base.NewEnumSet(append(flags, COMMANDARG_CONSUME, COMMANDARG_VARIADIC)...),
 			},
 		},
 	})
@@ -533,7 +562,7 @@ func (x *commandParsableArgument) Inspect(each func(CommandArgumentDetails, Pers
 	return nil
 }
 
-func (x *commandParsableArgument) AutoComplete(in base.AutoComplete) {
+func (x commandParsableArgument) AutoComplete(in base.AutoComplete) {
 	for _, v := range x.Variables {
 		if boolean, ok := v.Value.(*BoolVar); ok {
 			boolean.AutoCompleteFlag(in, v.Switch, v.Usage)
@@ -677,7 +706,7 @@ func newCommandParsableFlags(name, description string, value CommandParsableFlag
 			CommandArgumentDetails{
 				Long:        name,
 				Description: description,
-				Flags:       base.MakeEnumSet(append(flags, COMMANDARG_OPTIONAL, COMMANDARG_VARIADIC)...),
+				Flags:       base.NewEnumSet(append(flags, COMMANDARG_OPTIONAL, COMMANDARG_VARIADIC)...),
 			},
 		},
 	}
@@ -691,7 +720,7 @@ func newCommandParsableFlags(name, description string, value CommandParsableFlag
 			Usage:  usage,
 			Switch: fmt.Sprint("-", name),
 			Value:  value,
-			Flags:  base.MakeEnumSet(COMMANDARG_OPTIONAL),
+			Flags:  base.NewEnumSet(COMMANDARG_OPTIONAL),
 		}
 
 		if persistent {
@@ -843,7 +872,7 @@ func (x *commandItem) Options(options ...CommandOptionFunc) {
 		opt(x)
 	}
 }
-func (x *commandItem) AutoComplete(in base.AutoComplete) {
+func (x commandItem) AutoComplete(in base.AutoComplete) {
 	base.LogTrace(base.LogAutoComplete, "autocomplete command %q with %d arguments", x.Name, len(x.arguments))
 	for _, a := range x.Arguments() {
 		a.AutoComplete(in)

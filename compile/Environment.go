@@ -65,7 +65,7 @@ func (x *EnvironmentAlias) MarshalText() ([]byte, error) {
 func (x *EnvironmentAlias) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *EnvironmentAlias) AutoComplete(in base.AutoComplete) {
+func (x EnvironmentAlias) AutoComplete(in base.AutoComplete) {
 	ForeachEnvironmentAlias(func(ea EnvironmentAlias) error {
 		in.Add(ea.String(), ea.Alias().String())
 		return nil

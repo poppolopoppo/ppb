@@ -124,7 +124,7 @@ var Configuration_Debug = &ConfigRules{
 	},
 	Facet: Facet{
 		Defines: []string{"DEBUG", "_DEBUG"},
-		Tags:    base.MakeEnumSet(TAG_DEBUG),
+		Tags:    base.NewEnumSet(TAG_DEBUG),
 	},
 }
 var Configuration_FastDebug = &ConfigRules{
@@ -146,7 +146,7 @@ var Configuration_FastDebug = &ConfigRules{
 	},
 	Facet: Facet{
 		Defines: []string{"DEBUG", "_DEBUG", "FASTDEBUG"},
-		Tags:    base.MakeEnumSet(TAG_FASTDEBUG, TAG_DEBUG),
+		Tags:    base.NewEnumSet(TAG_FASTDEBUG, TAG_DEBUG),
 	},
 }
 var Configuration_Devel = &ConfigRules{
@@ -168,7 +168,7 @@ var Configuration_Devel = &ConfigRules{
 	},
 	Facet: Facet{
 		Defines: []string{"RELEASE", "NDEBUG"},
-		Tags:    base.MakeEnumSet(TAG_DEVEL, TAG_NDEBUG),
+		Tags:    base.NewEnumSet(TAG_DEVEL, TAG_NDEBUG),
 	},
 }
 var Configuration_Test = &ConfigRules{
@@ -190,7 +190,7 @@ var Configuration_Test = &ConfigRules{
 	},
 	Facet: Facet{
 		Defines: []string{"RELEASE", "NDEBUG", "PROFILING_ENABLED"},
-		Tags:    base.MakeEnumSet(TAG_TEST, TAG_NDEBUG, TAG_PROFILING),
+		Tags:    base.NewEnumSet(TAG_TEST, TAG_NDEBUG, TAG_PROFILING),
 	},
 }
 var Configuration_Shipping = &ConfigRules{
@@ -212,7 +212,7 @@ var Configuration_Shipping = &ConfigRules{
 	},
 	Facet: Facet{
 		Defines: []string{"RELEASE", "NDEBUG", "FINAL_RELEASE"},
-		Tags:    base.MakeEnumSet(TAG_SHIPPING, TAG_NDEBUG),
+		Tags:    base.NewEnumSet(TAG_SHIPPING, TAG_NDEBUG),
 	},
 }
 

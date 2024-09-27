@@ -349,7 +349,7 @@ type LogCategorySet = InheritableSlice[LogCategoryName, *LogCategoryName]
 func (x LogCategoryName) Equals(o LogCategoryName) bool {
 	return x.InheritableString.Equals(o.InheritableString)
 }
-func (x *LogCategoryName) AutoComplete(in AutoComplete) {
+func (x LogCategoryName) AutoComplete(in AutoComplete) {
 	err := GetLogManager().CategoryRange(func(lc *LogCategory) error {
 		in.Add(lc.Name, lc.Level.String())
 		return nil

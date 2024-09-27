@@ -50,7 +50,7 @@ func (x NamespaceAlias) MarshalText() ([]byte, error) {
 func (x *NamespaceAlias) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *NamespaceAlias) AutoComplete(in base.AutoComplete) {
+func (x NamespaceAlias) AutoComplete(in base.AutoComplete) {
 	bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "AutoCompleteNamespaceAlias"}, utils.BUILDGRAPH_QUIET)
 	defer bg.Close()
 	namespaces, err := NeedAllBuildNamespaceAliases(bg.GlobalContext())

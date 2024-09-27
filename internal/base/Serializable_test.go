@@ -39,7 +39,7 @@ func archiveFactoryTestEquals[T any](t *testing.T, ar archiveFactoryFunc, serial
 
 func binaryArchiveFactory(rw io.ReadWriter, flags ...ArchiveFlag) (string, *ArchiveBinaryReader, *ArchiveBinaryWriter) {
 	rd, wr := NewArchiveBinaryReader(rw, flags...), NewArchiveBinaryWriter(rw, flags...)
-	return fmt.Sprintf(`raw binary [%v]`, MakeEnumSet(flags...)), &rd, &wr
+	return fmt.Sprintf(`raw binary [%v]`, NewEnumSet(flags...)), &rd, &wr
 }
 func compressedArchiveFactory(options ...CompressionOptionFunc) archiveFactoryFunc {
 	co := NewCompressionOptions(options...)
@@ -47,7 +47,7 @@ func compressedArchiveFactory(options ...CompressionOptionFunc) archiveFactoryFu
 		rd, wr :=
 			NewArchiveBinaryReader(NewCompressedReader(rw, options...), flags...),
 			NewArchiveBinaryWriter(NewCompressedWriter(rw, options...), flags...)
-		return fmt.Sprintf(`compressed %v:%v [%v]`, co.Format, co.Level, MakeEnumSet(flags...)), &rd, &wr
+		return fmt.Sprintf(`compressed %v:%v [%v]`, co.Format, co.Level, NewEnumSet(flags...)), &rd, &wr
 	}
 }
 

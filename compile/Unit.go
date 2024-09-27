@@ -72,7 +72,7 @@ func (x *TargetAlias) MarshalText() ([]byte, error) {
 func (x *TargetAlias) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *TargetAlias) AutoComplete(in base.AutoComplete) {
+func (x TargetAlias) AutoComplete(in base.AutoComplete) {
 	bg := CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "AutoCompleteTargetAlias"}, utils.BUILDGRAPH_QUIET)
 	defer bg.Close()
 

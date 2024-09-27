@@ -710,7 +710,7 @@ func (x CacheModeType) MarshalText() ([]byte, error) {
 func (x *CacheModeType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *CacheModeType) AutoComplete(in base.AutoComplete) {
+func (x CacheModeType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetCacheModeTypes() {
 		in.Add(it.String(), it.Description())
 	}

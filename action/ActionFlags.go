@@ -58,7 +58,7 @@ type OptionType byte
 type OptionFlags = base.EnumSet[OptionType, *OptionType]
 
 func MakeOptionFlags(opts ...OptionType) OptionFlags {
-	return base.MakeEnumSet[OptionType, *OptionType](opts...)
+	return base.NewEnumSet[OptionType, *OptionType](opts...)
 }
 
 const (
@@ -142,6 +142,35 @@ func (x *OptionType) Set(in string) (err error) {
 	}
 	return err
 }
+func (x OptionType) Description() string {
+	switch x {
+	case OPT_ALLOW_CACHEREAD:
+		return "allow retrieving build artifacts from action cache"
+	case OPT_ALLOW_CACHEWRITE:
+		return "allow storing build artifacts in action cache"
+	case OPT_ALLOW_DISTRIBUTION:
+		return "allow remote distribution of action task"
+	case OPT_ALLOW_RELATIVEPATH:
+		return "allow converting absolute paths to relative paths"
+	case OPT_ALLOW_RESPONSEFILE:
+		return "allow using response files when command-line exceeds OS limitations"
+	case OPT_ALLOW_SOURCEDEPENDENCIES:
+		return "allow tracking of implicit source file dependencies"
+	case OPT_PROPAGATE_INPUTS:
+		return "dependent tasks will depend on current task inputs instead of output"
+	case OPT_HIGH_PRIORITY:
+		return "action task will be scheduled to run with higher priority than task without this flag"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x OptionType) AutoComplete(in base.AutoComplete) {
+	for _, it := range GetOptionTypes() {
+		in.Add(it.String(), it.Description())
+	}
+}
+
 func (x *OptionType) Serialize(ar base.Archive) {
 	ar.Byte((*byte)(x))
 }

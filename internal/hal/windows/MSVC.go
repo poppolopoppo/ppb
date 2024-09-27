@@ -1097,7 +1097,7 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 		return err
 	}
 
-	msvc.CompilerRules.Features = base.MakeEnumSet(
+	msvc.CompilerRules.Features = base.NewEnumSet(
 		COMPILER_ALLOW_CACHING,
 		COMPILER_ALLOW_DISTRIBUTION,
 		COMPILER_ALLOW_RESPONSEFILE,

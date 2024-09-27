@@ -295,7 +295,7 @@ func (x CompressionLevel) MarshalText() ([]byte, error) {
 func (x *CompressionLevel) UnmarshalText(data []byte) error {
 	return x.Set(UnsafeStringFromBytes(data))
 }
-func (x *CompressionLevel) AutoComplete(in AutoComplete) {
+func (x CompressionLevel) AutoComplete(in AutoComplete) {
 	for _, it := range GetCompressionLevels() {
 		in.Add(it.String(), it.Description())
 	}
@@ -371,7 +371,7 @@ func (x CompressionFormat) MarshalText() ([]byte, error) {
 func (x *CompressionFormat) UnmarshalText(data []byte) error {
 	return x.Set(UnsafeStringFromBytes(data))
 }
-func (x *CompressionFormat) AutoComplete(in AutoComplete) {
+func (x CompressionFormat) AutoComplete(in AutoComplete) {
 	for _, it := range GetCompressionFormats() {
 		in.Add(it.String(), it.Description())
 	}

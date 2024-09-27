@@ -107,7 +107,7 @@ var GetCompileFlags = NewCompilationFlags("GenericCompilation", "cross-platform 
 	Deterministic:   base.INHERITABLE_TRUE,
 	Exceptions:      EXCEPTION_INHERIT,
 	Incremental:     base.INHERITABLE_INHERIT,
-	Instructions:    base.MakeEnumSet(INSTRUCTIONSET_AVX2, INSTRUCTIONSET_SSE3),
+	Instructions:    base.NewEnumSet(INSTRUCTIONSET_AVX2, INSTRUCTIONSET_SSE3),
 	Link:            LINK_INHERIT,
 	LinkerVerbose:   base.INHERITABLE_FALSE,
 	LTO:             base.INHERITABLE_INHERIT,

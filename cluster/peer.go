@@ -102,7 +102,7 @@ func (x PeerMode) MarshalText() ([]byte, error) {
 func (x *PeerMode) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *PeerMode) AutoComplete(in base.AutoComplete) {
+func (x PeerMode) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetPeerModes() {
 		in.Add(it.String(), it.Description())
 	}

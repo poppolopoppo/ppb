@@ -140,7 +140,7 @@ func (x SourceControlState) MarshalText() ([]byte, error) {
 func (x *SourceControlState) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *SourceControlState) AutoComplete(in base.AutoComplete) {
+func (x SourceControlState) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetSourceControlStates() {
 		in.Add(it.String(), it.Description())
 	}

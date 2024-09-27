@@ -66,7 +66,7 @@ func (x CompilerType) MarshalText() ([]byte, error) {
 func (x *CompilerType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *CompilerType) AutoComplete(in base.AutoComplete) {
+func (x CompilerType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetCompilerTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -127,7 +127,7 @@ func (v *MsvcPlatformToolset) Set(in string) (err error) {
 func (x *MsvcPlatformToolset) Serialize(ar base.Archive) {
 	ar.Byte((*byte)(x))
 }
-func (x *MsvcPlatformToolset) AutoComplete(in base.AutoComplete) {
+func (x MsvcPlatformToolset) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetMsvcPlatformToolsets() {
 		in.Add(it.String(), fmt.Sprint("Microsoft Visual Studio ", it.String()))
 	}
@@ -218,7 +218,7 @@ func (v *MsvcVersion) Set(in string) (err error) {
 func (x *MsvcVersion) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
-func (x *MsvcVersion) AutoComplete(in base.AutoComplete) {
+func (x MsvcVersion) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetMsvcVersions() {
 		in.Add(it.String(), fmt.Sprint("Microsoft Visual Studio ", it.String()))
 	}

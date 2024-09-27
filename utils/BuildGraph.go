@@ -191,7 +191,7 @@ func (g *buildGraph) OpenReadPort(name base.ThreadPoolDebugId, flags ...BuildGra
 	readport := buildGraphReadPort{
 		buildGraph: g,
 		name:       name,
-		flags:      base.MakeEnumSet(flags...),
+		flags:      base.NewEnumSet(flags...),
 		revision:   g.revision.Add(1),
 	}
 	return &readport
@@ -208,7 +208,7 @@ func (g *buildGraph) OpenWritePort(name base.ThreadPoolDebugId, flags ...BuildGr
 		buildGraphReadPort: buildGraphReadPort{
 			buildGraph: g,
 			name:       name,
-			flags:      base.MakeEnumSet(flags...),
+			flags:      base.NewEnumSet(flags...),
 			revision:   g.revision.Add(1),
 		},
 	}
@@ -819,4 +819,18 @@ func (x *BuildGraphPortFlags) Set(in string) error {
 		return base.MakeUnexpectedValueError(x, in)
 	}
 	return nil
+}
+func (x BuildGraphPortFlags) Description() string {
+	switch x {
+	case BUILDGRAPH_NONE:
+		return "no build flags"
+	case BUILDGRAPH_QUIET:
+		return "won't print summary when build finished"
+	}
+	base.UnexpectedValue(x)
+	return ""
+}
+func (x BuildGraphPortFlags) AutoComplete(in base.AutoComplete) {
+	in.Add(BUILDGRAPH_NONE.String(), BUILDGRAPH_NONE.Description())
+	in.Add(BUILDGRAPH_QUIET.String(), BUILDGRAPH_QUIET.Description())
 }

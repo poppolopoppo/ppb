@@ -103,7 +103,7 @@ func (x ArchType) MarshalText() ([]byte, error) {
 func (x *ArchType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *ArchType) AutoComplete(in base.AutoComplete) {
+func (x ArchType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetArchTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -196,7 +196,7 @@ func (x CompilerFeature) MarshalText() ([]byte, error) {
 func (x *CompilerFeature) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *CompilerFeature) AutoComplete(in base.AutoComplete) {
+func (x CompilerFeature) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetCompilerFeatures() {
 		in.Add(it.String(), it.Description())
 	}
@@ -272,7 +272,7 @@ func (x CppRttiType) MarshalText() ([]byte, error) {
 func (x *CppRttiType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *CppRttiType) AutoComplete(in base.AutoComplete) {
+func (x CppRttiType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetCppRttiTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -380,7 +380,7 @@ func (x CppStdType) MarshalText() ([]byte, error) {
 func (x *CppStdType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *CppStdType) AutoComplete(in base.AutoComplete) {
+func (x CppStdType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetCppStdTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -472,7 +472,7 @@ func (x DebugInfoType) MarshalText() ([]byte, error) {
 func (x *DebugInfoType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *DebugInfoType) AutoComplete(in base.AutoComplete) {
+func (x DebugInfoType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetDebugInfoTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -548,7 +548,7 @@ func (x ExceptionType) MarshalText() ([]byte, error) {
 func (x *ExceptionType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *ExceptionType) AutoComplete(in base.AutoComplete) {
+func (x ExceptionType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetExceptionTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -688,7 +688,7 @@ func (x InstructionSet) MarshalText() ([]byte, error) {
 func (x *InstructionSet) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *InstructionSet) AutoComplete(in base.AutoComplete) {
+func (x InstructionSet) AutoComplete(in base.AutoComplete) {
 	for _, it := range AllInstructionSets() {
 		in.Add(it.String(), it.Description())
 	}
@@ -764,7 +764,7 @@ func (x LinkType) MarshalText() ([]byte, error) {
 func (x *LinkType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *LinkType) AutoComplete(in base.AutoComplete) {
+func (x LinkType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetLinkTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -855,7 +855,7 @@ func (x ModuleType) MarshalText() ([]byte, error) {
 func (x *ModuleType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *ModuleType) AutoComplete(in base.AutoComplete) {
+func (x ModuleType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetModuleTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -947,7 +947,7 @@ func (x PrecompiledHeaderType) MarshalText() ([]byte, error) {
 func (x *PrecompiledHeaderType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *PrecompiledHeaderType) AutoComplete(in base.AutoComplete) {
+func (x PrecompiledHeaderType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetPrecompiledHeaderTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -1101,7 +1101,7 @@ func (x PayloadType) MarshalText() ([]byte, error) {
 func (x *PayloadType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *PayloadType) AutoComplete(in base.AutoComplete) {
+func (x PayloadType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetPayloadTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -1237,7 +1237,7 @@ func (x OptimizationLevel) MarshalText() ([]byte, error) {
 func (x *OptimizationLevel) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *OptimizationLevel) AutoComplete(in base.AutoComplete) {
+func (x OptimizationLevel) AutoComplete(in base.AutoComplete) {
 	for _, it := range OptimizationTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -1313,7 +1313,7 @@ func (x SupportType) MarshalText() ([]byte, error) {
 func (x *SupportType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *SupportType) AutoComplete(in base.AutoComplete) {
+func (x SupportType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetSupportTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -1424,7 +1424,7 @@ func (x RuntimeLibType) MarshalText() ([]byte, error) {
 func (x *RuntimeLibType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *RuntimeLibType) AutoComplete(in base.AutoComplete) {
+func (x RuntimeLibType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetRuntimeLibTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -1527,7 +1527,7 @@ func (x SanitizerType) MarshalText() ([]byte, error) {
 func (x *SanitizerType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *SanitizerType) AutoComplete(in base.AutoComplete) {
+func (x SanitizerType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetSanitizerTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -1636,7 +1636,7 @@ func (x TagType) MarshalText() ([]byte, error) {
 func (x *TagType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *TagType) AutoComplete(in base.AutoComplete) {
+func (x TagType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetTagTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -1723,7 +1723,7 @@ func (x UnityType) MarshalText() ([]byte, error) {
 func (x *UnityType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *UnityType) AutoComplete(in base.AutoComplete) {
+func (x UnityType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetUnityTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -1798,7 +1798,7 @@ func (x VisibilityType) MarshalText() ([]byte, error) {
 func (x *VisibilityType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *VisibilityType) AutoComplete(in base.AutoComplete) {
+func (x VisibilityType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetVisibilityTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -1885,7 +1885,7 @@ func (x WarningLevel) MarshalText() ([]byte, error) {
 func (x *WarningLevel) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *WarningLevel) AutoComplete(in base.AutoComplete) {
+func (x WarningLevel) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetWarningLevels() {
 		in.Add(it.String(), it.Description())
 	}

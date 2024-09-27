@@ -69,7 +69,7 @@ func (x CompilerType) MarshalText() ([]byte, error) {
 func (x *CompilerType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *CompilerType) AutoComplete(in base.AutoComplete) {
+func (x CompilerType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetCompilerTypes() {
 		in.Add(it.String(), it.Description())
 	}
@@ -196,7 +196,7 @@ func (v *LlvmVersion) Set(in string) (err error) {
 func (x *LlvmVersion) Serialize(ar base.Archive) {
 	ar.Int32((*int32)(x))
 }
-func (x *LlvmVersion) AutoComplete(in base.AutoComplete) {
+func (x LlvmVersion) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetLlvmVersions() {
 		in.Add(it.String(), fmt.Sprintf("LLVM compiler version %v", it))
 	}
@@ -283,7 +283,7 @@ func (x DumpRecordLayoutsType) MarshalText() ([]byte, error) {
 func (x *DumpRecordLayoutsType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *DumpRecordLayoutsType) AutoComplete(in base.AutoComplete) {
+func (x DumpRecordLayoutsType) AutoComplete(in base.AutoComplete) {
 	for _, it := range DumpRecordLayouts() {
 		in.Add(it.String(), it.Description())
 	}

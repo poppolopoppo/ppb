@@ -265,7 +265,7 @@ func (x DistModeType) MarshalText() ([]byte, error) {
 func (x *DistModeType) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
-func (x *DistModeType) AutoComplete(in base.AutoComplete) {
+func (x DistModeType) AutoComplete(in base.AutoComplete) {
 	for _, it := range GetDistModeTypes() {
 		in.Add(it.String(), it.Description())
 	}
