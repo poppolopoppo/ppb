@@ -256,13 +256,13 @@ func (g *buildGraph) Serialize(ar base.Archive) {
 	}
 }
 func (g *buildGraph) Save(dst io.Writer) (err error) {
-	if err = base.CompressedArchiveFileWrite(dst, g.Serialize); err == nil {
+	if err = base.CompressedArchiveFileWrite(dst, g.Serialize, base.TransientPage64KiB, base.TASKPRIORITY_HIGH); err == nil {
 		g.dirty.Store(false)
 	}
 	return
 }
 func (g *buildGraph) Load(src io.Reader) error {
-	file, err := base.CompressedArchiveFileRead(src, g.Serialize)
+	file, err := base.CompressedArchiveFileRead(src, g.Serialize, base.TransientPage64KiB, base.TASKPRIORITY_HIGH)
 	base.LogVeryVerbose(LogBuildGraph, "archive version = %v tags = %v", file.Version, file.Tags)
 	return err
 }

@@ -78,9 +78,11 @@ func ArchiveFileWrite(writer io.Writer, scope func(ar Archive)) (err error) {
  * CompressedArchiveFile
  ***************************************/
 
-func CompressedArchiveFileRead(reader io.Reader, scope func(ar Archive), compression ...CompressionOptionFunc) (file ArchiveFile, err error) {
-	return ArchiveFileRead(NewCompressedReader(reader, compression...), scope)
+func CompressedArchiveFileRead(reader io.Reader, scope func(ar Archive), pageAlloc BytesRecycler, priority TaskPriority, compression ...CompressionOptionFunc) (file ArchiveFile, err error) {
+	rd := NewAsyncReader(NewCompressedReader(reader, compression...), pageAlloc, priority)
+	return ArchiveFileRead(&rd, scope)
 }
-func CompressedArchiveFileWrite(writer io.Writer, scope func(ar Archive), compression ...CompressionOptionFunc) (err error) {
-	return ArchiveFileWrite(NewCompressedWriter(writer, compression...), scope)
+func CompressedArchiveFileWrite(writer io.Writer, scope func(ar Archive), pageAlloc BytesRecycler, priority TaskPriority, compression ...CompressionOptionFunc) (err error) {
+	wr := NewAsyncWriter(NewCompressedWriter(writer, compression...), pageAlloc, priority)
+	return ArchiveFileWrite(&wr, scope)
 }
