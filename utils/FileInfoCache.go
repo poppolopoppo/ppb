@@ -1,13 +1,16 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"sync"
+	"sync/atomic"
 
 	"github.com/poppolopoppo/ppb/internal/base"
 )
+
+const EnableFileInfoCache = true
 
 /***************************************
  * FileInfoCache
@@ -25,165 +28,248 @@ type FileInfoCache interface {
 	PrintStats(w io.Writer) error
 }
 
-type fileInfoEntry struct {
-	stat os.FileInfo
-	err  error
-
-	directory struct {
-		sync.Once
-		files       FileSet
-		directories DirSet
+var FileInfos FileInfoCache = func() FileInfoCache {
+	if EnableFileInfoCache {
+		return &onceFileInfoCache{}
+	} else {
+		return dummyFileInfoCache{}
 	}
+}()
+
+/***************************************
+ * FileInfoCache dummy (no caching)
+ ***************************************/
+
+type dummyFileInfoCache struct{}
+
+func (x dummyFileInfoCache) InvalidateDirectory(d Directory)                           {}
+func (x dummyFileInfoCache) InvalidateFile(f Filename)                                 {}
+func (x dummyFileInfoCache) Reset()                                                    {}
+func (x dummyFileInfoCache) PrintStats(w io.Writer) error                              { return nil }
+func (x dummyFileInfoCache) SetFileInfo(f Filename, stat os.FileInfo, err error)       {}
+func (x dummyFileInfoCache) SetDirectoryInfo(d Directory, stat os.FileInfo, err error) {}
+
+func (x dummyFileInfoCache) GetFileInfo(f Filename) (os.FileInfo, error) {
+	return os.Stat(f.String())
 }
-
-type fileInfoCache struct {
-	entries  base.SharedMapT[Filename, *fileInfoEntry]
-	recycler base.Recycler[*fileInfoEntry]
-
-	// stats struct {
-	// 	InfoHit  atomic.Int64
-	// 	InfoMiss atomic.Int64
-
-	// 	EnumerateHit  atomic.Int64
-	// 	EnumerateMiss atomic.Int64
-	// }
+func (x dummyFileInfoCache) GetDirectoryInfo(d Directory) (os.FileInfo, error) {
+	return os.Stat(d.String())
 }
-
-var FileInfos FileInfoCache = &fileInfoCache{
-	recycler: base.NewRecycler[*fileInfoEntry](
-		func() *fileInfoEntry {
-			return &fileInfoEntry{}
-		},
-		func(fie *fileInfoEntry) {
-			*fie = fileInfoEntry{}
-		},
-	),
-}
-
-func (x *fileInfoCache) InvalidateDirectory(d Directory) {
-	if entry, loaded := x.entries.LoadAndDelete(Filename{Dirname: d}); loaded {
-		x.recycler.Release(entry)
+func (x dummyFileInfoCache) EnumerateDirectory(d Directory) (files FileSet, directories DirSet, err error) {
+	var entries []os.DirEntry
+	entries, err = os.ReadDir(d.String())
+	if err != nil {
+		return
 	}
-}
-func (x *fileInfoCache) InvalidateFile(f Filename) {
-	if entry, loaded := x.entries.LoadAndDelete(f); loaded {
-		x.recycler.Release(entry)
-	}
-}
 
-func (x *fileInfoCache) SetFileInfo(f Filename, stat os.FileInfo, err error) {
-	x.findOrAddEntry(f, stat, err)
-}
-func (x *fileInfoCache) GetFileInfo(f Filename) (stat os.FileInfo, err error) {
-	if it := x.findOrCreateEntry(f); it != nil {
-		stat = it.stat
-		err = it.err
-
-		if err == nil && (stat.IsDir() || !stat.Mode().IsRegular()) {
-			err = fmt.Errorf("expected file at %q, found: %v", f, stat.Mode())
+	for _, e := range entries {
+		if e.IsDir() {
+			dir := d.Folder(e.Name())
+			directories.Append(dir)
+		} else if e.Type().IsRegular() {
+			file := d.File(e.Name())
+			files.Append(file)
 		}
 	}
 	return
 }
 
-func (x *fileInfoCache) SetDirectoryInfo(d Directory, stat os.FileInfo, err error) {
-	x.findOrAddEntry(Filename{Dirname: d}, stat, err)
-}
-func (x *fileInfoCache) GetDirectoryInfo(d Directory) (stat os.FileInfo, err error) {
-	if it := x.findOrCreateEntry(Filename{Dirname: d}); it != nil {
-		stat = it.stat
-		err = it.err
+/***************************************
+ * FileInfoCache once
+ ***************************************/
 
-		if err == nil && !stat.IsDir() {
-			err = fmt.Errorf("expected directory at %q, found: %v", d, stat.Mode())
+type onceFileInfoCacheDir struct {
+	Files FileSet
+	Dirs  DirSet
+}
+
+var errNotADirectory = errors.New("not a directory")
+var invalidEnumerateDirForFiles = func() base.Optional[onceFileInfoCacheDir] {
+	return base.UnexpectedOption[onceFileInfoCacheDir](errNotADirectory)
+}
+
+type onceFileInfoCacheEntry struct {
+	GetStat            func() base.Optional[os.FileInfo]
+	EnumerateDirectory func() base.Optional[onceFileInfoCacheDir]
+}
+
+func newGetState(f Filename) func() base.Optional[os.FileInfo] {
+	return base.Memoize(func() base.Optional[os.FileInfo] {
+		if len(f.Basename) == 0 {
+			onceFileCacheStats.GetDirStat.OnExecute()
+		} else {
+			onceFileCacheStats.GetFileStat.OnExecute()
+		}
+
+		if info, err := os.Stat(f.String()); err == nil {
+			return base.NewOption(info)
+		} else {
+			return base.UnexpectedOption[os.FileInfo](err)
+		}
+	})
+}
+func newSetState(stat os.FileInfo, err error) func() base.Optional[os.FileInfo] {
+	if err == nil {
+		return func() base.Optional[os.FileInfo] {
+			return base.NewOption(stat)
+		}
+	} else {
+		return func() base.Optional[os.FileInfo] {
+			return base.UnexpectedOption[os.FileInfo](err)
 		}
 	}
-	return
 }
+func newEnumerateDir(d Directory) func() base.Optional[onceFileInfoCacheDir] {
+	return base.Memoize(func() base.Optional[onceFileInfoCacheDir] {
+		onceFileCacheStats.EnumerateDir.OnExecute()
 
-func (x *fileInfoCache) EnumerateDirectory(d Directory) (FileSet, DirSet, error) {
-	if it := x.findOrCreateEntry(Filename{Dirname: d}); it != nil {
-		if it.err != nil {
-			return FileSet{}, DirSet{}, it.err
+		entries, err := os.ReadDir(d.String())
+		if err != nil {
+			return base.UnexpectedOption[onceFileInfoCacheDir](err)
 		}
 
-		it.directory.Once.Do(func() {
-			// x.stats.EnumerateMiss.Add(1)
-			// x.stats.EnumerateHit.Add(-1)
-
-			it.directory.files.Clear()
-			it.directory.directories.Clear()
-
-			var entries []os.DirEntry
-			entries, it.err = os.ReadDir(d.String())
-
-			if it.err == nil {
-				for _, e := range entries {
-					stat, err := e.Info()
-					if e.IsDir() {
-						dir := d.Folder(e.Name())
-						it.directory.directories.Append(dir)
-						x.SetDirectoryInfo(dir, stat, err)
-					} else if e.Type().IsRegular() {
-						file := d.File(e.Name())
-						it.directory.files.Append(file)
-						x.SetFileInfo(file, stat, err)
-					}
-				}
+		var result onceFileInfoCacheDir
+		for _, e := range entries {
+			if e.IsDir() {
+				dir := d.Folder(e.Name())
+				result.Dirs.Append(dir)
+			} else if e.Type().IsRegular() {
+				file := d.File(e.Name())
+				result.Files.Append(file)
 			}
-		})
-
-		// x.stats.EnumerateHit.Add(1)
-		return it.directory.files, it.directory.directories, it.err
-	}
-	base.UnreachableCode()
-	return FileSet{}, DirSet{}, nil
+		}
+		return base.NewOption(result)
+	})
 }
-func (x *fileInfoCache) Reset() {
+
+func newOnceFileInfoCacheEntry(f Filename) onceFileInfoCacheEntry {
+	return onceFileInfoCacheEntry{
+		GetStat:            newGetState(f),
+		EnumerateDirectory: invalidEnumerateDirForFiles,
+	}
+}
+func newOnceDirInfoCacheEntry(d Directory) onceFileInfoCacheEntry {
+	return onceFileInfoCacheEntry{
+		GetStat:            newGetState(Filename{Dirname: d}),
+		EnumerateDirectory: newEnumerateDir(d),
+	}
+}
+
+type onceFileInfoCache struct {
+	entries base.SharedMapT[Filename, onceFileInfoCacheEntry]
+}
+
+func (x *onceFileInfoCache) InvalidateDirectory(d Directory) {
+	onceFileCacheStats.GetDirStat.OnInvalidate()
+
+	x.entries.Add(Filename{Dirname: d}, newOnceDirInfoCacheEntry(d))
+}
+func (x *onceFileInfoCache) InvalidateFile(f Filename) {
+	onceFileCacheStats.GetFileStat.OnInvalidate()
+
+	x.entries.Add(f, newOnceFileInfoCacheEntry(f))
+}
+func (x *onceFileInfoCache) Reset() {
 	x.entries.Clear()
 }
 
-func (x *fileInfoCache) findOrAddEntry(f Filename, stat os.FileInfo, err error) *fileInfoEntry {
-	entry := x.recycler.Allocate()
-	entry.stat = stat
-	entry.err = err
+func (x *onceFileInfoCache) SetFileInfo(f Filename, stat os.FileInfo, err error) {
+	onceFileCacheStats.GetFileStat.OnSet()
 
-	if newEntry, loaded := x.entries.FindOrAdd(f, entry); loaded {
-		base.AssertNotIn(entry, newEntry)
-		x.recycler.Release(entry)
-		entry = newEntry
-	}
-
-	return entry
+	x.entries.Add(f, onceFileInfoCacheEntry{
+		GetStat:            newSetState(stat, err),
+		EnumerateDirectory: invalidEnumerateDirForFiles,
+	})
 }
-func (x *fileInfoCache) findOrCreateEntry(f Filename) *fileInfoEntry {
-	entry, ok := x.entries.Get(f)
-	if !ok {
-		// x.stats.InfoMiss.Add(1)
+func (x *onceFileInfoCache) SetDirectoryInfo(d Directory, stat os.FileInfo, err error) {
+	onceFileCacheStats.GetFileStat.OnSet()
 
-		var path string
-		if len(f.Basename) > 0 {
-			path = f.String()
-		} else {
-			path = f.Dirname.String()
+	x.entries.Add(Filename{Dirname: d}, onceFileInfoCacheEntry{
+		GetStat:            newSetState(stat, err),
+		EnumerateDirectory: newEnumerateDir(d),
+	})
+}
+
+func (x *onceFileInfoCache) GetFileInfo(f Filename) (os.FileInfo, error) {
+	onceFileCacheStats.GetFileStat.OnGet()
+
+	entry, _ := x.entries.FindOrAdd(f, newOnceFileInfoCacheEntry(f))
+	return entry.GetStat().Get()
+
+}
+func (x *onceFileInfoCache) GetDirectoryInfo(d Directory) (os.FileInfo, error) {
+	onceFileCacheStats.GetDirStat.OnGet()
+
+	entry, _ := x.entries.FindOrAdd(Filename{Dirname: d}, newOnceDirInfoCacheEntry(d))
+	return entry.GetStat().Get()
+}
+func (x *onceFileInfoCache) EnumerateDirectory(d Directory) (FileSet, DirSet, error) {
+	onceFileCacheStats.EnumerateDir.OnGet()
+
+	entry, _ := x.entries.FindOrAdd(Filename{Dirname: d}, newOnceDirInfoCacheEntry(d))
+	list, err := entry.EnumerateDirectory().Get()
+	return list.Files, list.Dirs, err
+}
+
+/***************************************
+ * FileInfoCache stats (only IF_PROFILING)
+ ***************************************/
+
+type onceFileCacheFunctionStats struct {
+	Sets        atomic.Int32
+	Gets        atomic.Int32
+	Executes    atomic.Int32
+	Invalidates atomic.Int32
+}
+
+func (x *onceFileCacheFunctionStats) OnSet() {
+	if PROFILING_ENABLED {
+		x.Sets.Add(1)
+	}
+}
+func (x *onceFileCacheFunctionStats) OnGet() {
+	if PROFILING_ENABLED {
+		x.Gets.Add(1)
+	}
+}
+func (x *onceFileCacheFunctionStats) OnExecute() {
+	if PROFILING_ENABLED {
+		x.Executes.Add(1)
+	}
+}
+func (x *onceFileCacheFunctionStats) OnInvalidate() {
+	if PROFILING_ENABLED {
+		x.Invalidates.Add(1)
+	}
+}
+
+var onceFileCacheStats struct {
+	GetFileStat  onceFileCacheFunctionStats
+	GetDirStat   onceFileCacheFunctionStats
+	EnumerateDir onceFileCacheFunctionStats
+}
+
+func (x *onceFileCacheFunctionStats) PrintStats(name string, w io.Writer) (err error) {
+	if PROFILING_ENABLED {
+		_, err = fmt.Printf(
+			"FileInfoCache= Get:%04d | Set:%04d | Exe:%04d | Clr:%04d | %s -> cache hit = %.2f%%\n",
+			x.Gets.Load(),
+			x.Sets.Load(),
+			x.Executes.Load(),
+			x.Invalidates.Load(),
+			name,
+			(float64(x.Sets.Load())*100.0)/float64(x.Gets.Load()))
+	}
+	return
+}
+
+func (x *onceFileInfoCache) PrintStats(w io.Writer) (err error) {
+	if PROFILING_ENABLED {
+		if err = onceFileCacheStats.GetDirStat.PrintStats("GetDirStat", w); err == nil {
+			if err = onceFileCacheStats.GetFileStat.PrintStats("GetFileStat", w); err == nil {
+				err = onceFileCacheStats.EnumerateDir.PrintStats("EnumerateDir", w)
+			}
 		}
-
-		stat, err := os.Stat(path)
-		entry = x.findOrAddEntry(f, stat, err)
 	}
-	// else {
-
-	// 	// x.stats.InfoHit.Add(1)
-	// }
-	return entry
-}
-
-func (x *fileInfoCache) PrintStats(w io.Writer) error {
-	// fmt.Fprintf(w, "File infos cache hit: %4d / miss: %4d\n",
-	// 	x.stats.InfoHit.Load(),
-	// 	x.stats.InfoMiss.Load())
-	// fmt.Fprintf(w, "Enumerate cache hit : %4d / miss: %4d\n",
-	// 	x.stats.EnumerateHit.Load(),
-	// 	x.stats.EnumerateMiss.Load())
-	return nil
+	return
 }
