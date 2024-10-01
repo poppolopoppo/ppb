@@ -279,10 +279,14 @@ func (git *GitSourceControl) IsInRepository(f Filename) bool {
 	return f.IsIn(git.Repository)
 }
 func (git *GitSourceControl) Command(name string, args ...string) ([]byte, error) {
-	args = append([]string{"--no-optional-locks", name}, args...)
-	base.LogVeryVerbose(LogSourceControl, "run git command %v", base.MakeStringer(func() string {
+	args = append([]string{
+		"--no-optional-locks", // do not lock Git repository (faster and allow concurrent processes)
+		"--no-lazy-fetch",     // do not fetch missing objects lazily from the remote (we never modify the repo from here)
+		"--no-pager",          // do not redirect Git output to a pager (faster!)
+		name}, args...)
+	defer base.LogBenchmark(LogSourceControl, "run git command %v", base.MakeStringer(func() string {
 		return strings.Join(args, " ")
-	}))
+	})).Close()
 
 	proc := exec.Command(git.Executable, args...)
 	proc.Env = os.Environ()
@@ -305,6 +309,7 @@ func getGitRepositoryStatus(git *GitSourceControl) (repo SourceControlRepository
 	var status []byte
 	status, err = git.Command("status",
 		"--ignore-submodules", // Git will recursve into each submodule without this, which can be very slow (1.5s to 250ms on PPE)
+		"--no-ahead-behind",   // Git won't report ahead/behind count of changes between local and remote branch (faster)
 		"-s", "--porcelain=v1")
 	if err != nil {
 		return
