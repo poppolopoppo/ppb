@@ -56,6 +56,17 @@ func (state *buildState) GetBuildStats() BuildStats {
 	defer state.RUnlock()
 	return state.stats
 }
+func (state *buildState) GetBuildResult() (BuildResult, error) {
+	state.RLock()
+	defer state.RUnlock()
+	if fut := state.future.Load(); fut != nil {
+		return fut.Join().Get()
+	}
+	return BuildResult{
+		BuildAlias: state.BuildAlias,
+		Status:     BUILDSTATUS_UNBUILT,
+	}, nil
+}
 
 /***************************************
  * Build Node

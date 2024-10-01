@@ -252,13 +252,13 @@ var onceFileCacheStats struct {
 func (x *onceFileCacheFunctionStats) PrintStats(name string, w io.Writer) (err error) {
 	if PROFILING_ENABLED {
 		_, err = fmt.Printf(
-			"FileInfoCache= Get:%04d | Set:%04d | Exe:%04d | Clr:%04d | %s -> cache hit = %.2f%%\n",
+			"FileInfoCache= Get:%04d | Set:%04d | Exe:%04d | Clr:%04d | %s -> cache miss = %.2f%%\n",
 			x.Gets.Load(),
 			x.Sets.Load(),
 			x.Executes.Load(),
 			x.Invalidates.Load(),
 			name,
-			(float64(x.Sets.Load())*100.0)/float64(x.Gets.Load()))
+			(float64(x.Executes.Load())*100.0)/float64(x.Gets.Load()))
 	}
 	return
 }

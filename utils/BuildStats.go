@@ -187,7 +187,7 @@ func (g *buildGraphWritePort) onBuildNodeFinished_ThreadSafe(node *buildState) {
 func (g *buildGraphWritePort) PrintSummary(startedAt time.Time, level base.LogLevel) {
 	// Total duration (always)
 	totalDuration := time.Since(startedAt)
-	base.LogForwardf("\nProgram took %.3f seconds to run", totalDuration.Seconds())
+	base.LogForwardf("\nGraph for %q took %.3f seconds to run", g.name, totalDuration.Seconds())
 
 	// Build durationl (if something was built)
 	if !level.IsVisible(base.LOG_INFO) {
@@ -209,13 +209,31 @@ func (g *buildGraphWritePort) PrintSummary(startedAt time.Time, level base.LogLe
 		return
 	}
 
+	printNodeStatus := func(node BuildState) fmt.Stringer {
+		return base.MakeStringer(func() (str string) {
+			result, err := node.GetBuildResult()
+			if err == nil {
+				switch result.Status {
+				case BUILDSTATUS_UNBUILT:
+					return fmt.Sprint(base.ANSI_FG0_BLACK.String(), "??")
+				case BUILDSTATUS_BUILT:
+					return fmt.Sprint(base.ANSI_FG1_GREEN.String(), "OK")
+				case BUILDSTATUS_UPDATED:
+					return fmt.Sprint(base.ANSI_FG0_YELLOW.String(), "=>")
+				case BUILDSTATUS_UPTODATE:
+					return fmt.Sprint(base.ANSI_FG0_GREEN.String(), "OK")
+				}
+			} else {
+				return fmt.Sprint(base.ANSI_FG1_RED, base.ANSI_BLINK1, "KO")
+			}
+			return
+		})
+	}
+
 	base.LogForwardf("\nMost expansive nodes built:")
 
 	for i, node := range g.GetMostExpansiveNodes(10, false) {
-		ns, ok := g.GetBuildStats(node)
-		if !ok || ns.Count == 0 {
-			continue
-		}
+		ns, _ := g.GetBuildStats(node)
 
 		fract := ns.Duration.Exclusive.Seconds() / stats.Duration.Exclusive.Seconds()
 
@@ -235,12 +253,14 @@ func (g *buildGraphWritePort) PrintSummary(startedAt time.Time, level base.LogLe
 			}
 		}
 
-		base.LogForwardf("%v[%02d] - %6.2f%% -  %7.3f  %7.3f  --  %s%v%v",
+		base.LogForwardf("%v[%02d] - %6.2f%% -  %7.3f  %7.3f  -- %s%v --  %s%v%v",
 			rowColor.Quantize(true).Ansi(true),
 			(i + 1),
 			100.0*fract,
 			ns.Duration.Exclusive.Seconds(),
 			ns.Duration.Inclusive.Seconds(),
+			printNodeStatus(node),
+			rowColor.Quantize(true).Ansi(true),
 			node.Alias(),
 			annotation,
 			base.ANSI_RESET)
@@ -259,10 +279,7 @@ func (g *buildGraphWritePort) PrintSummary(startedAt time.Time, level base.LogLe
 	base.LogForwardf("\nCritical path: %5.3f s", maxTime.Seconds())
 
 	for depth, node := range criticalPath {
-		ns, ok := g.GetBuildStats(node)
-		if !ok || ns.Count == 0 {
-			continue
-		}
+		ns, _ := g.GetBuildStats(node)
 
 		fract := ns.Duration.Exclusive.Seconds() / stats.Duration.Exclusive.Seconds()
 		// use percent of blocking duration
@@ -281,12 +298,14 @@ func (g *buildGraphWritePort) PrintSummary(startedAt time.Time, level base.LogLe
 			}
 		}
 
-		base.LogForwardf("%v[%02d] - %6.2f%% -  %7.3f  %7.3f  --  %s%s%v%v",
+		base.LogForwardf("%v[%02d] - %6.2f%% -  %7.3f  %7.3f  -- %s%v --  %s%s%v%v",
 			rowColor.Quantize(true).Ansi(true),
 			depth,
 			100.0*fract,
 			ns.Duration.Exclusive.Seconds(),
 			ns.Duration.Inclusive.Seconds(),
+			printNodeStatus(node),
+			rowColor.Quantize(true).Ansi(true),
 			strings.Repeat(` `, depth),
 			node.Alias(),
 			annotation,

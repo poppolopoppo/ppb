@@ -35,14 +35,25 @@ type BuildStamp struct {
 	Content base.Fingerprint
 }
 
+type BuildStatus byte
+
+const (
+	BUILDSTATUS_UNBUILT  BuildStatus = iota // node was not executed at all
+	BUILDSTATUS_BUILT                       // node was built but result was identical to previous state
+	BUILDSTATUS_UPDATED                     // node was built and result was changed compared to previous state
+	BUILDSTATUS_UPTODATE                    // node was not built since all its dependencies were unchanged
+)
+
 type BuildResult struct {
 	BuildAlias
 	BuildStamp
 	Buildable Buildable
+	Status    BuildStatus
 }
 
 type BuildState interface {
 	BuildNode
+	GetBuildResult() (BuildResult, error)
 	GetBuildStats() BuildStats
 }
 type BuildNodeEvent struct {
@@ -812,6 +823,19 @@ func (g *buildGraphWritePort) GetMostExpansiveNodes(n int, inclusive bool) []Bui
 	}))
 
 	return results
+}
+
+/***************************************
+ * Build Node Status
+ ***************************************/
+
+func (x BuildStatus) WasUpdated() bool {
+	switch x {
+	case BUILDSTATUS_UPDATED:
+		return true
+	default:
+		return false
+	}
 }
 
 /***************************************

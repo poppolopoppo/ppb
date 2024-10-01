@@ -999,14 +999,21 @@ func (g *buildGraphWritePort) launchBuild(node *buildNode, options *BuildOptions
 					}))
 			}
 
+			result.Status = BUILDSTATUS_BUILT
 			if changed {
+				result.Status = BUILDSTATUS_UPDATED
+
 				base.LogDebug(LogBuildGraph, "%v: new build stamp for [%T]\n\tnew: %v\n\told: %v", node.BuildAlias, result.Buildable, result.BuildStamp, context.previousStamp)
 			}
 
-		} else if options.Force {
-			base.LogVerbose(LogBuildGraph, "force up-to-date %q", node.BuildAlias)
 		} else {
-			base.LogVerbose(LogBuildGraph, "up-to-date %q", node.BuildAlias)
+			result.Status = BUILDSTATUS_UPTODATE
+
+			if options.Force {
+				base.LogVerbose(LogBuildGraph, "force up-to-date %q", node.BuildAlias)
+			} else {
+				base.LogVerbose(LogBuildGraph, "up-to-date %q", node.BuildAlias)
+			}
 		}
 
 		return result, err
