@@ -136,6 +136,20 @@ func FlushWriterIFP(w io.Writer) (err error) {
 	return
 }
 
+func CloseWriterIFP(w io.Writer) (err error) {
+	if close, ok := w.(io.WriteCloser); ok {
+		err = close.Close()
+	}
+	return
+}
+
+func CloseReaderIFP(r io.Reader) (err error) {
+	if close, ok := r.(io.ReadCloser); ok {
+		err = close.Close()
+	}
+	return
+}
+
 type Equatable[T any] interface {
 	Equals(other T) bool
 }

@@ -129,23 +129,6 @@ const useTransientIoCopyOverIoCopy = true
 
 // io copy with transient bytes to replace io.Copy()
 func TransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler, allowAsync bool) (size int64, err error) {
-	// if wt, ok := src.(io.WriterTo); ok {
-	// 	// If the reader has a WriteTo method, use it to do the copy.
-	// 	// Avoids an allocation and a copy.
-	// 	return wt.WriteTo(dst)
-	// } else if rt, ok := dst.(io.ReaderFrom); ok {
-	// 	hasNonGenericOverride := true
-	// 	IfWindows(func() {
-	// 		// os.File on Windows fallbacks on io.Copy, and we prefer our version in this case
-	// 		_, ok := dst.(*os.File)
-	// 		hasNonGenericOverride = !ok
-	// 	})
-	// 	if hasNonGenericOverride {
-	// 		// Similarly, if the writer has a ReadFrom method, use it to do the copy.
-	// 		return rt.ReadFrom(src)
-	// 	}
-	// }
-
 	if useTransientIoCopyOverIoCopy {
 		return AsyncTransientIoCopy(dst, src, pageAlloc, TASKPRIORITY_NORMAL)
 	} else {
@@ -170,32 +153,11 @@ func TransientIoCopyWithProgress(context string, totalSize int64, dst io.Writer,
 	}
 	defer pbar.Close()
 
-	// if wt, ok := src.(io.WriterTo); ok {
-	// 	// If the reader has a WriteTo method, use it to do the copy.
-	// 	// Avoids an allocation and a copy.
-	// 	hasNonGenericOverride := true
-	// 	IfLinux(func() {
-	// 		// os.File on Linux fallbacks on io.Copy, and we prefer our version in this case
-	// 		_, ok := dst.(*os.File)
-	// 		hasNonGenericOverride = !ok
-	// 	})
-	// 	if hasNonGenericOverride {
-	// 		return wt.WriteTo(WriterWithProgress{writer: dst, pbar: pbar})
-	// 	}
-
-	// } else if rt, ok := dst.(io.ReaderFrom); ok {
-	// 	hasNonGenericOverride := true
-	// 	IfWindows(func() {
-	// 		// os.File on Windows fallbacks on io.Copy, and we prefer our version in this case
-	// 		_, ok := dst.(*os.File)
-	// 		hasNonGenericOverride = !ok
-	// 	})
-	// 	if hasNonGenericOverride {
-	// 		// Similarly, if the writer has a ReadFrom method, use it to do the copy.
-	// 		return rt.ReadFrom(ReaderWithProgress{reader: src, pbar: pbar})
-	// 	}
-	// }
-
 	allowAsync := totalSize > int64(pageAlloc.Stride())
-	return TransientIoCopy(WriterWithProgress{writer: dst, pbar: pbar}, src, pageAlloc, allowAsync)
+	return TransientIoCopy(NewObservableWriter(dst, func(w io.Writer) func(int64, error) error {
+		return func(n int64, err error) error {
+			pbar.Add(n)
+			return err
+		}
+	}), src, pageAlloc, allowAsync)
 }

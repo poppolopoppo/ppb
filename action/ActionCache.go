@@ -41,47 +41,29 @@ type ActionCache interface {
 	CacheWrite(bg BuildGraphWritePort, key ActionCacheKey, artifact *CacheArtifact) error
 }
 
-var actionCacheStats *ActionCacheStats
-
 type actionCache struct {
 	path  Directory
 	seed  base.Fingerprint
 	stats ActionCacheStats
 }
 
-func GetActionCache(bg BuildGraphWritePort) ActionCache {
-	result := BuildActionCache(GetActionFlags().CachePath).Build(bg)
-	if result.Failure() == nil {
-		// store global access to cache stats
-		actionCacheStats = &result.Success().stats
-		// print cache stats upon exit if specified on command-line
-		if GetCommandFlags().Summary.Get() {
-			CommandEnv.OnExit(func(*CommandEnvT) error {
-				result.Success().stats.Print()
-				return nil
-			})
-		}
+var getActionCache = base.Memoize(func() *actionCache {
+	result := &actionCache{
+		path: GetActionFlags().CachePath,
+		seed: base.StringFingerprint("ActionCache-1.0.0"),
 	}
-	return result.Success()
-}
+	// print cache stats upon exit if specified on command-line
+	if GetCommandFlags().Summary.Get() {
+		CommandEnv.OnExit(func(*CommandEnvT) error {
+			result.stats.Print()
+			return nil
+		})
+	}
+	return result
+})
 
-func BuildActionCache(path Directory) BuildFactoryTyped[*actionCache] {
-	return MakeBuildFactory(func(bi BuildInitializer) (actionCache, error) {
-		return actionCache{
-			path: path,
-		}, nil
-	})
-}
-
-func (x *actionCache) Alias() BuildAlias {
-	return MakeBuildAlias("Cache", "Actions", x.path.String())
-}
-func (x *actionCache) Serialize(ar base.Archive) {
-	ar.Serializable(&x.path)
-	ar.Serializable(&x.seed)
-}
-func (x *actionCache) Build(bc BuildContext) error {
-	return internal_io.CreateDirectory(bc, x.path)
+func GetActionCache() ActionCache {
+	return getActionCache()
 }
 
 func (x *actionCache) GetEntryExtname() string {
@@ -259,9 +241,9 @@ func (x *ActionCacheBulk) CacheHit(bg BuildGraphWritePort, options ...BuildOptio
 }
 func (x *ActionCacheBulk) Deflate(root Directory, artifacts ...Filename) error {
 	deflateStat := StartBuildStats()
-	defer actionCacheStats.CacheDeflate.Append(&deflateStat)
+	defer getActionCache().stats.CacheDeflate.Append(&deflateStat)
 
-	return UFS.CreateBuffered(x.Path, func(w io.Writer) error {
+	return UFS.Create(x.Path, func(w io.Writer) error {
 		compression := GetCacheCompression()
 
 		zw := zip.NewWriter(w)
@@ -293,11 +275,11 @@ func (x *ActionCacheBulk) Deflate(root Directory, artifacts ...Filename) error {
 		}
 
 		return zw.Close()
-	}, base.TransientPage64KiB)
+	})
 }
 func (x *ActionCacheBulk) Inflate(dst Directory) (FileSet, error) {
 	inflateStat := StartBuildStats()
-	defer actionCacheStats.CacheInflate.Append(&inflateStat)
+	defer getActionCache().stats.CacheInflate.Append(&inflateStat)
 
 	var artifacts FileSet
 	return artifacts, UFS.OpenFile(x.Path, func(r *os.File) error {
@@ -492,20 +474,20 @@ type ActionCacheStats struct {
 	CacheWriteUncompressed int64
 }
 
-func (x *ActionCacheStats) StatRead(compressed, uncompressed int) {
+func (x *ActionCacheStats) StatRead(compressed, uncompressed int64) {
 	if compressed > 0 {
-		atomic.AddInt64(&x.CacheReadCompressed, int64(compressed))
+		atomic.AddInt64(&x.CacheReadCompressed, compressed)
 	}
 	if uncompressed > 0 {
-		atomic.AddInt64(&x.CacheReadUncompressed, int64(uncompressed))
+		atomic.AddInt64(&x.CacheReadUncompressed, uncompressed)
 	}
 }
-func (x *ActionCacheStats) StatWrite(compressed, uncompressed int) {
+func (x *ActionCacheStats) StatWrite(compressed, uncompressed int64) {
 	if compressed > 0 {
-		atomic.AddInt64(&x.CacheWriteCompressed, int64(compressed))
+		atomic.AddInt64(&x.CacheWriteCompressed, compressed)
 	}
 	if uncompressed > 0 {
-		atomic.AddInt64(&x.CacheWriteUncompressed, int64(uncompressed))
+		atomic.AddInt64(&x.CacheWriteUncompressed, uncompressed)
 	}
 }
 func (x *ActionCacheStats) Print() {
@@ -545,17 +527,19 @@ type CacheCompression struct {
 func newCacheCompressor(compressor func(writer io.Writer, lvl base.CompressionLevel) base.CompressedWriter, lvl base.CompressionLevel) zip.Compressor {
 	if GetCommandFlags().Summary.Get() {
 		return func(w io.Writer) (io.WriteCloser, error) {
-			return internal_io.NewObservableWriter(compressor(internal_io.NewObservableWriter(w,
-				func(w io.Writer, buf []byte) (n int, err error) {
-					n, err = w.Write(buf)
-					actionCacheStats.StatWrite(n, 0)
-					return
+			return base.NewObservableWriter(compressor(base.NewObservableWriter(w,
+				func(io.Writer) func(n int64, err error) error {
+					return func(n int64, err error) error {
+						getActionCache().stats.StatWrite(n, 0)
+						return err
+					}
 				}), lvl),
-				func(w io.Writer, buf []byte) (n int, err error) {
-					n, err = w.Write(buf)
-					actionCacheStats.StatWrite(0, n)
-					return
-				}), nil
+				func(io.Writer) func(n int64, err error) error {
+					return func(n int64, err error) error {
+						getActionCache().stats.StatWrite(0, n)
+						return err
+					}
+				}).(io.WriteCloser), nil
 		}
 	} else {
 		return func(w io.Writer) (io.WriteCloser, error) {
@@ -567,16 +551,18 @@ func newCacheCompressor(compressor func(writer io.Writer, lvl base.CompressionLe
 func newCacheDecompressor(decompressor func(reader io.Reader) base.CompressedReader) zip.Decompressor {
 	if GetCommandFlags().Summary.Get() {
 		return func(r io.Reader) io.ReadCloser {
-			return internal_io.NewObservableReader(decompressor(internal_io.NewObservableReader(r,
-				func(r io.Reader, buf []byte) (n int, err error) {
-					n, err = r.Read(buf)
-					actionCacheStats.StatRead(n, 0)
-					return
+			return base.NewObservableReader(decompressor(base.NewObservableReader(r,
+				func(io.Reader) func(n int64, err error) error {
+					return func(n int64, err error) error {
+						getActionCache().stats.StatRead(n, 0)
+						return err
+					}
 				})),
-				func(r io.Reader, buf []byte) (n int, err error) {
-					n, err = r.Read(buf)
-					actionCacheStats.StatRead(0, n)
-					return
+				func(io.Reader) func(n int64, err error) error {
+					return func(n int64, err error) error {
+						getActionCache().stats.StatRead(0, n)
+						return err
+					}
 				})
 		}
 	} else {

@@ -46,7 +46,7 @@ func (x *ArchiveFile) Serialize(ar Archive) {
 }
 
 func ArchiveFileRead(reader io.Reader, scope func(ar Archive), flags ...ArchiveFlag) (file ArchiveFile, err error) {
-	return file, ArchiveBinaryRead(reader, func(ar Archive) {
+	err = WithArchiveBinaryReader(reader, func(ar Archive) (err error) {
 		ar.Serializable(&file)
 		if err := ar.Error(); err == nil {
 			if file.Magic != ArchiveFileMagic {
@@ -62,15 +62,18 @@ func ArchiveFileRead(reader io.Reader, scope func(ar Archive), flags ...ArchiveF
 				scope(NewArchiveGuard(ar))
 			}
 		}
+		return
 	}, flags...)
+	return
 }
 func ArchiveFileWrite(writer io.Writer, scope func(ar Archive)) (err error) {
-	return ArchiveBinaryWrite(writer, func(ar Archive) {
+	return WithArchiveBinaryWriter(writer, func(ar Archive) (err error) {
 		file := NewArchiveFile()
 		ar.Serializable(&file)
-		if err := ar.Error(); err == nil {
+		if err = ar.Error(); err == nil {
 			scope(NewArchiveGuard(ar))
 		}
+		return
 	})
 }
 
@@ -79,10 +82,18 @@ func ArchiveFileWrite(writer io.Writer, scope func(ar Archive)) (err error) {
  ***************************************/
 
 func CompressedArchiveFileRead(reader io.Reader, scope func(ar Archive), pageAlloc BytesRecycler, priority TaskPriority, compression ...CompressionOptionFunc) (file ArchiveFile, err error) {
-	rd := NewAsyncReader(NewCompressedReader(reader, compression...), pageAlloc, priority)
-	return ArchiveFileRead(&rd, scope)
+	err = WithCompressedReader(reader, func(cr io.Reader) error {
+		return WithAsyncReader(cr, pageAlloc, priority, func(ar io.Reader) (err error) {
+			file, err = ArchiveFileRead(ar, scope)
+			return err
+		})
+	}, compression...)
+	return
 }
-func CompressedArchiveFileWrite(writer io.Writer, scope func(ar Archive), pageAlloc BytesRecycler, priority TaskPriority, compression ...CompressionOptionFunc) (err error) {
-	wr := NewAsyncWriter(NewCompressedWriter(writer, compression...), pageAlloc, priority)
-	return ArchiveFileWrite(&wr, scope)
+func CompressedArchiveFileWrite(writer io.Writer, scope func(ar Archive), pageAlloc BytesRecycler, priority TaskPriority, compression ...CompressionOptionFunc) error {
+	return WithCompressedWriter(writer, func(cw io.Writer) error {
+		return WithAsyncWriter(cw, pageAlloc, priority, func(aw io.Writer) error {
+			return ArchiveFileWrite(aw, scope)
+		})
+	}, compression...)
 }

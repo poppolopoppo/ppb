@@ -31,12 +31,14 @@ type ArchiveBinaryReader struct {
 	basicArchive
 }
 
-func ArchiveBinaryRead(reader io.Reader, scope func(ar Archive), flags ...ArchiveFlag) (err error) {
-	return Recover(func() error {
+func WithArchiveBinaryReader(reader io.Reader, scope func(ar Archive) error, flags ...ArchiveFlag) error {
+	return Recover(func() (err error) {
 		ar := NewArchiveBinaryReader(reader, flags...)
-		defer ar.Close()
-		scope(&ar)
-		return ar.Error()
+		defer ar.closeOnlySelf()
+		if err = scope(&ar); err == nil {
+			err = ar.Error()
+		}
+		return
 	})
 }
 
@@ -48,11 +50,14 @@ func NewArchiveBinaryReader(reader io.Reader, flags ...ArchiveFlag) ArchiveBinar
 	}
 }
 
+func (ar *ArchiveBinaryReader) closeOnlySelf() error {
+	return ar.basicArchive.Close()
+}
 func (ar *ArchiveBinaryReader) Close() (err error) {
 	if cls, ok := ar.reader.(io.Closer); ok {
 		err = cls.Close()
 	}
-	if er := ar.basicArchive.Close(); er != nil && err == nil {
+	if er := ar.closeOnlySelf(); er != nil && err == nil {
 		err = er
 	}
 	return
@@ -178,12 +183,14 @@ type ArchiveBinaryWriter struct {
 	basicArchive
 }
 
-func ArchiveBinaryWrite(writer io.Writer, scope func(ar Archive)) (err error) {
-	return Recover(func() error {
-		ar := NewArchiveBinaryWriter(writer)
-		defer ar.Close()
-		scope(&ar)
-		return ar.Error()
+func WithArchiveBinaryWriter(writer io.Writer, scope func(ar Archive) error, flags ...ArchiveFlag) error {
+	return Recover(func() (err error) {
+		ar := NewArchiveBinaryWriter(writer, flags...)
+		defer ar.closeOnlySelf()
+		if err = scope(&ar); err == nil {
+			err = ar.Error()
+		}
+		return
 	})
 }
 
@@ -198,11 +205,14 @@ func NewArchiveBinaryWriter(writer io.Writer, flags ...ArchiveFlag) ArchiveBinar
 	}
 }
 
+func (ar *ArchiveBinaryWriter) closeOnlySelf() error {
+	return ar.basicArchive.Close()
+}
 func (ar *ArchiveBinaryWriter) Close() (err error) {
 	if cls, ok := ar.writer.(io.Closer); ok {
 		err = cls.Close()
 	}
-	if er := ar.basicArchive.Close(); er != nil && err == nil {
+	if er := ar.closeOnlySelf(); er != nil && err == nil {
 		err = er
 	}
 	return

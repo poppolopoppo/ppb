@@ -124,11 +124,11 @@ type ClusterOptions struct {
 	NetInterface net.Interface
 	NetAddr      net.IPNet
 
-	StreamRead  StreamReadFunc
-	StreamWrite StreamWriteFunc
+	OnStreamRead  base.ObservableReaderFunc
+	OnStreamWrite base.ObservableWriterFunc
 
-	UncompressRead StreamReadFunc
-	CompressWrite  StreamWriteFunc
+	OnUncompressRead base.ObservableReaderFunc
+	OnCompressWrite  base.ObservableWriterFunc
 
 	*ClusterFlags
 }
@@ -147,16 +147,6 @@ func NewClusterOptions(options ...ClusterOption) (result ClusterOptions) {
 		// https://github.com/facebook/zstd#dictionary-compression-how-to
 		// #TODO: refactor API to avoid circular dependency between base & utils
 		/*base.CompressionOptionDictionaryFile(utils.UFS.Internal.Folder("zstd").File("ppb-message-dict.zstd"))*/)
-
-	// used for stats recording
-	result.StreamRead = func(r io.Reader, b []byte) (int, error) {
-		return r.Read(b)
-	}
-	result.UncompressRead = result.StreamRead
-	result.StreamWrite = func(w io.Writer, b []byte) (int, error) {
-		return w.Write(b)
-	}
-	result.CompressWrite = result.StreamWrite
 
 	// select default network interface
 	if result.ClusterFlags.IfIndex.IsInheritable() {
@@ -245,24 +235,24 @@ func ClusterOptionRetryCount(n int) ClusterOption {
 		co.RetryCount.Assign(n)
 	}
 }
-func ClusterOptionStreamRead(read StreamReadFunc) ClusterOption {
+func ClusterOptionStreamRead(read base.ObservableReaderFunc) ClusterOption {
 	return func(co *ClusterOptions) {
-		co.StreamRead = read
+		co.OnStreamRead = read
 	}
 }
-func ClusterOptionStreamWrite(write StreamWriteFunc) ClusterOption {
+func ClusterOptionStreamWrite(write base.ObservableWriterFunc) ClusterOption {
 	return func(co *ClusterOptions) {
-		co.StreamWrite = write
+		co.OnStreamWrite = write
 	}
 }
-func ClusterOptionUncompressRead(read StreamReadFunc) ClusterOption {
+func ClusterOptionUncompressRead(read base.ObservableReaderFunc) ClusterOption {
 	return func(co *ClusterOptions) {
-		co.UncompressRead = read
+		co.OnUncompressRead = read
 	}
 }
-func ClusterOptionCompressWrite(write StreamWriteFunc) ClusterOption {
+func ClusterOptionCompressWrite(write base.ObservableWriterFunc) ClusterOption {
 	return func(co *ClusterOptions) {
-		co.CompressWrite = write
+		co.OnCompressWrite = write
 	}
 }
 func ClusterOptionTimeout(every time.Duration) ClusterOption {

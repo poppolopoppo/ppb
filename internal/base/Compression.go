@@ -11,9 +11,11 @@ import (
 var LogCompression = NewLogCategory("Compression")
 
 type CompressedReader interface {
+	GetCompressionFormat() CompressionFormat
 	io.ReadCloser
 }
 type CompressedWriter interface {
+	GetCompressionFormat() CompressionFormat
 	Flush() error
 	io.WriteCloser
 }
@@ -54,6 +56,18 @@ func NewCompressionOptions(options ...CompressionOptionFunc) (result Compression
 }
 func (x *CompressionOptions) Options(co *CompressionOptions) {
 	*co = *x
+}
+
+func WithCompressedReader(reader io.Reader, decompress func(io.Reader) error, options ...CompressionOptionFunc) error {
+	compressed := NewCompressedReader(reader, options...)
+	defer compressed.Close()
+	return decompress(compressed)
+}
+
+func WithCompressedWriter(writer io.Writer, compress func(io.Writer) error, options ...CompressionOptionFunc) error {
+	compressed := NewCompressedWriter(writer, options...)
+	defer compressed.Close()
+	return compress(compressed)
 }
 
 func NewCompressedReader(reader io.Reader, options ...CompressionOptionFunc) CompressedReader {
@@ -123,6 +137,10 @@ type transientLz4Reader struct {
 	*lz4.Reader
 }
 
+func (x transientLz4Reader) GetCompressionFormat() CompressionFormat {
+	return COMPRESSION_FORMAT_LZ4
+}
+
 // https://indico.fnal.gov/event/16264/contributions/36466/attachments/22610/28037/Zstd__LZ4.pdf
 // var lz4CompressionLevelOptionDefault = lz4.CompressionLevelOption(lz4.Level4) // Level4 is already very slow (1.21 Gb in 359s)
 var lz4CompressionLevelOptionDefault = lz4.CompressionLevelOption(lz4.Fast) // Fast is... fast ^^ (1.40 Gb in 52s)
@@ -158,6 +176,9 @@ type transientLz4Writer struct {
 func (x transientLz4Writer) Close() (err error) {
 	defer TransientLz4Writer.Release(x.Writer)
 	return x.Writer.Close()
+}
+func (x transientLz4Writer) GetCompressionFormat() CompressionFormat {
+	return COMPRESSION_FORMAT_LZ4
 }
 
 var TransientLz4Writer = NewRecycler[*lz4.Writer](
@@ -199,22 +220,44 @@ func getZStdCompressionLevel(lvl CompressionLevel) (result int) {
 	return
 }
 
+type compressedReaderZStd struct {
+	io.ReadCloser
+}
+type compressedWriterZStd struct {
+	*zstd.Writer
+}
+
+func (x compressedReaderZStd) GetCompressionFormat() CompressionFormat {
+	return COMPRESSION_FORMAT_ZSTD
+}
+func (x compressedWriterZStd) GetCompressionFormat() CompressionFormat {
+	return COMPRESSION_FORMAT_ZSTD
+}
+
 func NewZStdReader(reader io.Reader) CompressedReader {
-	return zstd.NewReader(reader)
+	return compressedReaderZStd{
+		ReadCloser: zstd.NewReader(reader),
+	}
 }
 func NewZStdWriter(writer io.Writer, lvl CompressionLevel) CompressedWriter {
 	result := zstd.NewWriterLevel(writer, getZStdCompressionLevel(lvl))
 	result.SetNbWorkers(1)
-	return result
+	return compressedWriterZStd{
+		Writer: result,
+	}
 }
 
 func NewZStdReaderDict(reader io.Reader, dictionary []byte) CompressedReader {
-	return zstd.NewReaderDict(reader, dictionary)
+	return compressedReaderZStd{
+		ReadCloser: zstd.NewReaderDict(reader, dictionary),
+	}
 }
 func NewZStdWriterDict(writer io.Writer, lvl CompressionLevel, dictionary []byte) CompressedWriter {
 	result := zstd.NewWriterLevelDict(writer, getZStdCompressionLevel(lvl), dictionary)
 	result.SetNbWorkers(1)
-	return result
+	return compressedWriterZStd{
+		Writer: result,
+	}
 }
 
 /***************************************
@@ -295,7 +338,7 @@ func (x CompressionLevel) MarshalText() ([]byte, error) {
 func (x *CompressionLevel) UnmarshalText(data []byte) error {
 	return x.Set(UnsafeStringFromBytes(data))
 }
-func (x CompressionLevel) AutoComplete(in AutoComplete) {
+func (x *CompressionLevel) AutoComplete(in AutoComplete) {
 	for _, it := range GetCompressionLevels() {
 		in.Add(it.String(), it.Description())
 	}
@@ -371,7 +414,7 @@ func (x CompressionFormat) MarshalText() ([]byte, error) {
 func (x *CompressionFormat) UnmarshalText(data []byte) error {
 	return x.Set(UnsafeStringFromBytes(data))
 }
-func (x CompressionFormat) AutoComplete(in AutoComplete) {
+func (x *CompressionFormat) AutoComplete(in AutoComplete) {
 	for _, it := range GetCompressionFormats() {
 		in.Add(it.String(), it.Description())
 	}

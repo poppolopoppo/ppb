@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -97,38 +98,54 @@ func (x *Tunnel) TimeSinceLastRead() time.Duration {
 func (x *Tunnel) TimeSinceLastWrite() time.Duration {
 	return time.Now().UTC().Sub(x.lastWrite)
 }
-func (x *Tunnel) Read(buf []byte) (int, error) {
+func (x *Tunnel) Read(buf []byte) (n int, err error) {
 	if x.stream == nil {
-		return 0, io.ErrUnexpectedEOF
+		err = io.ErrUnexpectedEOF
+		return
 	}
 
-	if err := x.stream.SetReadDeadline(time.Now().Add(x.timeout)); err != nil {
-		return 0, err
+	if err = x.stream.SetReadDeadline(time.Now().Add(x.timeout)); err != nil {
+		return
 	}
 
-	n, err := x.Cluster.StreamRead(x.stream, buf)
+	if x.Cluster.OnStreamRead != nil {
+		onStream := x.Cluster.OnStreamRead(x.stream)
+		n, err = x.stream.Read(buf)
+		onStream(int64(n), err)
+	} else {
+		n, err = x.stream.Read(buf)
+	}
+
 	if err == nil {
 		x.lastRead = time.Now().UTC()
 	}
-	return n, err
+	return
 }
-func (x *Tunnel) Write(buf []byte) (int, error) {
+func (x *Tunnel) Write(buf []byte) (n int, err error) {
 	if x.stream == nil {
-		return 0, io.ErrUnexpectedEOF
+		err = io.ErrUnexpectedEOF
+		return
 	}
 
-	if err := x.stream.SetWriteDeadline(time.Now().Add(x.timeout)); err != nil {
-		return 0, err
+	if err = x.stream.SetWriteDeadline(time.Now().Add(x.timeout)); err != nil {
+		return
 	}
 
-	n, err := x.Cluster.StreamWrite(x.stream, buf)
+	if x.Cluster.OnStreamWrite != nil {
+		onStreamWrite := x.Cluster.OnStreamWrite(x.stream)
+		n, err = x.stream.Write(buf)
+		onStreamWrite(int64(n), err)
+	} else {
+		n, err = x.stream.Write(buf)
+	}
+
 	if err == nil {
 		x.lastWrite = time.Now().UTC()
 		if n < len(buf) {
 			err = io.ErrShortWrite
 		}
 	}
-	return n, err
+	return
 }
 func (x *Tunnel) Close() error {
 	var streamErr, connErr error
@@ -174,7 +191,19 @@ func generateServerTLSConfig() *tls.Config {
 		CommandPanic(err)
 	}
 
-	template := x509.Certificate{SerialNumber: big.NewInt(1)}
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(2024),
+		Subject: pkix.Name{
+			Organization: []string{"PPB"},
+			Country:      []string{"FR"},
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(1, 0, 0),
+		IsCA:                  true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+	}
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
 	if err != nil {
 		CommandPanic(err)

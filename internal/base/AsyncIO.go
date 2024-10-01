@@ -2,9 +2,10 @@ package base
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
+	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 )
@@ -27,13 +28,128 @@ var GetIOWriteThreadPool = Memoize(func() (result ThreadPool) {
  ***************************************/
 
 func AsyncTransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler, priority TaskPriority) (n int64, err error) {
-	err = WithAsyncWriter(dst, pageAlloc, priority, func(w io.Writer) error {
-		return WithAsyncReader(src, pageAlloc, priority, func(r io.Reader) (er error) {
+	err = WithAsyncReaderFrom(dst, pageAlloc, priority, func(w io.Writer) error {
+		return WithAsyncWriterTo(src, pageAlloc, priority, func(r io.Reader) (er error) {
 			n, er = io.Copy(w, r)
 			return
 		})
 	})
 	return
+}
+
+/***************************************
+ * WithAsyncReader
+ ***************************************/
+
+func alwaysWithAsyncReader(reader io.Reader, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Reader) error) error {
+	asyncReader := NewAsyncReader(reader, pageAlloc, priority)
+	defer asyncReader.Close()
+	return scope(&asyncReader)
+}
+
+func WithAsyncWriterTo(reader io.Reader, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Reader) error) error {
+	if EnableAsyncIO {
+		var dispatch func(actual io.Reader) error
+		dispatch = func(actual io.Reader) error {
+			switch rd := actual.(type) {
+			case ObservableReader:
+				return dispatch(rd.Reader)
+			case *os.File:
+				return alwaysWithAsyncReader(reader, pageAlloc, priority, scope)
+			case io.WriterTo:
+				return scope(reader)
+			case CompressedReader:
+				return alwaysWithAsyncReader(reader, pageAlloc, priority, scope)
+			default:
+				return scope(reader)
+			}
+		}
+		return dispatch(reader)
+	} else {
+		return scope(reader)
+	}
+}
+
+func WithAsyncReader(reader io.Reader, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Reader) error) error {
+	if EnableAsyncIO {
+		var dispatch func(actual io.Reader) error
+		dispatch = func(actual io.Reader) error {
+			switch rd := actual.(type) {
+			case ObservableReader:
+				return dispatch(rd.Reader)
+			case *os.File:
+				return alwaysWithAsyncReader(reader, pageAlloc, priority, scope)
+			case CompressedReader:
+				return alwaysWithAsyncReader(reader, pageAlloc, priority, scope)
+			default:
+				return scope(reader)
+			}
+		}
+		return dispatch(reader)
+	} else {
+		return scope(reader)
+	}
+}
+
+/***************************************
+ * WithAsyncWriter
+ ***************************************/
+
+func alwaysWithAsyncWriter(writer io.Writer, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Writer) error) error {
+	asyncWriter := NewAsyncWriter(writer, pageAlloc, priority)
+	defer asyncWriter.Close()
+	if err := scope(&asyncWriter); err == nil {
+		return asyncWriter.Flush()
+	} else {
+		return err
+	}
+}
+
+func WithAsyncReaderFrom(writer io.Writer, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Writer) error) error {
+	if EnableAsyncIO {
+		var dispatch func(actual io.Writer) error
+		dispatch = func(actual io.Writer) error {
+			switch wr := actual.(type) {
+			case ObservableWriter:
+				return dispatch(wr.Writer)
+			case *os.File:
+				return alwaysWithAsyncWriter(writer, pageAlloc, priority, scope)
+			case io.ReaderFrom:
+				return scope(writer)
+			case http.ResponseWriter:
+				return alwaysWithAsyncWriter(writer, pageAlloc, priority, scope)
+			case CompressedWriter:
+				return alwaysWithAsyncWriter(writer, pageAlloc, priority, scope)
+			default:
+				return scope(writer)
+			}
+		}
+		return dispatch(writer)
+	} else {
+		return scope(writer)
+	}
+}
+func WithAsyncWriter(writer io.Writer, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Writer) error) error {
+	if EnableAsyncIO {
+		var dispatch func(actual io.Writer) error
+		dispatch = func(actual io.Writer) error {
+			switch wr := actual.(type) {
+			case ObservableWriter:
+				return dispatch(wr.Writer)
+			case *os.File:
+				return alwaysWithAsyncWriter(writer, pageAlloc, priority, scope)
+			case http.ResponseWriter:
+				return alwaysWithAsyncWriter(writer, pageAlloc, priority, scope)
+			case CompressedWriter:
+				return alwaysWithAsyncWriter(writer, pageAlloc, priority, scope)
+			default:
+				return scope(writer)
+			}
+		}
+		return dispatch(writer)
+	} else {
+		return scope(writer)
+	}
 }
 
 /***************************************
@@ -71,6 +187,32 @@ func NewAsyncReader(reader io.Reader, pageAlloc BytesRecycler, priority TaskPrio
 	cancel := make(chan struct{})
 	queue := make(chan Optional[asyncIOBlock])
 
+	// go func() {
+	// 	defer close(queue)
+	// 	for {
+	// 		select {
+	// 		case <-cancel:
+	// 			return
+	// 		default:
+	// 			var buf asyncIOBlock
+	// 			var err error
+	// 			buf.allocate(pageAlloc)
+	// 			buf.off, err = reader.Read(*buf.data)
+
+	// 			if buf.off > 0 {
+	// 				queue <- NewOption(buf)
+	// 			} else {
+	// 				buf.release(pageAlloc)
+	// 			}
+
+	// 			if err != nil {
+	// 				queue <- UnexpectedOption[asyncIOBlock](err)
+	// 				return
+	// 			}
+	// 		}
+	// 	}
+	// }()
+
 	GetIOReadThreadPool().Queue(func(ThreadContext) {
 		defer close(queue)
 		for {
@@ -104,27 +246,6 @@ func NewAsyncReader(reader io.Reader, pageAlloc BytesRecycler, priority TaskPrio
 		al:     pageAlloc,
 		cancel: cancel,
 		queue:  queue,
-	}
-}
-
-func WithAsyncReader(reader io.Reader, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Reader) error) error {
-	if EnableAsyncIO {
-		switch rd := reader.(type) {
-		case *bufio.ReadWriter:
-			return scope(rd)
-		case *bufio.Reader:
-			return scope(rd)
-		case *bytes.Buffer:
-			return scope(rd)
-		case *AsyncReader:
-			return scope(rd)
-		default:
-			asyncReader := NewAsyncReader(rd, pageAlloc, priority)
-			defer asyncReader.Close()
-			return scope(&asyncReader)
-		}
-	} else {
-		return scope(reader)
 	}
 }
 
@@ -170,10 +291,6 @@ func (x *AsyncReader) Read(p []byte) (n int, err error) {
 }
 
 func (x *AsyncReader) Close() (err error) {
-	if x.rd == nil {
-		return nil
-	}
-
 	// cancel remote task and release all read buffers in flight
 	AssertNotIn(x.cancel, nil) // Close() already called?
 	close(x.cancel)
@@ -190,13 +307,6 @@ func (x *AsyncReader) Close() (err error) {
 		x.buf.release(x.al)
 	}
 	x.cur = 0
-
-	// close inner reader if it implements Close() method
-	if readCloser, ok := x.rd.(io.ReadCloser); ok {
-		if er := readCloser.Close(); er != nil && err == nil {
-			err = er
-		}
-	}
 	return
 }
 
@@ -289,27 +399,6 @@ func NewAsyncWriter(writer io.Writer, pageAlloc BytesRecycler, priority TaskPrio
 	}
 }
 
-func WithAsyncWriter(writer io.Writer, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Writer) error) error {
-	if EnableAsyncIO {
-		switch wr := writer.(type) {
-		case *bufio.ReadWriter:
-			return scope(wr)
-		case *bufio.Writer:
-			return scope(wr)
-		case *bytes.Buffer:
-			return scope(wr)
-		case *AsyncWriter:
-			return scope(wr)
-		default:
-			asyncWriter := NewAsyncWriter(wr, pageAlloc, priority)
-			defer asyncWriter.Close()
-			return scope(&asyncWriter)
-		}
-	} else {
-		return scope(writer)
-	}
-}
-
 func (x *AsyncWriter) asyncWriteBuf(buf asyncIOBlock) {
 	Assert(func() bool { return buf.data != nil && buf.off > 0 })
 	x.wg.Add(1)
@@ -327,44 +416,43 @@ func (x *AsyncWriter) asyncWriteBuf(buf asyncIOBlock) {
 		}
 	}, x.pri, ThreadPoolDebugId{Category: "AsyncWriteBuf", Arg: x})
 }
-func (x *AsyncWriter) asyncWriteRaw(p []byte) {
-	x.wg.Add(1)
-	GetIOWriteThreadPool().Queue(func(tc ThreadContext) {
-		defer x.wg.Done()
-		for off := 0; off < len(p); {
-			if written, err := x.wr.Write(p[off:]); err == nil {
-				off += written
-			} else {
-				x.err.Store(&err)
-			}
-		}
-	}, x.pri, ThreadPoolDebugId{Category: "AsyncWriteRaw", Arg: x})
+
+func (x *AsyncWriter) Err() (err error) {
+	if er := x.err.Load(); er != nil {
+		err = *er
+	}
+	return
 }
 
 func (x *AsyncWriter) String() string {
 	return fmt.Sprintf("@%p <%T> blk=%d", x.wr, x.wr, x.al.Stride())
 }
 
-func (x *AsyncWriter) Write(p []byte) (int, error) {
-	if len(p) == 0 {
-		return 0, nil
-	} else if len(p) > x.al.Stride() {
-		x.asyncWriteRaw(p)
-		return len(p), nil
-	}
+func (x *AsyncWriter) Write(p []byte) (written int, err error) {
+	Assert(func() bool { return x.al.Stride() > len(p) })
 
-	if x.buf.data != nil && len(p)+x.buf.off > len(*x.buf.data) {
-		x.asyncWriteBuf(x.buf)
-		x.buf = asyncIOBlock{}
-	}
+	for len(p) > 0 {
+		if x.buf.data == nil {
+			x.buf.allocate(x.al)
+		}
 
-	if x.buf.data == nil {
-		x.buf.allocate(x.al)
-	}
+		n := min(len(*x.buf.data)-x.buf.off, len(p))
+		copy((*x.buf.data)[x.buf.off:x.buf.off+n], p[:n])
 
-	written := copy((*x.buf.data)[x.buf.off:], p)
-	x.buf.off += written
-	return written, nil
+		x.buf.off += n
+		written += n
+		p = p[n:]
+
+		if x.buf.off == len(*x.buf.data) {
+			x.asyncWriteBuf(x.buf)
+			x.buf = asyncIOBlock{}
+		}
+
+		if err = x.Err(); err != nil {
+			break
+		}
+	}
+	return
 }
 
 func (x *AsyncWriter) Flush() error {
@@ -374,19 +462,12 @@ func (x *AsyncWriter) Flush() error {
 	} else if x.buf.data != nil {
 		x.buf.release(x.al)
 	}
-	return nil
+	return x.Err()
 }
 
 func (x *AsyncWriter) Close() (err error) {
-	if err = x.Flush(); err != nil {
-		return err
-	}
-
+	x.Flush()
 	x.wg.Wait()
-
-	if writeCloser, ok := x.wr.(io.WriteCloser); ok {
-		err = writeCloser.Close()
-	}
 
 	if er := x.err.Load(); er != nil {
 		err = *er

@@ -13,7 +13,7 @@ import (
 
 type ArchiveDiff struct {
 	buffer  *bytes.Buffer
-	compare ArchiveBinaryReader
+	compare *ArchiveBinaryReader
 	stack   []Serializable
 	level   int
 	len     int
@@ -58,23 +58,24 @@ func (x *ArchiveDiff) Diff(a, b Serializable) error {
 
 	return Recover(func() error {
 		// write a in memory
-		if ram := NewArchiveBinaryWriter(x.buffer, AR_DETERMINISM); true {
-			ram.Serializable(a)
-			if err := ram.Close(); err != nil {
-				return err
-			}
+		if err := WithArchiveBinaryWriter(x.buffer, func(ar Archive) error {
+			ar.Serializable(a)
+			return nil
+		}, AR_DETERMINISM); err != nil {
+			return err
 		}
 
 		// record serialized size
 		x.len = x.buffer.Len()
 
 		// read b from memory, but do not actually update b
-		x.compare = NewArchiveBinaryReader(x.buffer, AR_DETERMINISM)
-		x.compare.flags.Remove(AR_LOADING) // don't want to overwrite b, so we tweak AR_LOADING flag
-		defer x.compare.Close()
-
-		x.Serializable(b)
-		return x.Error()
+		return WithArchiveBinaryReader(x.buffer, func(ar Archive) error {
+			x.compare = ar.(*ArchiveBinaryReader)
+			x.compare.flags.Remove(AR_LOADING) // don't want to overwrite b, so we tweak AR_LOADING flag
+			x.Serializable(b)
+			x.compare = nil
+			return nil
+		}, AR_DETERMINISM)
 	})
 }
 

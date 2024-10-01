@@ -809,14 +809,7 @@ func (ufs *UFSFrontEnd) Create(dst Filename, write func(io.Writer) error) error 
 func (ufs *UFSFrontEnd) CreateBuffered(dst Filename, write func(io.Writer) error, pageAlloc base.BytesRecycler) error {
 	return ufs.CreateFile(dst, func(w *os.File) (err error) {
 		if base.EnableAsyncIO {
-			asyncWriter := base.NewAsyncWriter(w, pageAlloc, base.TASKPRIORITY_NORMAL)
-			defer func() {
-				if er := asyncWriter.Close(); er != nil && err == nil {
-					err = er
-				}
-			}()
-			err = write(&asyncWriter)
-			return
+			return base.WithAsyncWriter(w, pageAlloc, base.TASKPRIORITY_NORMAL, write)
 		} else {
 			var buffered bufio.Writer
 			buffered.Reset(w)
@@ -855,12 +848,7 @@ func (ufs *UFSFrontEnd) OpenFile(src Filename, read func(*os.File) error) error 
 	base.LogDebug(LogUFS, "open '%v'", src)
 
 	if err == nil {
-		defer func() {
-			closeErr := input.Close()
-			if err == nil {
-				err = closeErr
-			}
-		}()
+		defer input.Close()
 		if err = read(input); err == nil {
 			return err
 		}
@@ -877,14 +865,7 @@ func (ufs *UFSFrontEnd) Open(src Filename, read func(io.Reader) error) error {
 func (ufs *UFSFrontEnd) OpenBuffered(src Filename, read func(io.Reader) error) error {
 	return ufs.OpenFile(src, func(r *os.File) (err error) {
 		if base.EnableAsyncIO {
-			asyncReader := base.NewAsyncReader(r, base.TransientPage4KiB, base.TASKPRIORITY_NORMAL)
-			defer func() {
-				if er := asyncReader.Close(); er != nil && err == nil {
-					err = er
-				}
-			}()
-			err = read(&asyncReader)
-			return
+			return base.WithAsyncReader(r, base.TransientPage4KiB, base.TASKPRIORITY_NORMAL, read)
 		} else {
 			var buffered bufio.Reader
 			buffered.Reset(r)
@@ -1021,7 +1002,7 @@ func (ufs *UFSFrontEnd) Crc32(src Filename) (checksum uint32, err error) {
 		pageAlloc := base.GetBytesRecyclerBySize(totalSize)
 
 		crc := crc32.NewIEEE()
-		if _, err = base.TransientIoCopy(crc, f, pageAlloc, true); err == nil {
+		if _, err = base.TransientIoCopy(crc, f, pageAlloc, totalSize > int64(pageAlloc.Stride())); err == nil {
 			checksum = crc.Sum32()
 		}
 		return err

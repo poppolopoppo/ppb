@@ -1,8 +1,6 @@
 package io
 
 import (
-	"io"
-
 	"github.com/poppolopoppo/ppb/internal/base"
 	"github.com/poppolopoppo/ppb/utils"
 )
@@ -19,91 +17,6 @@ func InitIO() {
 	base.RegisterSerializable[DirectoryGlob]()
 	base.RegisterSerializable[DirectoryList]()
 	base.RegisterSerializable[FileDigest]()
-}
-
-/***************************************
- * Observable Writer
- ***************************************/
-
-type ObservableWriterFunc = func(w io.Writer, buf []byte) (int, error)
-
-type ObservableWriter struct {
-	io.Writer
-	OnWrite ObservableWriterFunc
-}
-
-func NewObservableWriter(w io.Writer, onWrite ObservableWriterFunc) ObservableWriter {
-	base.Assert(func() bool { return w != nil })
-	base.Assert(func() bool { return onWrite != nil })
-	return ObservableWriter{
-		Writer:  w,
-		OnWrite: onWrite,
-	}
-}
-
-func (x ObservableWriter) Flush() error {
-	return base.FlushWriterIFP(x.Writer)
-}
-func (x ObservableWriter) Close() error {
-	if cls, ok := x.Writer.(io.WriteCloser); ok {
-		return cls.Close()
-	}
-	return nil
-}
-func (x ObservableWriter) Reset(w io.Writer) error {
-	if err := base.FlushWriterIFP(x.Writer); err != nil {
-		return err
-	}
-	if rst, ok := x.Writer.(base.WriteReseter); ok {
-		return rst.Reset(w)
-	}
-	return nil
-}
-func (x ObservableWriter) Write(buf []byte) (int, error) {
-	if x.OnWrite != nil {
-		return x.OnWrite(x.Writer, buf)
-	} else {
-		return x.Writer.Write(buf)
-	}
-}
-
-/***************************************
- * Observable Reader
- ***************************************/
-
-type ObservableReaderFunc = func(r io.Reader, buf []byte) (int, error)
-
-type ObservableReader struct {
-	io.Reader
-	OnRead ObservableReaderFunc
-}
-
-func NewObservableReader(r io.Reader, onRead ObservableReaderFunc) ObservableReader {
-	base.Assert(func() bool { return r != nil })
-	base.Assert(func() bool { return onRead != nil })
-	return ObservableReader{
-		Reader: r,
-		OnRead: onRead,
-	}
-}
-func (x ObservableReader) Close() error {
-	if cls, ok := x.Reader.(io.ReadCloser); ok {
-		return cls.Close()
-	}
-	return nil
-}
-func (x ObservableReader) Reset(r io.Reader) error {
-	if rst, ok := x.Reader.(base.ReadReseter); ok {
-		return rst.Reset(r)
-	}
-	return nil
-}
-func (x ObservableReader) Read(buf []byte) (int, error) {
-	if x.OnRead != nil {
-		return x.OnRead(x.Reader, buf)
-	} else {
-		return x.Reader.Read(buf)
-	}
 }
 
 /***************************************

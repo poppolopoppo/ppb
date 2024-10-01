@@ -11,12 +11,6 @@ type Optional[T any] struct {
 	err   error
 }
 
-type optionEmptyError struct{}
-
-func (x optionEmptyError) Error() string {
-	return "option has no value"
-}
-
 var ErrEmptyOptional error = errors.New("empty optional")
 
 func NewOption[T any](value T) Optional[T] {

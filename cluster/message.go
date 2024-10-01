@@ -136,9 +136,17 @@ func newMessageReadWriter(tunnel *Tunnel) (result messageReadWriter) {
 	result.localAddr, result.remoteAddr = tunnel.conn.LocalAddr(), tunnel.conn.RemoteAddr()
 	result.category = base.MakeLogCategory(result.remoteAddr.String())
 
-	result.rd = base.NewArchiveBinaryReader(internal_io.NewObservableReader(base.NewCompressedReader(tunnel, tunnel.Compression.Options), tunnel.Cluster.UncompressRead), base.AR_TOLERANT)
+	if tunnel.Cluster.OnUncompressRead != nil {
+		result.rd = base.NewArchiveBinaryReader(base.NewObservableReader(base.NewCompressedReader(tunnel, tunnel.Compression.Options), tunnel.Cluster.OnUncompressRead), base.AR_TOLERANT)
+	} else {
+		result.rd = base.NewArchiveBinaryReader(base.NewCompressedReader(tunnel, tunnel.Compression.Options), base.AR_TOLERANT)
+	}
 
-	result.wr = base.NewArchiveBinaryWriter(internal_io.NewObservableWriter(base.NewCompressedWriter(tunnel, tunnel.Compression.Options), tunnel.Cluster.CompressWrite))
+	if tunnel.Cluster.OnCompressWrite != nil {
+		result.wr = base.NewArchiveBinaryWriter(base.NewObservableWriter(base.NewCompressedWriter(tunnel, tunnel.Compression.Options), tunnel.Cluster.OnCompressWrite))
+	} else {
+		result.wr = base.NewArchiveBinaryWriter(base.NewCompressedWriter(tunnel, tunnel.Compression.Options))
+	}
 	result.wr.HandleErrors(func(err error) {
 		base.LogPanic(&result.category, "caught archive write error: %v", err)
 	})
@@ -679,13 +687,12 @@ func (x *MessageCorpus) Add(body MessageBody) {
 	f := x.OutputDir.Folder(h[0:2]).Folder(h[2:4]).File(h).ReplaceExt(".msg")
 
 	UFS.CreateBuffered(f, func(w io.Writer) error {
-		ar := base.NewArchiveBinaryWriter(w)
-
-		header := body.Header()
-		ar.Serializable(&header)
-		ar.Serializable(body)
-
-		return ar.Close()
+		return base.WithArchiveBinaryWriter(w, func(ar base.Archive) error {
+			header := body.Header()
+			ar.Serializable(&header)
+			ar.Serializable(body)
+			return nil
+		})
 	}, base.TransientPage4KiB)
 }
 

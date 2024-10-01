@@ -1451,25 +1451,3 @@ func CopyWithProgress(context string, totalSize int64, dst io.Writer, src io.Rea
 	}
 	return
 }
-
-type ReaderWithProgress struct {
-	reader io.Reader
-	pbar   ProgressScope
-}
-
-func (x ReaderWithProgress) Read(buf []byte) (int, error) {
-	n, err := x.reader.Read(buf)
-	x.pbar.Add(int64(n))
-	return n, err
-}
-
-type WriterWithProgress struct {
-	writer io.Writer
-	pbar   ProgressScope
-}
-
-func (x WriterWithProgress) Write(p []byte) (int, error) {
-	n, err := x.writer.Write(p)
-	x.pbar.Add(int64(n))
-	return n, err
-}

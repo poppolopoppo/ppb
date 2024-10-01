@@ -42,33 +42,40 @@ var GetActionDist = base.Memoize(func() ActionDist {
 	var err error
 
 	result = new(actionDist)
-	result.cluster = cluster.NewCluster(
-		cluster.ClusterOptionStreamRead(func(r io.Reader, b []byte) (n int, err error) {
-			stat := StartBuildStats()
-			defer result.stats.StreamRead.Append(&stat)
-
-			n, err = r.Read(b)
-			result.stats.StatReadCompressed(n)
-			return
-		}),
-		cluster.ClusterOptionUncompressRead(func(r io.Reader, b []byte) (n int, err error) {
-			n, err = r.Read(b)
-			result.stats.StatReadUncompressed(n)
-			return
-		}),
-		cluster.ClusterOptionStreamWrite(func(w io.Writer, b []byte) (n int, err error) {
-			stat := StartBuildStats()
-			defer result.stats.StreamWrite.Append(&stat)
-
-			n, err = w.Write(b)
-			result.stats.StatWriteCompressed(n)
-			return
-		}),
-		cluster.ClusterOptionCompressWrite(func(w io.Writer, b []byte) (n int, err error) {
-			n, err = w.Write(b)
-			result.stats.StatWriteUncompressed(n)
-			return
-		}))
+	var options []cluster.ClusterOption
+	if GetCommandFlags().Summary.Get() {
+		options = []cluster.ClusterOption{
+			cluster.ClusterOptionStreamRead(func(io.Reader) func(n int64, err error) error {
+				stat := StartBuildStats()
+				return func(n int64, err error) error {
+					result.stats.StreamRead.Append(&stat)
+					result.stats.StatReadCompressed(n)
+					return err
+				}
+			}),
+			cluster.ClusterOptionUncompressRead(func(io.Reader) func(n int64, err error) error {
+				return func(n int64, err error) error {
+					result.stats.StatReadUncompressed(n)
+					return err
+				}
+			}),
+			cluster.ClusterOptionStreamWrite(func(io.Writer) func(n int64, err error) error {
+				stat := StartBuildStats()
+				return func(n int64, err error) error {
+					result.stats.StreamWrite.Append(&stat)
+					result.stats.StatWriteCompressed(n)
+					return err
+				}
+			}),
+			cluster.ClusterOptionCompressWrite(func(io.Writer) func(n int64, err error) error {
+				return func(n int64, err error) error {
+					result.stats.StatWriteUncompressed(n)
+					return err
+				}
+			}),
+		}
+	}
+	result.cluster = cluster.NewCluster(options...)
 	result.client, result.cancel, err = result.cluster.StartClient()
 	base.LogPanicIfFailed(LogActionDist, err)
 
@@ -150,17 +157,17 @@ type ActionDistStats struct {
 	StreamWriteCompressed   int64
 }
 
-func (x *ActionDistStats) StatReadCompressed(n int) {
-	atomic.AddInt64(&x.StreamReadCompressed, int64(n))
+func (x *ActionDistStats) StatReadCompressed(n int64) {
+	atomic.AddInt64(&x.StreamReadCompressed, n)
 }
-func (x *ActionDistStats) StatReadUncompressed(n int) {
-	atomic.AddInt64(&x.StreamReadUncompressed, int64(n))
+func (x *ActionDistStats) StatReadUncompressed(n int64) {
+	atomic.AddInt64(&x.StreamReadUncompressed, n)
 }
-func (x *ActionDistStats) StatWriteCompressed(n int) {
-	atomic.AddInt64(&x.StreamWriteCompressed, int64(n))
+func (x *ActionDistStats) StatWriteCompressed(n int64) {
+	atomic.AddInt64(&x.StreamWriteCompressed, n)
 }
-func (x *ActionDistStats) StatWriteUncompressed(n int) {
-	atomic.AddInt64(&x.StreamWriteUncompressed, int64(n))
+func (x *ActionDistStats) StatWriteUncompressed(n int64) {
+	atomic.AddInt64(&x.StreamWriteUncompressed, n)
 }
 func (x *ActionDistStats) AddRemoteAction(peer *cluster.PeerDiscovered) {
 	atomic.AddInt32(&x.RemoteActions, 1)
