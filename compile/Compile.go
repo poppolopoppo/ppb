@@ -130,7 +130,7 @@ var GetCompileFlags = NewCompilationFlags("GenericCompilation", "cross-platform 
 
 func (flags *CompileFlags) GetCpp() *CppRules { return (*CppRules)(flags) }
 func (flags *CompileFlags) Flags(cfv CommandFlagsVisitor) {
-	cfv.Persistent("AdaptiveUnity", "enable/disable adaptive unity using source control", &flags.AdaptiveUnity)
+	cfv.Persistent("AdaptiveUnity", "exclude sources from unity when locally modified (requires source control)", &flags.AdaptiveUnity)
 	cfv.Persistent("Benchmark", "enable/disable compilation benchmarks", &flags.Benchmark)
 	cfv.Persistent("CompilerVerbose", "enable/disable compiler verbose output", &flags.CompilerVerbose)
 	cfv.Persistent("CppRtti", "override C++ rtti support", &flags.CppRtti)

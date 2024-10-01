@@ -304,12 +304,14 @@ func asyncCacheWriteAction(bg utils.BuildGraphWritePort, cacheKey ActionCacheKey
 	base.GetGlobalThreadPool().Queue(func(base.ThreadContext) {
 		// disable caching when inputs have unversioned modifications
 		writeToCache := true
-		if _, err := utils.ForeachLocalSourceControlModifications(bg.GlobalContext(), func(modified utils.Filename, state utils.SourceControlState) error {
-			writeToCache = false
-			base.LogWarningVerbose(LogAction, "%v: excluded from cache since %q is seen as %v by source control", utils.ForceLocalFilename(cacheArtifact.OutputFiles[0]), modified, state)
-			return nil
-		}, cacheArtifact.InputFiles.Concat(cacheArtifact.DependencyFiles...)...); err != nil {
-			base.LogPanicIfFailed(LogActionCache, err)
+		if GetActionFlags().AdaptiveCache.Get() {
+			if _, err := utils.ForeachLocalSourceControlModifications(bg.GlobalContext(), func(modified utils.Filename, state utils.SourceControlState) error {
+				writeToCache = false
+				base.LogWarningVerbose(LogAction, "%v: excluded from cache since %q is seen as %v by source control", utils.ForceLocalFilename(cacheArtifact.OutputFiles[0]), modified, state)
+				return nil
+			}, cacheArtifact.InputFiles.Concat(cacheArtifact.DependencyFiles...)...); err != nil {
+				base.LogPanicIfFailed(LogActionCache, err)
+			}
 		}
 
 		// finally write compiled artifacts to the cache

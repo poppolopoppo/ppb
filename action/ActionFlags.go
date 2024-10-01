@@ -17,6 +17,7 @@ type ActionFlags struct {
 	CacheMode             CacheModeType
 	CachePath             utils.Directory
 	DistMode              DistModeType
+	AdaptiveCache         utils.BoolVar
 	ResponseFile          utils.BoolVar
 	ShowCmds              utils.BoolVar
 	ShowFiles             utils.BoolVar
@@ -24,6 +25,7 @@ type ActionFlags struct {
 }
 
 func (x *ActionFlags) Flags(cfv utils.CommandFlagsVisitor) {
+	cfv.Persistent("AdaptiveCache", "exclude sources from cache when locally modified (requires source control)", &x.AdaptiveCache)
 	cfv.Persistent("CacheMode", "use input hashing to store/retrieve action outputs", &x.CacheMode)
 	cfv.Persistent("CachePath", "set path used to store cached actions", &x.CachePath)
 	cfv.Persistent("CacheCompression", "set compression format for cached bulk entries", &x.CacheCompression)
@@ -36,8 +38,11 @@ func (x *ActionFlags) Flags(cfv utils.CommandFlagsVisitor) {
 }
 
 var GetActionFlags = utils.NewCommandParsableFlags(&ActionFlags{
+	AdaptiveCache: base.INHERITABLE_TRUE,
+
 	CacheMode: CACHE_NONE,
 	CachePath: utils.UFS.Cache,
+
 	// Lz4 is almost as fast as uncompressed, but with fewer IO: when using Fast speed it is almost always a free win
 	CacheCompression:      base.COMPRESSION_FORMAT_LZ4,
 	CacheCompressionLevel: base.COMPRESSION_LEVEL_FAST,
@@ -109,7 +114,7 @@ func (x OptionType) String() string {
 	case OPT_ALLOW_RESPONSEFILE:
 		return "ALLOW_RESPONSEFILE"
 	case OPT_ALLOW_SOURCEDEPENDENCIES:
-		return "ALLOW_SOURCECONTROL"
+		return "ALLOW_SOURCEDEPENDENCIES"
 	case OPT_PROPAGATE_INPUTS:
 		return "PROPAGATE_INPUTS"
 	case OPT_HIGH_PRIORITY:
