@@ -729,53 +729,55 @@ func (g *buildGraphWritePort) GetBuildStats(node BuildNode) (BuildStats, bool) {
 func (g *buildGraphWritePort) GetCriticalPathNodes() ([]BuildState, time.Duration) {
 	defer base.LogBenchmark(LogBuildGraph, "GetCriticalPathNodes(%v)", g.name).Close()
 
-	// first, look for node that finished executing last
-	var lastFinishedNode *buildState
-	g.state.Range(func(_ BuildAlias, node *buildState) error {
-		if lastFinishedNode == nil || lastFinishedNode.stats.GetInclusiveEnd() < node.stats.GetInclusiveEnd() {
-			lastFinishedNode = node
+	type criticalPath struct {
+		Path     base.SetT[BuildState]
+		Duration time.Duration
+	}
+
+	var dfs func(*buildState) criticalPath
+	visited := make(map[BuildAlias]criticalPath, g.state.Len())
+	foreachDep := func(alias BuildAlias, longest criticalPath) criticalPath {
+		var path criticalPath
+		if recorded, ok := visited[alias]; ok {
+			path = recorded
+		} else if dep, ok := g.state.Get(alias); ok {
+			path = dfs(dep)
 		}
-		return nil
-	})
-
-	var criticalPath []BuildState
-	var maxTime time.Duration
-
-	// use previous node as root to look for the longest execution path using depth first search
-	var dfs func(*buildState, []BuildState, time.Duration)
-	dfs = func(node *buildState, path []BuildState, prevDuration time.Duration) {
-		// graph must be acyclic
-		base.AssertNotIn(BuildState(node), path...)
-
-		// approximate longest path search by summing inclusive duration
-		totalTime := node.stats.Duration.Inclusive + prevDuration
-		path = append(path, node)
-
-		for _, alias := range node.GetStaticDependencies() {
-			if dep, ok := g.state.Get(alias); ok {
-				dfs(dep, path, totalTime)
-			}
-		}
-
-		for _, alias := range node.GetDynamicDependencies() {
-			if dep, ok := g.state.Get(alias); ok {
-				dfs(dep, path, totalTime)
-			}
-		}
-
-		if totalTime > maxTime {
-			maxTime = totalTime
-			criticalPath = make([]BuildState, len(path))
-			copy(criticalPath, path)
+		if path.Duration > longest.Duration {
+			return path
+		} else {
+			return longest
 		}
 	}
 
-	if lastFinishedNode != nil {
-		dfs(lastFinishedNode, []BuildState{}, time.Duration(0))
+	// use previous node as root to look for the longest execution path using depth first search
+	dfs = func(node *buildState) criticalPath {
+		var longest criticalPath
 
+		for _, it := range node.buildNode.Static {
+			longest = foreachDep(it.Alias, longest)
+		}
+		for _, it := range node.buildNode.Dynamic {
+			longest = foreachDep(it.Alias, longest)
+		}
+
+		longest.Duration += node.stats.Duration.Exclusive
+		longest.Path = append([]BuildState{node}, longest.Path...)
+		visited[node.BuildAlias] = longest
+
+		return longest
+	}
+
+	var longest criticalPath
+	g.state.Range(func(alias BuildAlias, state *buildState) error {
+		longest = foreachDep(alias, longest)
+		return nil
+	})
+
+	if len(longest.Path) > 0 {
 		// return true duration of execution, instead of accumulated inclusive time
 		var startedAt, finishedAt time.Duration
-		for i, it := range criticalPath {
+		for i, it := range longest.Path {
 			stats := it.GetBuildStats()
 			if t := stats.InclusiveStart; i == 0 || t < startedAt {
 				startedAt = t
@@ -785,10 +787,10 @@ func (g *buildGraphWritePort) GetCriticalPathNodes() ([]BuildState, time.Duratio
 			}
 		}
 
-		maxTime = finishedAt - startedAt
+		longest.Duration = finishedAt - startedAt
 	}
 
-	return criticalPath, maxTime
+	return longest.Path, longest.Duration
 }
 func (g *buildGraphWritePort) GetMostExpansiveNodes(n int, inclusive bool) []BuildState {
 	results := make([]BuildState, 0, n)

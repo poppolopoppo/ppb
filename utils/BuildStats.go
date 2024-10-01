@@ -235,7 +235,7 @@ func (g *buildGraphWritePort) PrintSummary(startedAt time.Time, level base.LogLe
 			}
 		}
 
-		base.LogForwardf("%v[%02d] - %6.2f%% -  %6.3f  %6.3f  --  %s%v%v",
+		base.LogForwardf("%v[%02d] - %6.2f%% -  %7.3f  %7.3f  --  %s%v%v",
 			rowColor.Quantize(true).Ansi(true),
 			(i + 1),
 			100.0*fract,
@@ -264,9 +264,9 @@ func (g *buildGraphWritePort) PrintSummary(startedAt time.Time, level base.LogLe
 			continue
 		}
 
-		fract := ns.Duration.Inclusive.Seconds() / stats.Duration.Inclusive.Seconds()
+		fract := ns.Duration.Exclusive.Seconds() / stats.Duration.Exclusive.Seconds()
 		// use percent of blocking duration
-		sstep := base.Smootherstep(ns.Duration.Inclusive.Seconds() / totalDuration.Seconds())
+		sstep := base.Smootherstep(ns.Duration.Exclusive.Seconds() / totalDuration.Seconds())
 		rowColor := base.NewColdHotColor(math.Sqrt(sstep))
 
 		annotation := ``
@@ -281,7 +281,7 @@ func (g *buildGraphWritePort) PrintSummary(startedAt time.Time, level base.LogLe
 			}
 		}
 
-		base.LogForwardf("%v[%02d] - %6.2f%% -  %6.3f  %6.3f  --  %s%s%v%v",
+		base.LogForwardf("%v[%02d] - %6.2f%% -  %7.3f  %7.3f  --  %s%s%v%v",
 			rowColor.Quantize(true).Ansi(true),
 			depth,
 			100.0*fract,
