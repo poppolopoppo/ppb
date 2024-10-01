@@ -10,21 +10,25 @@ import (
  * Recycler[T] is a generic sync.Pool
  ***************************************/
 
-type Recycler[T any] interface {
+type Recycler[T comparable] interface {
 	Allocate() T
 	Release(T)
 }
 
-type recyclerPool[T any] struct {
+type recyclerPool[T comparable] struct {
 	pool      sync.Pool
 	onRelease func(T)
 }
 
-func NewRecycler[T any](factory func() T, release func(T)) Recycler[T] {
+func NewRecycler[T comparable](factory func() T, release func(T)) Recycler[T] {
 	result := &recyclerPool[T]{}
 	result.pool.New = func() any { return factory() }
 	result.onRelease = release
-	return result
+	if !DEBUG_ENABLED {
+		return result
+	} else {
+		return &debugRecyclerPool[T]{inner: result}
+	}
 }
 func (x *recyclerPool[T]) Allocate() (result T) {
 	result = x.pool.Get().(T)
@@ -36,6 +40,30 @@ func (x *recyclerPool[T]) Release(item T) {
 }
 
 /***************************************
+ * Debug Recycler
+ ***************************************/
+
+type debugRecyclerPool[T comparable] struct {
+	inner Recycler[T]
+	debug SharedMapT[T, bool]
+}
+
+func (x *debugRecyclerPool[T]) Allocate() (result T) {
+	result = x.inner.Allocate()
+	if known, ok := x.debug.FindOrAdd(result, true); ok || !known {
+		Panicf("invalid pool allocation!")
+	}
+	return
+}
+func (x *debugRecyclerPool[T]) Release(item T) {
+	if known, ok := x.debug.Get(item); !ok || !known {
+		Panicf("invalid pool recycling!")
+	}
+	x.debug.Delete(item)
+	x.inner.Release(item)
+}
+
+/***************************************
  * Recycle temporary byte arrays
  ***************************************/
 
@@ -44,19 +72,36 @@ type bytesRecyclerPool struct {
 	pool   sync.Pool
 }
 
+type bytesRecyclerPoolWithDebug struct {
+	debugRecyclerPool[*[]byte]
+	stride int
+}
+
+func (x *bytesRecyclerPoolWithDebug) Stride() int { return x.stride }
+
 type BytesRecycler interface {
 	Stride() int
 	Recycler[*[]byte]
 }
 
 func newBytesRecycler(stride int) BytesRecycler {
-	result := new(bytesRecyclerPool)
-	result.stride = stride
+	result := &bytesRecyclerPool{
+		stride: stride,
+	}
 	result.pool.New = func() any {
 		buf := make([]byte, result.stride)
 		return &buf
 	}
-	return result
+	if !DEBUG_ENABLED {
+		return result
+	} else {
+		return &bytesRecyclerPoolWithDebug{
+			debugRecyclerPool: debugRecyclerPool[*[]byte]{
+				inner: result,
+			},
+			stride: stride,
+		}
+	}
 }
 func (x *bytesRecyclerPool) Stride() int { return x.stride }
 func (x *bytesRecyclerPool) Allocate() (item *[]byte) {
