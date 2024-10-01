@@ -10,11 +10,11 @@ import (
 )
 
 type BuildOptions struct {
-	Parent                   *BuildOptions
 	Caller                   BuildNode
 	OnLaunched               base.PublicEvent[BuildNode]
 	OnBuilt                  base.PublicEvent[BuildNode]
-	Stamp                    *BuildStamp
+	Parent_DebugOnly         *BuildOptions
+	Stamp_DebugOnly          *BuildStamp
 	Dirty                    bool
 	Force                    bool
 	Recursive                bool
@@ -738,7 +738,9 @@ func (x *BuildOptions) Recurse(node BuildNode) (result BuildOptions) {
 		return fmt.Errorf("build graph: invalid build alias on %q\n%v", node, x)
 	})
 
-	result.Parent = x
+	if base.DEBUG_ENABLED {
+		result.Parent_DebugOnly = x
+	}
 	result.Caller = node
 	result.NoWarningOnMissingOutput = x.NoWarningOnMissingOutput
 
@@ -749,15 +751,12 @@ func (x *BuildOptions) Recurse(node BuildNode) (result BuildOptions) {
 
 	return
 }
-func (x *BuildOptions) Touch(parent BuildNode) (result BuildOptions) {
-	base.Assert(func() bool { return x.Caller == parent })
-	x.Stamp = &x.Caller.(*buildNode).Stamp
-	return
-}
 func (x BuildOptions) DependencyChain() (result []BuildNode) {
-	result = []BuildNode{x.Caller}
-	if x.Parent != nil {
-		result = append(result, x.Parent.DependencyChain()...)
+	if base.DEBUG_ENABLED {
+		result = []BuildNode{x.Caller}
+		if x.Parent_DebugOnly != nil {
+			result = append(result, x.Parent_DebugOnly.DependencyChain()...)
+		}
 	}
 	return
 }
@@ -766,25 +765,21 @@ func (x BuildOptions) String() string {
 	x.RelatesVerbose(nil, 0, &sb)
 	return sb.String()
 }
-func (x BuildOptions) HasOuter(node BuildNode) *BuildStamp {
-	if x.Caller == node {
-		return x.Stamp
-	} else if x.Parent != nil {
-		return x.Parent.HasOuter(node)
-	}
-	return nil
-}
 func (x BuildOptions) RelatesVerbose(node BuildNode, depth int, outp *strings.Builder) bool {
+	if !base.DEBUG_ENABLED {
+		return false
+	}
+
 	indent := "  "
 	if depth == 0 && node != nil {
 		fmt.Fprintf(outp, "%s%d) %s\n", strings.Repeat(indent, depth), depth, node.Alias())
 		depth++
 	}
 	if x.Caller != nil {
-		if x.Stamp == nil {
+		if x.Stamp_DebugOnly == nil {
 			fmt.Fprintf(outp, "%s%d) %s\n", strings.Repeat(indent, depth), depth, x.Caller.Alias())
 		} else {
-			fmt.Fprintf(outp, "%s%d) %s - [OUTER:%s]\n", strings.Repeat(indent, depth), depth, x.Caller.Alias(), x.Stamp.String())
+			fmt.Fprintf(outp, "%s%d) %s - [OUTER:%s]\n", strings.Repeat(indent, depth), depth, x.Caller.Alias(), x.Stamp_DebugOnly.String())
 		}
 	}
 	if depth > 20 {
@@ -792,10 +787,10 @@ func (x BuildOptions) RelatesVerbose(node BuildNode, depth int, outp *strings.Bu
 	}
 
 	var result bool
-	if x.Caller == node && x.Stamp == nil /* if Caller has a Stamp then it is the outer of 'node' */ {
+	if x.Caller == node && x.Stamp_DebugOnly == nil /* if Caller has a Stamp then it is the outer of 'node' */ {
 		result = true
-	} else if x.Parent != nil {
-		result = x.Parent.RelatesVerbose(node, depth+1, outp)
+	} else if x.Parent_DebugOnly != nil {
+		result = x.Parent_DebugOnly.RelatesVerbose(node, depth+1, outp)
 	} else {
 		result = false
 	}
@@ -806,11 +801,6 @@ func (x BuildOptions) RelatesVerbose(node BuildNode, depth int, outp *strings.Bu
 func OptionBuildCaller(node BuildNode) BuildOptionFunc {
 	return func(opts *BuildOptions) {
 		opts.Caller = node
-	}
-}
-func OptionBuildTouch(node BuildNode) BuildOptionFunc {
-	return func(opts *BuildOptions) {
-		opts.Touch(node)
 	}
 }
 func OptionBuildDirty(opts *BuildOptions) {
@@ -852,8 +842,12 @@ func OptionBuildOnBuilt(event func(BuildNode) error) BuildOptionFunc {
 	}
 }
 func OptionBuildParent(parent *BuildOptions) BuildOptionFunc {
-	return func(opts *BuildOptions) {
-		opts.Parent = parent
+	if base.DEBUG_ENABLED {
+		return func(opts *BuildOptions) {
+			opts.Parent_DebugOnly = parent
+		}
+	} else {
+		return func(*BuildOptions) {}
 	}
 }
 func OptionBuildCopy(value *BuildOptions) BuildOptionFunc {
