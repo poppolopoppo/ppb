@@ -697,14 +697,21 @@ func (g *buildGraphWritePort) BuildMany(targets BuildAliases, options ...BuildOp
 func (g *buildGraphWritePort) hasRunningTasks() bool {
 	return g.numRunningTasks.Load() > 0
 }
-func (g *buildGraphWritePort) Join() (lastErr error) {
-	for lastErr == nil && g.hasRunningTasks() {
-		lastErr = g.state.Range(func(_ BuildAlias, state *buildState) error {
+func (g *buildGraphWritePort) Join() (err error) {
+	base.JoinAllThreadPools()
+	for {
+		err = g.state.Range(func(_ BuildAlias, state *buildState) error {
 			if future := state.future.Load(); future != nil {
 				return future.Join().Failure()
 			}
 			return nil
 		})
+		if err != nil {
+			return
+		}
+		if !g.hasRunningTasks() {
+			break
+		}
 	}
 	return
 }
