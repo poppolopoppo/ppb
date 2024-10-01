@@ -263,12 +263,12 @@ func ForeachBuildConfig(each func(BuildFactoryTyped[*BuildConfig]) error) error 
 	return nil
 }
 
-func GetConfigurationFromUserInput(in ConfigurationAlias) (Configuration, error) {
+func GetConfigurationFromUserInput(bg BuildGraphReadPort, in ConfigurationAlias) (Configuration, error) {
 	if config, ok := AllConfigurations.Get(in.String()); ok {
 		return config, nil
 	}
 
-	if found, err := base.DidYouMean[ConfigurationAlias](in.String()); err == nil {
+	if found, err := base.DidYouMean[ConfigurationAlias](in.String(), bg); err == nil {
 		config, ok := AllConfigurations.Get(found)
 		base.AssertIn(ok, true)
 		return config, nil

@@ -257,12 +257,13 @@ func (x AutoCompleteResult) String() string {
 }
 
 type AutoComplete interface {
-	Input() string
+	GetUserParam() any
+	GetInput() string
 	Any(interface{}) error
 	Append(in AutoCompletable)
 	Add(in, description string) float32
 	Highlight(in string, highlight func(rune) string) string
-	Results() []AutoCompleteResult
+	GetResults() []AutoCompleteResult
 	ClearResults()
 }
 
@@ -280,20 +281,25 @@ var NotAutoCompletableError error = notAutoCompletableError{}
 
 type BasicAutoComplete struct {
 	similarity StringSimilarity
+	userParam  any
 	entries    []AutoCompleteResult
 	input      string
 	maxResults int
 }
 
-func NewAutoComplete(input string, maxResults int) BasicAutoComplete {
+func NewAutoComplete(input string, maxResults int, userParam any) BasicAutoComplete {
 	return BasicAutoComplete{
 		similarity: NewJaroWinklerSimilarity(input, 3),
+		userParam:  userParam,
 		entries:    make([]AutoCompleteResult, 0, maxResults),
 		input:      input,
 		maxResults: maxResults,
 	}
 }
-func (x *BasicAutoComplete) Input() string {
+func (x *BasicAutoComplete) GetUserParam() any {
+	return x.userParam
+}
+func (x *BasicAutoComplete) GetInput() string {
 	return x.input
 }
 func (x *BasicAutoComplete) Any(anon interface{}) error {
@@ -321,10 +327,10 @@ func (x *BasicAutoComplete) Add(in, description string) float32 {
 
 	return newEntry.Score
 }
-func (x *BasicAutoComplete) Results() []AutoCompleteResult {
-	if len(x.entries) > 0 && x.Input() == strings.ToUpper(x.entries[0].Text) {
+func (x *BasicAutoComplete) GetResults() []AutoCompleteResult {
+	if len(x.entries) > 0 && x.GetInput() == strings.ToUpper(x.entries[0].Text) {
 		x.entries = RemoveUnless(func(acr AutoCompleteResult) bool {
-			return strings.HasPrefix(strings.ToUpper(acr.Text), x.Input())
+			return strings.HasPrefix(strings.ToUpper(acr.Text), x.GetInput())
 		}, x.entries...)
 	}
 	return x.entries
@@ -387,8 +393,11 @@ func NewPrefixedAutoComplete(prefix, description string, inner AutoComplete) Pre
 		inner:       inner,
 	}
 }
-func (x *PrefixedAutoComplete) Input() string {
-	return x.inner.Input()
+func (x *PrefixedAutoComplete) GetUserParam() any {
+	return x.inner.GetUserParam()
+}
+func (x *PrefixedAutoComplete) GetInput() string {
+	return x.inner.GetInput()
 }
 func (x *PrefixedAutoComplete) Any(anon interface{}) error {
 	if autocomplete, ok := anon.(AutoCompletable); ok {
@@ -407,8 +416,8 @@ func (x *PrefixedAutoComplete) Add(in, description string) float32 {
 	}
 	return x.inner.Add(x.prefix+in, description)
 }
-func (x *PrefixedAutoComplete) Results() []AutoCompleteResult {
-	return x.inner.Results()
+func (x *PrefixedAutoComplete) GetResults() []AutoCompleteResult {
+	return x.inner.GetResults()
 }
 func (x *PrefixedAutoComplete) Highlight(in string, highlight func(rune) string) string {
 	return x.inner.Highlight(in, highlight)
@@ -421,40 +430,44 @@ func (x *PrefixedAutoComplete) ClearResults() {
  * GatherAutoComplete will gather all possible values and store them
  ***************************************/
 
-var memoizeGatherAutoCompletion = MemoizeComparable(func(typ reflect.Type) []AutoCompleteResult {
-	results := []AutoCompleteResult{}
+func gatherAutoCompletion(typ reflect.Type, userParam any) (results []AutoCompleteResult) {
 	NewGatherAutoComplete(func(in, description string) error {
 		results = append(results, AutoCompleteResult{
 			Text:        in,
 			Description: description,
 		})
 		return nil
-	}).Any(reflect.New(typ).Interface())
-	return results
-})
-
-func GatherAutoCompletion[T any]() []AutoCompleteResult {
-	var defaultValue T
-	return memoizeGatherAutoCompletion(reflect.TypeOf(defaultValue))
+	}, userParam).Any(reflect.New(typ).Interface())
+	return
 }
-func GatherAutoCompletionFrom[T any](arg T) []AutoCompleteResult {
+
+func GatherAutoCompletion[T any](userParam any) []AutoCompleteResult {
+	var defaultValue T
+	return gatherAutoCompletion(reflect.TypeOf(defaultValue), userParam)
+}
+func GatherAutoCompletionFrom[T any](arg T, userParam any) []AutoCompleteResult {
 	typ := reflect.TypeOf(arg)
 	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
-	return memoizeGatherAutoCompletion(typ)
+	return gatherAutoCompletion(typ, userParam)
 }
 
 type GatherAutoComplete struct {
-	OnAdd func(in, description string) error
+	OnAdd     func(in, description string) error
+	userParam any
 }
 
-func NewGatherAutoComplete(onAdd func(in, description string) error) GatherAutoComplete {
+func NewGatherAutoComplete(onAdd func(in, description string) error, userParam any) GatherAutoComplete {
 	return GatherAutoComplete{
-		OnAdd: onAdd,
+		OnAdd:     onAdd,
+		userParam: userParam,
 	}
 }
-func (x GatherAutoComplete) Input() string {
+func (x GatherAutoComplete) GetUserParam() any {
+	return x.userParam
+}
+func (x GatherAutoComplete) GetInput() string {
 	return ""
 }
 func (x GatherAutoComplete) Any(anon interface{}) error {
@@ -472,7 +485,7 @@ func (x GatherAutoComplete) Add(in, description string) float32 {
 	LogPanicIfFailed(LogAutoComplete, x.OnAdd(in, description))
 	return 0
 }
-func (x GatherAutoComplete) Results() []AutoCompleteResult {
+func (x GatherAutoComplete) GetResults() []AutoCompleteResult {
 	return []AutoCompleteResult{}
 }
 func (x GatherAutoComplete) Highlight(in string, highlight func(rune) string) string {
@@ -486,16 +499,16 @@ func (x GatherAutoComplete) ClearResults() {
  * XXX not found, did you mean YYY?
  ***************************************/
 
-func DidYouMean[T AutoCompletable](in string) (string, error) {
-	autocomplete := NewAutoComplete(in, 3)
+func DidYouMean[T AutoCompletable](in string, userParam any) (string, error) {
+	autocomplete := NewAutoComplete(in, 3, userParam)
 
 	var defaultValue T
 	defaultValue.AutoComplete(&autocomplete)
 
-	results := autocomplete.Results()
+	results := autocomplete.GetResults()
 	if len(results) > 0 && strings.EqualFold(results[0].Text, in) {
 		return results[0].Text, nil
 	}
 
-	return "", fmt.Errorf("unknown value %q, did you mean %v?", in, autocomplete.Results())
+	return "", fmt.Errorf("unknown value %q, did you mean %v?", in, autocomplete.GetResults())
 }

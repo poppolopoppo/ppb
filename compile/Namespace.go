@@ -51,15 +51,14 @@ func (x *NamespaceAlias) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x NamespaceAlias) AutoComplete(in base.AutoComplete) {
-	bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "AutoCompleteNamespaceAlias"}, utils.BUILDGRAPH_QUIET)
-	defer bg.Close()
-	namespaces, err := NeedAllBuildNamespaceAliases(bg.GlobalContext())
-	if err == nil {
-		for _, it := range namespaces {
-			in.Add(it.String(), it.Alias().String())
-		}
+	if bg, ok := in.GetUserParam().(utils.BuildGraphReadPort); ok {
+		utils.ForeachBuildable[Namespace](bg, func(ba utils.BuildAlias, n Namespace) error {
+			it := n.GetNamespace().NamespaceAlias
+			in.Add(it.String(), n.GetNamespace().NamespaceDir.String())
+			return nil
+		})
 	} else {
-		utils.CommandPanic(err)
+		base.UnreachableCode()
 	}
 }
 

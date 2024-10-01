@@ -11,9 +11,18 @@ import (
 
 var LogCommand = base.NewLogCategory("Command")
 
-var AllCommands = base.SharedMapT[string, func() CommandItem]{}
+var AllCommands = base.SharedMapT[string, CommandDescriptor]{}
 
 var GlobalParsableFlags commandItem
+
+/***************************************
+ * CommandDescriptor
+ ***************************************/
+
+type CommandDescriptor struct {
+	Create func() CommandItem
+	CommandDetails
+}
 
 /***************************************
  * CommandName
@@ -28,8 +37,7 @@ func (x CommandName) Compare(o CommandName) int {
 }
 func (x CommandName) AutoComplete(in base.AutoComplete) {
 	for _, ci := range AllCommands.Values() {
-		details := ci().Details()
-		in.Add(details.Name, details.Description)
+		in.Add(ci.Name, ci.Description)
 	}
 }
 
@@ -666,7 +674,12 @@ func (x *commandParsableArgument) Help(w *base.StructuredFile) {
 				colorFG = base.ANSI_FG1_BLUE
 			}
 
-			allowedValues := base.GatherAutoCompletionFrom(v.Value)
+			var allowedValues []base.AutoCompleteResult
+			if readPort := CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "Help"}); readPort != nil {
+				allowedValues = base.GatherAutoCompletionFrom(v.Value, readPort)
+				readPort.Close()
+			}
+
 			if len(allowedValues) > 0 {
 				sb := strings.Builder{}
 
@@ -1045,7 +1058,14 @@ func NewCommand(
 	factory = base.Memoize(func() CommandItem {
 		return NewCommandItem(category, name, description, options...)
 	})
-	AllCommands.FindOrAdd(strings.ToUpper(name), factory)
+	AllCommands.FindOrAdd(strings.ToUpper(name), CommandDescriptor{
+		Create: factory,
+		CommandDetails: CommandDetails{
+			Category:    category,
+			Name:        name,
+			Description: description,
+		},
+	})
 	return
 }
 
@@ -1096,8 +1116,8 @@ func NewCommandable[T any, P interface {
  ***************************************/
 
 func GetAllCommands() []CommandItem {
-	cmds := base.Map(func(it func() CommandItem) CommandItem {
-		return it()
+	cmds := base.Map(func(it CommandDescriptor) CommandItem {
+		return it.Create()
 	}, AllCommands.Values()...)
 	sort.Slice(cmds, func(i, j int) bool {
 		lhs, rhs := cmds[i].Details(), cmds[j].Details()
@@ -1116,7 +1136,7 @@ func GetAllCommandNames() []CommandName {
 
 func FindCommand(name string) (CommandItem, error) {
 	if cmd, found := AllCommands.Get(strings.ToUpper(name)); found {
-		return cmd(), nil
+		return cmd.Create(), nil
 	} else {
 		return nil, fmt.Errorf("unknown command %q", name)
 	}
@@ -1278,7 +1298,7 @@ func (x *AutoCompleteCommand) Run(cc CommandContext) error {
 	command := x.Command.Get()
 
 	inputs := base.MakeStringerSet(x.Inputs...)
-	bSkipFlags := inputs.RemoveAll(`--`)
+	inputs.RemoveAll(`--`)
 
 	for i := len(inputs); i > 0; i-- {
 		if inputs[i-1] == `-and` {
@@ -1294,9 +1314,13 @@ func (x *AutoCompleteCommand) Run(cc CommandContext) error {
 	}
 
 	if len(inputs) == 0 && (len(command) == 0 || !x.CompleteArg.Get()) {
+		bg := CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "AutoComplete"}, BUILDGRAPH_QUIET)
+
 		// auto-complete command name
-		autocomplete = base.NewAutoComplete(command, x.MaxResults.Get())
+		autocomplete = base.NewAutoComplete(command, x.MaxResults.Get(), bg)
 		autocomplete.Append(x.Command /* only for autocomplete */)
+
+		bg.Close()
 
 	} else {
 		// auto-complete command arguments or flags
@@ -1310,34 +1334,37 @@ func (x *AutoCompleteCommand) Run(cc CommandContext) error {
 			input = inputs[len(inputs)-1]
 		}
 
-		autocomplete = base.NewAutoComplete(input, x.MaxResults.Get())
-		if !bSkipFlags { // further command flags are ignored when `--` is specified on the command-line
-			autocomplete.Add(`-and`, "concatenate 2 commands to execute multiple tasks in the same run")
-			autocomplete.Append(&GlobalParsableFlags)
-		}
+		bg := CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "AutoComplete"}, BUILDGRAPH_QUIET)
+
+		autocomplete = base.NewAutoComplete(input, x.MaxResults.Get(), bg)
+		autocomplete.Add(`--`, "do not try to parse subsidiary arguments as command-line flags")
+		autocomplete.Add(`-and`, "concatenate 2 commands to execute multiple tasks in the same run")
+		autocomplete.Append(&GlobalParsableFlags)
 		autocomplete.Append(cmd)
+
+		bg.Close()
 	}
 
 	base.LogDebug(LogCommand, "auto-complete arguments [%v](%v), complete argument = %v", x.Command, strings.Join(inputs, ", "), x.CompleteArg)
-	base.LogVeryVerbose(LogCommand, "auto-complete %q on command-line", autocomplete.Input())
+	base.LogVeryVerbose(LogCommand, "auto-complete %q on command-line", autocomplete.GetInput())
 
 	if x.Json.Get() {
 		// output autocomplete results as json
-		results := autocomplete.Results()
+		results := autocomplete.GetResults()
 		base.JsonSerialize(results, base.GetLogger(), base.OptionJsonPrettyPrint(false))
 
 	} else {
 		// output autocomplete results as raw-text
 		if base.EnableInteractiveShell() {
 			// highlight the matching part of each result if called from an interactive shell
-			for _, match := range autocomplete.Results() {
+			for _, match := range autocomplete.GetResults() {
 				highlighted := autocomplete.Highlight(match.Text, func(r rune) string {
 					return fmt.Sprint(base.ANSI_UNDERLINE, base.ANSI_FG1_GREEN, string(r), base.ANSI_RESET)
 				})
 				base.LogForwardf("%s\t%v%s%v", highlighted, base.ANSI_FG0_CYAN, match.Description, base.ANSI_RESET)
 			}
 		} else {
-			for _, match := range autocomplete.Results() {
+			for _, match := range autocomplete.GetResults() {
 				base.LogForwardln(match.Text, "\t", match.Description)
 			}
 		}

@@ -176,12 +176,12 @@ func GeLocalHostBuildPlatform() BuildFactoryTyped[Platform] {
 	return GetBuildPlatform(GetLocalHostPlatformAlias())
 }
 
-func GetPlatformFromUserInput(in PlatformAlias) (result Platform, err error) {
+func GetPlatformFromUserInput(bg BuildGraphReadPort, in PlatformAlias) (result Platform, err error) {
 	if platform, ok := AllPlatforms.Get(in.String()); ok {
 		return platform, nil
 	}
 
-	if found, err := base.DidYouMean[PlatformAlias](in.String()); err == nil {
+	if found, err := base.DidYouMean[PlatformAlias](in.String(), bg); err == nil {
 		platform, ok := AllPlatforms.Get(found)
 		base.AssertIn(ok, true)
 		return platform, nil

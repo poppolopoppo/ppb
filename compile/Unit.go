@@ -73,27 +73,26 @@ func (x *TargetAlias) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x TargetAlias) AutoComplete(in base.AutoComplete) {
-	bg := CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "AutoCompleteTargetAlias"}, utils.BUILDGRAPH_QUIET)
-	defer bg.Close()
+	if bg, ok := in.GetUserParam().(utils.BuildGraphReadPort); ok {
+		var modules base.SetT[Module]
+		ForeachBuildable(bg, func(_ BuildAlias, m Module) error {
+			modules.Append(m)
+			return nil
+		})
 
-	moduleAliases, err := NeedAllModuleAliases(bg.GlobalContext())
-	if err != nil {
-		base.LogWarningOnce(base.LogAutoComplete, "failed to load build modules: %v", err)
-		return
-	}
-
-	err = ForeachEnvironmentAlias(func(ea EnvironmentAlias) error {
-		for _, ma := range moduleAliases {
-			targetAlias := TargetAlias{
-				EnvironmentAlias: ea,
-				ModuleAlias:      ma,
+		ForeachEnvironmentAlias(func(ea EnvironmentAlias) error {
+			for _, module := range modules {
+				targetAlias := TargetAlias{
+					EnvironmentAlias: ea,
+					ModuleAlias:      module.GetModule().ModuleAlias,
+				}
+				in.Add(targetAlias.String(), module.GetModule().ModuleType.String())
 			}
-			in.Add(targetAlias.String(), "")
-		}
-		return nil
-	})
-
-	base.LogPanicIfFailed(base.LogAutoComplete, err)
+			return nil
+		})
+	} else {
+		base.UnreachableCode()
+	}
 }
 
 /***************************************

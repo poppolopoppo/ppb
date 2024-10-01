@@ -21,6 +21,12 @@ import (
 
 var LogGui = base.NewLogCategory("Gui")
 
+var gatherAutoCompleteFrom = base.MemoizeComparable(func(arg any) []base.AutoCompleteResult {
+	readPort := utils.CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "PersistentVarInput"})
+	defer readPort.Close()
+	return base.GatherAutoCompletionFrom(arg, readPort)
+})
+
 func getPersistentVarInput(value utils.PersistentVar) giu.Widget {
 	switch typed := value.(type) {
 	case *utils.BoolVar:
@@ -48,7 +54,7 @@ func getPersistentVarInput(value utils.PersistentVar) giu.Widget {
 			}
 		})
 	case base.EnumSettable:
-		flags := base.GatherAutoCompletionFrom(typed)
+		flags := gatherAutoCompleteFrom(typed)
 
 		s := value.String()
 
@@ -67,7 +73,7 @@ func getPersistentVarInput(value utils.PersistentVar) giu.Widget {
 		return giu.ComboCustom(fmt.Sprintf("%T", value), s).Layout(layout)
 
 	default:
-		values := base.GatherAutoCompletionFrom(typed)
+		values := gatherAutoCompleteFrom(typed)
 
 		if len(values) > 0 {
 			strs := base.MakeStringerSet(values...)

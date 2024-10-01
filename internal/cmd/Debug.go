@@ -25,7 +25,7 @@ var CommandCheckCache = utils.NewCommand(
 		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "CheckCache"})
 		defer bg.Close()
 
-		cache := action.GetActionCache(bg)
+		cache := action.GetActionCache()
 		cachePath := cache.GetCachePath()
 
 		tempPath := utils.UFS.Transient.Folder("check-cache")

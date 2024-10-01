@@ -301,6 +301,17 @@ func (g *buildGraphReadPort) Range(each func(BuildAlias, BuildNode) error) error
 	})
 }
 
+func ForeachBuildable[T Buildable](bg BuildGraphReadPort, each func(BuildAlias, T) error) error {
+	return bg.Range(func(alias BuildAlias, node BuildNode) error {
+		if buildable, ok := node.GetBuildable().(T); ok {
+			if err := each(alias, buildable); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 func (g *buildGraphReadPort) findNode(alias BuildAlias) (*buildNode, error) {
 	if node, ok := g.nodes.Get(alias); ok {
 		base.Assert(func() bool { return node.Alias().Equals(alias) })

@@ -77,15 +77,14 @@ func (x ModuleAlias) Compare(o ModuleAlias) int {
 	}
 }
 func (x ModuleAlias) AutoComplete(in base.AutoComplete) {
-	bg := CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "AutoCompleteModuleAlias"}, utils.BUILDGRAPH_QUIET)
-	defer bg.Close()
-	modules, err := NeedAllModuleAliases(bg.GlobalContext())
-	if err == nil {
-		for _, it := range modules {
-			in.Add(it.String(), it.Alias().String())
-		}
+	if bg, ok := in.GetUserParam().(utils.BuildGraphReadPort); ok {
+		ForeachBuildable(bg, func(_ BuildAlias, m Module) error {
+			it := m.GetModule().ModuleAlias
+			in.Add(it.String(), m.GetModule().ModuleType.String())
+			return nil
+		})
 	} else {
-		CommandPanic(err)
+		base.UnreachableCode()
 	}
 }
 func (x *ModuleAlias) Set(in string) (err error) {
@@ -480,7 +479,7 @@ func GetModuleFromUserInput(bg BuildGraphReadPort, in ModuleAlias) (Module, erro
 		return module, nil
 	}
 
-	if found, err := base.DidYouMean[ModuleAlias](in.String()); err == nil {
+	if found, err := base.DidYouMean[ModuleAlias](in.String(), bg); err == nil {
 		if err = in.Set(found); err != nil {
 			return nil, err
 		}

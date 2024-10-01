@@ -16,7 +16,6 @@ func InitAction() {
 	base.LogTrace(LogAction, "build/action.Init()")
 
 	base.RegisterSerializable[ActionRules]()
-	base.RegisterSerializable[actionCache]()
 }
 
 type Action interface {
@@ -57,15 +56,14 @@ func (x ActionAlias) Compare(o ActionAlias) int {
 	return x.ExportFile.Compare(o.ExportFile)
 }
 func (x ActionAlias) AutoComplete(in base.AutoComplete) {
-	bg := utils.CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "AutoCompleteActionAlias"}, utils.BUILDGRAPH_QUIET)
-	defer bg.Close()
-	bg.Range(func(ba utils.BuildAlias, bn utils.BuildNode) error {
-		switch buildable := bn.GetBuildable().(type) {
-		case Action:
-			in.Add(buildable.GetAction().GetGeneratedFile().String(), "")
-		}
-		return nil
-	})
+	if bg, ok := in.GetUserParam().(utils.BuildGraphReadPort); ok {
+		utils.ForeachBuildable(bg, func(alias utils.BuildAlias, action Action) error {
+			in.Add(alias.String(), action.GetAction().GetGeneratedFile().String())
+			return nil
+		})
+	} else {
+		base.UnreachableCode()
+	}
 }
 func (x *ActionAlias) Serialize(ar base.Archive) {
 	ar.Serializable(&x.ExportFile)
@@ -180,7 +178,7 @@ func (x *ActionRules) BuildWithSourceDependencies(bc utils.BuildContext, sourceD
 		}
 		hasValidCacheArtifact = true
 
-		if err = GetActionCache(bc).CacheRead(bc, cacheKey, &cacheArtifact); err == nil {
+		if err = GetActionCache().CacheRead(bc, cacheKey, &cacheArtifact); err == nil {
 			wasRetrievedFromCache = true // cache-hit
 			bc.Annotate(utils.AnnocateBuildComment(`CACHE`))
 
@@ -317,7 +315,7 @@ func asyncCacheWriteAction(bg utils.BuildGraphWritePort, cacheKey ActionCacheKey
 		// finally write compiled artifacts to the cache
 		if writeToCache {
 			cacheArtifact.DependencyFiles.Sort()
-			err := GetActionCache(bg).CacheWrite(bg, cacheKey, cacheArtifact)
+			err := GetActionCache().CacheWrite(bg, cacheKey, cacheArtifact)
 			base.LogPanicIfFailed(LogActionCache, err)
 		}
 	}, base.TASKPRIORITY_LOW, base.ThreadPoolDebugId{Category: "AsyncCacheWrite", Arg: cacheArtifact.OutputFiles[0]}) // executing tasks has more priority than caching results
@@ -333,7 +331,7 @@ func createActionCacheArtifact(bg utils.BuildGraphWritePort, command *CommandRul
 	cacheArtifact.OutputFiles = outputFiles
 	cacheArtifact.OutputFiles.Sort()
 
-	cacheKey, err := GetActionCache(bg).CacheKey(bg, &cacheArtifact)
+	cacheKey, err := GetActionCache().CacheKey(bg, &cacheArtifact)
 	return cacheArtifact, cacheKey, err
 }
 

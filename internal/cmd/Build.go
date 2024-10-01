@@ -82,14 +82,14 @@ func (x *BuildCommand) Run(cc utils.CommandContext) error {
 			}
 
 			// verify configuration name and correct case if necessary
-			if cfg, err := compile.GetConfigurationFromUserInput(target.ConfigurationAlias); err == nil {
+			if cfg, err := compile.GetConfigurationFromUserInput(bg, target.ConfigurationAlias); err == nil {
 				target.ConfigurationAlias = cfg.GetConfig().ConfigurationAlias
 			} else {
 				return err
 			}
 
 			// verify platform name and correct case if necessary
-			if plf, err := compile.GetPlatformFromUserInput(target.PlatformAlias); err == nil {
+			if plf, err := compile.GetPlatformFromUserInput(bg, target.PlatformAlias); err == nil {
 				target.PlatformAlias = plf.GetPlatform().PlatformAlias
 			} else {
 				return err

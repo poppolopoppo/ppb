@@ -52,6 +52,10 @@ var getActionCache = base.Memoize(func() *actionCache {
 		path: GetActionFlags().CachePath,
 		seed: base.StringFingerprint("ActionCache-1.0.0"),
 	}
+	// create cache folder IFN
+	if err := UFS.MkdirEx(result.path); err != nil {
+		base.LogPanicErr(LogActionCache, err)
+	}
 	// print cache stats upon exit if specified on command-line
 	if GetCommandFlags().Summary.Get() {
 		CommandEnv.OnExit(func(*CommandEnvT) error {
