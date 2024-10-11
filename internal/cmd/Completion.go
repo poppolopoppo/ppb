@@ -48,7 +48,7 @@ func filterCompletion(args *CompletionArgs, output func(string) error, values ..
 		keys.Sort()
 
 		globRE := utils.MakeGlobRegexp(keys...)
-		if globRE == nil {
+		if !globRE.Valid() {
 			return fmt.Errorf("invalid regular expression: %q", keys)
 		}
 

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/poppolopoppo/ppb/internal/base"
-	"github.com/poppolopoppo/ppb/utils"
 
 	internal_io "github.com/poppolopoppo/ppb/internal/io"
 
@@ -73,7 +72,7 @@ func (x *TargetAlias) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x TargetAlias) AutoComplete(in base.AutoComplete) {
-	if bg, ok := in.GetUserParam().(utils.BuildGraphReadPort); ok {
+	if bg, ok := in.GetUserParam().(BuildGraphReadPort); ok {
 		var modules base.SetT[Module]
 		ForeachBuildable(bg, func(_ BuildAlias, m Module) error {
 			modules.Append(m)

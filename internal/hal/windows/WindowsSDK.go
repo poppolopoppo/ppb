@@ -3,7 +3,6 @@
 package windows
 
 import (
-	"regexp"
 	"sort"
 
 	"github.com/poppolopoppo/ppb/compile"
@@ -63,9 +62,9 @@ func (sdk *WindowsSDK) Serialize(ar base.Archive) {
 }
 
 type WindowsSDKInstall struct {
-	MajorVer   string
-	SearchDir  utils.Directory
-	SearchGlob string
+	MajorVer      string
+	SearchDir     utils.Directory
+	SearchPattern string
 	WindowsSDK
 }
 
@@ -79,7 +78,7 @@ func (x *WindowsSDKInstall) Build(bc utils.BuildContext) error {
 		err = x.SearchDir.MatchDirectories(func(d utils.Directory) error {
 			dirs.Append(d)
 			return nil
-		}, regexp.MustCompile(x.SearchGlob))
+		}, base.NewRegexp(x.SearchPattern))
 	} else {
 		windowsFlags, err := GetWindowsFlags(bc)
 		if err != nil {
@@ -110,7 +109,7 @@ func (x *WindowsSDKInstall) Build(bc utils.BuildContext) error {
 func (x *WindowsSDKInstall) Serialize(ar base.Archive) {
 	ar.String(&x.MajorVer)
 	ar.Serializable(&x.SearchDir)
-	ar.String(&x.SearchGlob)
+	ar.String(&x.SearchPattern)
 	ar.Serializable(&x.WindowsSDK)
 }
 
@@ -118,9 +117,9 @@ func getWindowsSDK_10() utils.BuildFactoryTyped[*WindowsSDKInstall] {
 	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (WindowsSDKInstall, error) {
 		searchDir := utils.MakeDirectory("C:/Program Files (x86)/Windows Kits/10/Lib")
 		return WindowsSDKInstall{
-			MajorVer:   "10",
-			SearchDir:  searchDir,
-			SearchGlob: `10\..*`,
+			MajorVer:      "10",
+			SearchDir:     searchDir,
+			SearchPattern: `10\..*`,
 		}, bi.NeedDirectories(searchDir)
 	})
 }
@@ -129,9 +128,9 @@ func getWindowsSDK_8_1() utils.BuildFactoryTyped[*WindowsSDKInstall] {
 	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (WindowsSDKInstall, error) {
 		searchDir := utils.MakeDirectory("C:/Program Files (x86)/Windows Kits/8.1/Lib")
 		return WindowsSDKInstall{
-			MajorVer:   "8.1",
-			SearchDir:  searchDir,
-			SearchGlob: `8\..*`,
+			MajorVer:      "8.1",
+			SearchDir:     searchDir,
+			SearchPattern: `8\..*`,
 		}, bi.NeedDirectories(searchDir)
 	})
 }

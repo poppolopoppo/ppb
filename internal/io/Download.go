@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"regexp"
 	"strconv"
 
@@ -36,37 +37,47 @@ func (x DownloadMode) String() string {
 	}
 }
 
-func BuildDownloader(uri string, dst utils.Filename, mode DownloadMode) utils.BuildFactoryTyped[*Downloader] {
-	parsedUrl, err := url.Parse(uri)
-	if err != nil {
-		base.LogFatal("download: %v", err)
-	}
+func BuildDownloader(url base.Url, dst utils.Directory, mode DownloadMode) utils.BuildFactoryTyped[*Downloader] {
 	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (Downloader, error) {
 		return Downloader{
-			Source:      *parsedUrl,
-			Destination: dst,
+			Source:      url,
+			DownloadDir: dst,
 			Mode:        mode,
 		}, nil
 	})
 }
 
+func BuildDownloaderFromUrl(uri string, dst utils.Directory, mode DownloadMode) utils.BuildFactoryTyped[*Downloader] {
+	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (Downloader, error) {
+		var url base.Url
+		err := url.Set(uri)
+		return Downloader{
+			Source:      url,
+			DownloadDir: dst,
+			Mode:        mode,
+		}, err
+	})
+}
+
 type Downloader struct {
-	Source      url.URL
+	Source      base.Url
 	Destination utils.Filename
+	DownloadDir utils.Directory
 	Mode        DownloadMode
 }
 
 func (dl *Downloader) Alias() utils.BuildAlias {
-	return utils.MakeBuildAlias("Download", dl.Destination.String())
+	return utils.MakeBuildAlias("Download", dl.Source.String(), dl.DownloadDir.String())
 }
 func (dl *Downloader) Build(bc utils.BuildContext) error {
 	var err error
 	var written int64
 	switch dl.Mode {
 	case DOWNLOAD_DEFAULT:
+		dl.Destination = dl.DownloadDir.File(path.Base(dl.Source.Path))
 		written, err = DownloadFile(dl.Destination, dl.Source)
 	case DOWNLOAD_REDIRECT:
-		written, err = DownloadHttpRedirect(dl.Destination, dl.Source)
+		dl.Destination, written, err = DownloadHttpRedirect(dl.DownloadDir, dl.Source)
 	}
 
 	if err == nil {
@@ -80,22 +91,9 @@ func (dl *Downloader) Build(bc utils.BuildContext) error {
 	return err
 }
 func (dl *Downloader) Serialize(ar base.Archive) {
-	if ar.Flags().IsLoading() {
-		var uri string
-		ar.String(&uri)
-
-		parsedUrl, err := url.Parse(uri)
-		if err == nil {
-			dl.Source = *parsedUrl
-		} else {
-			ar.OnError(err)
-		}
-	} else {
-		uri := dl.Source.String()
-		ar.String(&uri)
-	}
-
+	ar.Serializable(&dl.Source)
 	ar.Serializable(&dl.Destination)
+	ar.Serializable(&dl.DownloadDir)
 	ar.Serializable(&dl.Mode)
 }
 
@@ -154,7 +152,7 @@ func downloadFromCache(resp *http.Response) (utils.Filename, downloadCacheResult
 	return utils.Filename{}, nonCachableResponse{fmt.Errorf("can't find content hash in http header")}
 }
 
-func DownloadFile(dst utils.Filename, src url.URL) (int64, error) {
+func DownloadFile(dst utils.Filename, src base.Url) (int64, error) {
 	base.LogVerbose(LogDownload, "downloading url '%v' to '%v'...", src.String(), dst.String())
 
 	client := http.Client{
@@ -213,7 +211,7 @@ func DownloadFile(dst utils.Filename, src url.URL) (int64, error) {
 
 var re_metaRefreshRedirect = regexp.MustCompile(`(?i)<meta.*http-equiv="refresh".*content=".*url=(.*)".*?/>`)
 
-func DownloadHttpRedirect(dst utils.Filename, src url.URL) (int64, error) {
+func DownloadHttpRedirect(dst utils.Directory, src base.Url) (utils.Filename, int64, error) {
 	base.LogVerbose(LogDownload, "download http redirect '%v' to '%v'...", src.String(), dst.String())
 
 	client := http.Client{
@@ -226,7 +224,7 @@ func DownloadHttpRedirect(dst utils.Filename, src url.URL) (int64, error) {
 
 	resp, err := client.Get(src.String())
 	if err != nil {
-		return 0, err
+		return utils.Filename{}, 0, err
 	}
 	defer resp.Body.Close()
 
@@ -240,12 +238,14 @@ func DownloadHttpRedirect(dst utils.Filename, src url.URL) (int64, error) {
 		if len(match) > 1 {
 			var url *url.URL
 			if url, err = url.Parse(base.UnsafeStringFromBytes(match[1])); err == nil {
-				return DownloadFile(dst, *url)
+				localFile := dst.File(path.Base(url.Path))
+				written, err := DownloadFile(localFile, base.Url{URL: url})
+				return localFile, written, err
 			}
 		} else {
 			err = fmt.Errorf("http: could not find html refresh meta")
 		}
 	}
 
-	return 0, err
+	return utils.Filename{}, 0, err
 }

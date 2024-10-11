@@ -24,7 +24,7 @@ func (x CompressedArchiveFromDownload) Equals(other CompressedArchiveFromDownloa
 	return (x.Download == other.Download && x.ExtractDir.Equals(other.ExtractDir))
 }
 
-func BuildCompressedUnarchiver(src utils.Filename, dst utils.Directory, acceptList base.StringSet, staticDeps ...utils.BuildAlias) utils.BuildFactoryTyped[*CompressedUnarchiver] {
+func BuildCompressedUnarchiver(src utils.Filename, dst utils.Directory, acceptList base.Regexp, staticDeps ...utils.BuildAlias) utils.BuildFactoryTyped[*CompressedUnarchiver] {
 	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (CompressedUnarchiver, error) {
 		err := CreateDirectory(bi, dst)
 		return CompressedUnarchiver{
@@ -37,7 +37,7 @@ func BuildCompressedUnarchiver(src utils.Filename, dst utils.Directory, acceptLi
 				bi.DependsOn(staticDeps...))
 	})
 }
-func BuildCompressedArchiveExtractorFromDownload(prms CompressedArchiveFromDownload, acceptList base.StringSet) utils.BuildFactoryTyped[*CompressedUnarchiver] {
+func BuildCompressedArchiveExtractorFromDownload(prms CompressedArchiveFromDownload, acceptList base.Regexp) utils.BuildFactoryTyped[*CompressedUnarchiver] {
 	return BuildCompressedUnarchiver(
 		prms.Download.Destination,
 		prms.ExtractDir,
@@ -52,7 +52,7 @@ func BuildCompressedArchiveExtractorFromDownload(prms CompressedArchiveFromDownl
 type CompressedUnarchiver struct {
 	Source         utils.Filename
 	Destination    utils.Directory
-	AcceptList     base.StringSet
+	AcceptList     base.Regexp
 	ExtractedFiles utils.FileSet
 }
 
@@ -62,12 +62,11 @@ func (x *CompressedUnarchiver) Alias() utils.BuildAlias {
 func (x *CompressedUnarchiver) Build(bc utils.BuildContext) error {
 	x.ExtractedFiles.Clear()
 
-	globRe := utils.MakeGlobRegexp(x.AcceptList.Slice()...)
 	exportFilter := func(s string) (utils.Filename, bool) {
 		dst := x.Destination.AbsoluteFile(s)
 		match := true
-		if globRe != nil {
-			match = globRe.MatchString(s)
+		if x.AcceptList.Valid() {
+			match = x.AcceptList.MatchString(s)
 		}
 		if match {
 			x.ExtractedFiles.Append(dst)

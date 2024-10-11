@@ -23,7 +23,8 @@ type Generated interface {
 }
 
 type BuildGenerated struct {
-	OutputFile utils.Filename
+	GeneratedName string
+	OutputFile    utils.Filename
 	Generated
 }
 
@@ -40,6 +41,7 @@ func (x *BuildGenerated) Build(bc utils.BuildContext) error {
 	return err
 }
 func (x *BuildGenerated) Serialize(ar base.Archive) {
+	ar.String(&x.GeneratedName)
 	ar.Serializable(&x.OutputFile)
 	base.SerializeExternal(ar, &x.Generated)
 }
@@ -49,7 +51,7 @@ func (x *BuildGenerated) Serialize(ar base.Archive) {
  ***************************************/
 
 type Generator interface {
-	CreateGenerated(unit *Unit, output utils.Filename) Generated
+	CreateGenerated(unit *Unit, output utils.Filename) (Generated, error)
 	base.Serializable
 }
 
@@ -95,15 +97,22 @@ func (rules *GeneratorRules) GetGenerateFile(unit *Unit) utils.Filename {
 	return rules.GetGenerateDir(unit).AbsoluteFile(rules.GeneratedName)
 }
 
-func (rules *GeneratorRules) CreateGenerated(bc utils.BuildContext, module Module, unit *Unit) (*BuildGenerated, error) {
+func (rules *GeneratorRules) CreateGenerated(bc utils.BuildContext, module Module, unit *Unit) (result *BuildGenerated, err error) {
 	outputFile := rules.GetGenerateFile(unit)
-	generated := &BuildGenerated{
-		OutputFile: outputFile,
-		Generated:  rules.Generator.CreateGenerated(unit, outputFile),
+
+	var generated Generated
+	generated, err = rules.Generator.CreateGenerated(unit, outputFile)
+	if err != nil {
+		return
 	}
 
-	err := bc.OutputNode(utils.WrapBuildFactory(func(bi utils.BuildInitializer) (*BuildGenerated, error) {
-		return generated, bi.NeedFactories(internal_io.BuildDirectoryCreator(outputFile.Dirname))
+	result = &BuildGenerated{
+		GeneratedName: rules.GeneratedName,
+		OutputFile:    outputFile,
+		Generated:     generated,
+	}
+	err = bc.OutputNode(utils.WrapBuildFactory(func(bi utils.BuildInitializer) (*BuildGenerated, error) {
+		return result, bi.NeedFactories(internal_io.BuildDirectoryCreator(outputFile.Dirname))
 	}))
-	return generated, err
+	return result, err
 }

@@ -1,6 +1,8 @@
 package base
 
-import "errors"
+import (
+	"errors"
+)
 
 /***************************************
  * Optional[T] holds a value or an error, with value semantics
@@ -40,4 +42,14 @@ func (x Optional[T]) GetOrElse(orElse T) T {
 	} else {
 		return orElse
 	}
+}
+
+func SetOptional[T any, E interface {
+	*T
+	Set(string) error
+}](in string, optional *Optional[T]) (err error) {
+	if err = E(&optional.value).Set(in); err == nil {
+		optional.err = nil
+	}
+	return
 }

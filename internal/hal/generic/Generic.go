@@ -13,6 +13,9 @@ func InitGenericHAL() {
 func InitGenericCompile() {
 	base.RegisterSerializable[GnuSourceDependenciesAction]()
 
+	base.RegisterSerializable[ExternalSDKHeaderGenerator]()
+	base.RegisterSerializable[ExternalSDKGeneratedHeader]()
+
 	base.RegisterSerializable[GlslangHeaderGenerator]()
 	base.RegisterSerializable[GlslangGeneratedHeader]()
 

@@ -264,14 +264,14 @@ func (x *DirectoryGlob) Build(bc utils.BuildContext) error {
 
 	includeRE := utils.MakeGlobRegexp(x.IncludedGlobs...)
 	excludeRE := utils.MakeGlobRegexp(x.ExcludedGlobs...)
-	if includeRE == nil {
+	if !includeRE.Valid() {
 		includeRE = utils.MakeGlobRegexp("*")
 	}
 
 	err := x.Source.MatchFilesRec(func(f utils.Filename) error {
 		f = utils.SafeNormalize(f)
 		if !x.ExcludedFiles.Contains(f) {
-			if excludeRE == nil || !excludeRE.MatchString(f.String()) {
+			if !excludeRE.Valid() || !excludeRE.MatchString(f.String()) {
 				x.Results.Append(f)
 			}
 		}

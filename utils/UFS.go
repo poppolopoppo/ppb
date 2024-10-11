@@ -389,15 +389,12 @@ func (d Directory) Directories() (results DirSet, err error) {
 	_, dirs, err := FileInfos.EnumerateDirectory(d)
 	return dirs, err
 }
-func (d Directory) MatchDirectories(each func(Directory) error, r *regexp.Regexp) error {
-	if r == nil {
-		return nil
-	}
+func (d Directory) MatchDirectories(each func(Directory) error, r base.Regexp) error {
 	base.LogVeryVerbose(LogUFS, "match directories in '%v' for /%v/...", d, r)
 
 	if _, dirs, err := FileInfos.EnumerateDirectory(d); err == nil {
 		for _, it := range dirs {
-			if r.MatchString(it.Basename()) {
+			if !r.Valid() || r.MatchString(it.Basename()) {
 				if err = each(it); err != nil {
 					return err
 				}
@@ -408,15 +405,12 @@ func (d Directory) MatchDirectories(each func(Directory) error, r *regexp.Regexp
 		return err
 	}
 }
-func (d Directory) MatchFiles(each func(Filename) error, r *regexp.Regexp) error {
-	if r == nil {
-		return nil
-	}
+func (d Directory) MatchFiles(each func(Filename) error, r base.Regexp) error {
 	base.LogVeryVerbose(LogUFS, "match files in '%v' for /%v/...", d, r)
 
 	if files, _, err := FileInfos.EnumerateDirectory(d); err == nil {
 		for _, it := range files {
-			if r.MatchString(it.Basename) {
+			if !r.Valid() || r.MatchString(it.Basename) {
 				if err = each(it); err != nil {
 					return err
 				}
@@ -427,15 +421,12 @@ func (d Directory) MatchFiles(each func(Filename) error, r *regexp.Regexp) error
 		return err
 	}
 }
-func (d Directory) MatchFilesRec(each func(Filename) error, r *regexp.Regexp) error {
-	if r == nil {
-		return nil
-	}
+func (d Directory) MatchFilesRec(each func(Filename) error, r base.Regexp) error {
 	base.LogVeryVerbose(LogUFS, "match files rec in '%v' for /%v/...", d, r)
 
 	if files, dirs, err := FileInfos.EnumerateDirectory(d); err == nil {
 		for _, it := range files {
-			if r.MatchString(it.Basename) {
+			if !r.Valid() || r.MatchString(it.Basename) {
 				if err = each(it); err != nil {
 					return err
 				}
@@ -454,14 +445,14 @@ func (d Directory) MatchFilesRec(each func(Filename) error, r *regexp.Regexp) er
 
 type findFileNotFoundError struct {
 	d Directory
-	r *regexp.Regexp
+	r base.Regexp
 }
 
 func (x findFileNotFoundError) Error() string {
 	return fmt.Sprintf("file not found '%v' in '%v'", x.r, x.d)
 }
 
-func (d Directory) FindFileRec(r *regexp.Regexp) (Filename, error) {
+func (d Directory) FindFileRec(r base.Regexp) (Filename, error) {
 	base.LogVeryVerbose(LogUFS, "find file rec in '%v' for /%v/...", d, r)
 
 	if files, dirs, err := FileInfos.EnumerateDirectory(d); err == nil {
@@ -933,7 +924,7 @@ func (ufs *UFSFrontEnd) ReadLines(src Filename, line func(string) error) error {
 		return nil
 	})
 }
-func (ufs *UFSFrontEnd) Scan(src Filename, re *regexp.Regexp, match func([]string) error) error {
+func (ufs *UFSFrontEnd) Scan(src Filename, re base.Regexp, match func([]string) error) error {
 	return ufs.Open(src, func(rd io.Reader) error {
 		base.LogDebug(LogUFS, "scan '%v' with regexp %v", src, re)
 
@@ -943,7 +934,7 @@ func (ufs *UFSFrontEnd) Scan(src Filename, re *regexp.Regexp, match func([]strin
 
 		scanner := bufio.NewScanner(rd)
 		scanner.Buffer(*buf, capacity)
-		scanner.Split(base.SplitRegex(re, capacity))
+		scanner.Split(base.SplitRegex(re.Regexp, capacity))
 
 		for scanner.Scan() {
 			if err := scanner.Err(); err == nil {
@@ -1106,31 +1097,38 @@ func make_ufs_frontend() (ufs UFSFrontEnd) {
 	return ufs
 }
 
+/***************************************
+ * Globbing
+ ***************************************/
+
 func MakeGlobRegexpExpr(glob ...string) string {
 	if len(glob) == 0 {
 		return ".*"
 	}
 	var expr strings.Builder
-	expr.WriteString("(?i)(")
+	expr.WriteString("(?i)(?:") // insensitive, non-capturing group
 	for i, it := range glob {
 		it = regexp.QuoteMeta(it)
 		it = strings.ReplaceAll(it, "\\?", ".")
 		it = strings.ReplaceAll(it, "\\*", ".*?")
 		it = strings.ReplaceAll(it, "/", "[\\\\/]")
-		it = "(" + it + ")"
+
 		if i > 0 {
 			expr.WriteString("|")
 		}
+
+		expr.WriteString("(?:") // non-capturing group
 		expr.WriteString(it)
+		expr.WriteRune(')')
 	}
 	expr.WriteString(")")
 	return expr.String()
 }
-func MakeGlobRegexp(glob ...string) *regexp.Regexp {
+func MakeGlobRegexp(glob ...string) base.Regexp {
 	if len(glob) == 0 {
-		return nil
+		return base.Regexp{}
 	}
-	return regexp.MustCompile(MakeGlobRegexpExpr(glob...))
+	return base.Regexp{Regexp: regexp.MustCompile(MakeGlobRegexpExpr(glob...))}
 }
 
 /***************************************

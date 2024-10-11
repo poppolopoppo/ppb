@@ -1,6 +1,7 @@
 package compile
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -283,6 +284,8 @@ func (vars VariableSubstitutions) ExpandFilename(it utils.Filename) utils.Filena
  * Variable Definitions
  ***************************************/
 
+var ErrUnknownVar = errors.New("unknown variable")
+
 func (vars VariableDefinitions) Prepare() VariableSubstitutions {
 	return NewVariableSubstituions(vars...)
 }
@@ -295,12 +298,18 @@ func (vars *VariableDefinitions) Add(name, value string) {
 		})
 	}
 }
-func (vars VariableDefinitions) Get(from string) string {
+func (vars VariableDefinitions) Get(from string) (string, error) {
+	if i, ok := vars.IndexOf(from); ok {
+		return vars[i].Value, nil
+	} else {
+		return "", ErrUnknownVar
+	}
+}
+func (vars VariableDefinitions) GetOrElse(from, orElse string) string {
 	if i, ok := vars.IndexOf(from); ok {
 		return vars[i].Value
 	} else {
-		base.LogPanic(LogCompile, "variable-substitutions: could not find [[:%s:]] in %v", from, vars)
-		return ""
+		return orElse
 	}
 }
 func (vars VariableDefinitions) IndexOf(from string) (int, bool) {

@@ -9,8 +9,7 @@ import (
 
 	"github.com/poppolopoppo/ppb/action"
 	"github.com/poppolopoppo/ppb/internal/base"
-
-	. "github.com/poppolopoppo/ppb/utils"
+	"github.com/poppolopoppo/ppb/utils"
 )
 
 var LogGnuDepFile = base.NewLogCategory("GnuDep")
@@ -20,14 +19,14 @@ var LogGnuDepFile = base.NewLogCategory("GnuDep")
  ***************************************/
 
 type GnuDepFile struct {
-	Dependencies FileSet
+	Dependencies utils.FileSet
 }
 
-func (x *GnuDepFile) Load(src Filename) error {
-	x.Dependencies = FileSet{}
+func (x *GnuDepFile) Load(src utils.Filename) error {
+	x.Dependencies = utils.FileSet{}
 	// base.LogTrace(LogGnuDepFile, "%v: start parsing gnu dependency file", src)
 
-	return UFS.Open(src, func(rd io.Reader) error {
+	return utils.UFS.Open(src, func(rd io.Reader) error {
 		var rb bufio.Reader
 		rb.Reset(rd)
 
@@ -43,9 +42,9 @@ func (x *GnuDepFile) Load(src Filename) error {
 			appendFile := func() {
 				if filename := buf.String(); len(filename) > 0 {
 					if filepath.IsLocal(filename) {
-						x.Dependencies.AppendUniq(UFS.Root.AbsoluteFile(filename).Normalize())
+						x.Dependencies.AppendUniq(utils.UFS.Root.AbsoluteFile(filename).Normalize())
 					} else {
-						x.Dependencies.AppendUniq(MakeFilename(strings.Clone(filename)))
+						x.Dependencies.AppendUniq(utils.MakeFilename(strings.Clone(filename)))
 					}
 					// base.LogTrace(LogGnuDepFile, "%v: parsed source file name %q", src, x.Dependencies[len(x.Dependencies)-1])
 				}
@@ -100,16 +99,16 @@ func (x *GnuDepFile) Load(src Filename) error {
  ***************************************/
 
 type GnuSourceDependenciesAction struct {
-	GnuDepFile Filename
+	GnuDepFile utils.Filename
 	action.ActionRules
 }
 
-func (x *GnuSourceDependenciesAction) Build(bc BuildContext) error {
+func (x *GnuSourceDependenciesAction) Build(bc utils.BuildContext) error {
 	// compile the action with /sourceDependencies
 	return x.ActionRules.BuildWithSourceDependencies(bc, x)
 }
 
-func (x *GnuSourceDependenciesAction) GetActionSourceDependencies(bc BuildContext) (sourceFiles FileSet, err error) {
+func (x *GnuSourceDependenciesAction) GetActionSourceDependencies(bc utils.BuildContext) (sourceFiles utils.FileSet, err error) {
 	// track json file as an output dependency (and check if file exists)
 	if err = bc.OutputFile(x.GnuDepFile); err != nil {
 		return

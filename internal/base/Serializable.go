@@ -410,6 +410,27 @@ func SerializeExternal[T Serializable](ar Archive, external *T) {
 	ar.Serializable(*external)
 }
 
+func SerializeOptional[T any, E interface {
+	*T
+	Serializable
+}](ar Archive, optional *Optional[T]) {
+	if ar.Flags().IsLoading() {
+		var valid bool
+		ar.Bool(&valid)
+		if valid {
+			ar.Serializable(E(&optional.value))
+		} else {
+			optional.err = ErrEmptyOptional
+		}
+	} else {
+		valid := optional.Valid()
+		ar.Bool(&valid)
+		if valid {
+			ar.Serializable(E(&optional.value))
+		}
+	}
+}
+
 func SerializeCompactSigned[Signed constraints.Signed](ar Archive, index *Signed) {
 	var b byte
 	if ar.Flags().IsLoading() {

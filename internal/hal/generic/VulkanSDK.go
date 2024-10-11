@@ -24,11 +24,19 @@ var Vulkan = compile.RegisterArchetype("SDK/VULKAN", func(rules *compile.ModuleR
 	return nil
 })
 
-func getVulkanBindingsFile(unit *compile.Unit) utils.Filename {
-	return unit.ModuleDir.AbsoluteFile(unit.Exports.Get("Vulkan/Bindings"))
+func getVulkanBindingsFile(unit *compile.Unit) (utils.Filename, error) {
+	if input, err := unit.Exports.Get("Vulkan/Bindings"); err == nil {
+		return unit.ModuleDir.AbsoluteFile(input), nil
+	} else {
+		return utils.Filename{}, err
+	}
 }
-func getVulkanIncludeDir(unit *compile.Unit) utils.Directory {
-	return unit.ModuleDir.AbsoluteFolder(unit.Exports.Get("Vulkan/Path"))
+func getVulkanIncludeDir(unit *compile.Unit) (utils.Directory, error) {
+	if input, err := unit.Exports.Get("Vulkan/Path"); err == nil {
+		return unit.ModuleDir.AbsoluteFolder(input), nil
+	} else {
+		return utils.Directory{}, err
+	}
 }
 
 /***************************************
@@ -44,12 +52,18 @@ type VulkanHeaderGenerator struct {
 func (x *VulkanHeaderGenerator) Serialize(ar base.Archive) {
 	ar.String(&x.Version)
 }
-func (x VulkanHeaderGenerator) CreateGenerated(unit *compile.Unit, output utils.Filename) compile.Generated {
-	return &VulkanGeneratedHeader{
-		Version:      x.Version,
-		BindingsFile: getVulkanBindingsFile(unit),
-		IncludeDir:   getVulkanIncludeDir(unit),
+func (x VulkanHeaderGenerator) CreateGenerated(unit *compile.Unit, output utils.Filename) (result compile.Generated, err error) {
+	header := &VulkanGeneratedHeader{
+		Version: x.Version,
 	}
+	if header.BindingsFile, err = getVulkanBindingsFile(unit); err != nil {
+		return
+	}
+	if header.IncludeDir, err = getVulkanIncludeDir(unit); err != nil {
+		return
+	}
+	result = header
+	return
 }
 
 var re_vkIdentifier = regexp.MustCompile(`^\w+`)
@@ -270,13 +284,19 @@ func (x *VulkanSourceGenerator) Serialize(ar base.Archive) {
 	ar.String(&x.Version)
 	ar.String(&x.GeneratedHeader)
 }
-func (x VulkanSourceGenerator) CreateGenerated(unit *compile.Unit, output utils.Filename) compile.Generated {
-	return &VulkanGeneratedSource{
+func (x VulkanSourceGenerator) CreateGenerated(unit *compile.Unit, output utils.Filename) (result compile.Generated, err error) {
+	source := &VulkanGeneratedSource{
 		Version:         x.Version,
 		GeneratedHeader: x.GeneratedHeader,
-		BindingsFile:    getVulkanBindingsFile(unit),
-		IncludeDir:      getVulkanIncludeDir(unit),
 	}
+	if source.BindingsFile, err = getVulkanBindingsFile(unit); err != nil {
+		return
+	}
+	if source.IncludeDir, err = getVulkanIncludeDir(unit); err != nil {
+		return
+	}
+	result = source
+	return
 }
 
 type VulkanGeneratedSource struct {
@@ -743,7 +763,7 @@ func vkParseBindingArgs(in string) []string {
 var re_VkBinding = regexp.MustCompile(`(?m)^\s*(VK_\w+)\s*\(\s*(.*?)\s*\)\s*$`)
 
 func vkParseBindings(filename utils.Filename, match func(VkBinding)) error {
-	return utils.UFS.Scan(filename, re_VkBinding, func(m []string) error {
+	return utils.UFS.Scan(filename, base.Regexp{Regexp: re_VkBinding}, func(m []string) error {
 		binding := VkBinding{
 			Args: vkParseBindingArgs(m[1]),
 		}
@@ -808,7 +828,7 @@ var re_VkFunctionPointer = regexp.MustCompile(`(?m)^\s*typedef\s+(\w+\*?)\s+\(VK
 
 func vkParseFunctionPointers(filename utils.Filename) ([]VkFunctionPointer, error) {
 	results := []VkFunctionPointer{}
-	err := utils.UFS.Scan(filename, re_VkFunctionPointer, func(m []string) error {
+	err := utils.UFS.Scan(filename, base.Regexp{Regexp: re_VkFunctionPointer}, func(m []string) error {
 		results = append(results, VkFunctionPointer{
 			Return: m[0],
 			Name:   m[1],

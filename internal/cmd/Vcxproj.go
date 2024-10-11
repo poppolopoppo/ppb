@@ -10,7 +10,6 @@ import (
 	"github.com/poppolopoppo/ppb/compile"
 	"github.com/poppolopoppo/ppb/internal/base"
 	internal_io "github.com/poppolopoppo/ppb/internal/io"
-	"github.com/poppolopoppo/ppb/utils"
 
 	//lint:ignore ST1001 ignore dot imports warning
 	. "github.com/poppolopoppo/ppb/utils"
@@ -21,7 +20,7 @@ var CommandVcxproj = NewCommand(
 	"vcxproj",
 	"generate projects and solution for Visual Studio",
 	OptionCommandRun(func(cc CommandContext) error {
-		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "Vcxproj"})
+		bg := CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "Vcxproj"})
 		defer bg.Close()
 
 		solutionFile := UFS.Output.File(CommandEnv.Prefix() + ".sln")
@@ -376,10 +375,15 @@ func (x *VcxProjectBuilder) Build(bc BuildContext) error {
 	return bc.OutputFile(generator.ProjectOutput, generator.FiltersOutput)
 }
 
-func (x *VcxProjectBuilder) vcxProjectConfig(config *VcxProjectConfig, u *compile.Unit) error {
+func (x *VcxProjectBuilder) vcxProjectConfig(config *VcxProjectConfig, u *compile.Unit) (err error) {
+	if config.PlatformToolset, err = u.Facet.Exports.Get("VisualStudio/PlatformToolset"); err == nil {
+		config.PlatformToolset = fmt.Sprint("v", config.PlatformToolset)
+	} else {
+		return err
+	}
+
 	config.Platform = x.SolutionPlatform(u.TargetAlias.PlatformName)
 	config.Config = u.TargetAlias.ConfigName
-	config.PlatformToolset = fmt.Sprint("v", u.Facet.Exports.Get("VisualStudio/PlatformToolset"))
 	config.OutputFile = u.OutputFile
 	config.OutputDirectory = u.OutputFile.Dirname
 	config.IntermediateDirectory = u.IntermediateDir
@@ -408,7 +412,7 @@ func (x *VcxProjectBuilder) vcxProjectConfig(config *VcxProjectConfig, u *compil
 			config.LocalDebuggerEnvironment = strings.Join(append(u.Environment.Export(), "^$(LocalDebuggerEnvironment)"), htmlLineFeed)
 		}
 	}
-	return nil
+	return
 }
 
 /***************************************

@@ -3,7 +3,6 @@ package generic
 import (
 	"fmt"
 	"io"
-	"path/filepath"
 
 	"github.com/poppolopoppo/ppb/compile"
 	"github.com/poppolopoppo/ppb/internal/base"
@@ -31,12 +30,19 @@ type SpirvToolsHeaderGenerator struct {
 func (x *SpirvToolsHeaderGenerator) Serialize(ar base.Archive) {
 	ar.String(&x.Version)
 }
-func (x SpirvToolsHeaderGenerator) CreateGenerated(unit *compile.Unit, output utils.Filename) compile.Generated {
+func (x SpirvToolsHeaderGenerator) CreateGenerated(unit *compile.Unit, output utils.Filename) (compile.Generated, error) {
+	var extractDir utils.Directory
+	if input, err := unit.Exports.Get("SpirvTools/Path"); err == nil {
+		extractDir = unit.ModuleDir.AbsoluteFolder(input)
+	} else {
+		return nil, err
+	}
+
 	return &SpirvToolsGeneratedHeader{
 		Version:     x.Version,
-		ExtractDir:  unit.ModuleDir.AbsoluteFolder(unit.Exports.Get("SpirvTools/Path")),
+		ExtractDir:  extractDir,
 		UseDebugSDK: !unit.Tagged(compile.TAG_NDEBUG),
-	}
+	}, nil
 }
 
 type SpirvToolsGeneratedHeader struct {
@@ -94,7 +100,7 @@ func getSpirvToolsExtractor(download *internal_io.Downloader, extractDir utils.D
 	return internal_io.BuildCompressedArchiveExtractorFromDownload(internal_io.CompressedArchiveFromDownload{
 		Download:   download,
 		ExtractDir: extractDir,
-	}, spirvToolsGlobIncludes)
+	}, utils.MakeGlobRegexp(spirvToolsGlobIncludes...))
 }
 
 const spirvToolsUseFrozenArtifacts = false
@@ -130,17 +136,16 @@ func getSpirvToolsConfig(debug bool) string {
 }
 
 func getSpirvToolsDownloader(config string) utils.BuildFactoryTyped[*internal_io.Downloader] {
-	dst := utils.UFS.Transient.Folder("SDK").File("spirv-tools-master-" + config + ".zip")
+	dst := utils.UFS.Transient.Folder("SDK")
 	if spirvToolsUseFrozenArtifacts {
 		if frozenUrl, ok := spirvToolsFrozenArtifactUris[config]; ok {
-			dst = dst.ReplaceExt(filepath.Ext(frozenUrl))
-			return internal_io.BuildDownloader(frozenUrl, dst, internal_io.DOWNLOAD_DEFAULT)
+			return internal_io.BuildDownloaderFromUrl(frozenUrl, dst, internal_io.DOWNLOAD_DEFAULT)
 		} else {
 			base.LogPanic(LogGeneric, "spirv-tools: unknown frozen artifact for <%v>", config)
 			return nil
 		}
 	} else {
 		latestUrl := fmt.Sprintf("https://storage.googleapis.com/spirv-tools/badges/build_link_%s.html", config)
-		return internal_io.BuildDownloader(latestUrl, dst, internal_io.DOWNLOAD_REDIRECT)
+		return internal_io.BuildDownloaderFromUrl(latestUrl, dst, internal_io.DOWNLOAD_REDIRECT)
 	}
 }
