@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/poppolopoppo/ppb/internal/base"
-	"github.com/poppolopoppo/ppb/utils"
 
 	internal_io "github.com/poppolopoppo/ppb/internal/io"
 
@@ -77,7 +76,7 @@ func (x ModuleAlias) Compare(o ModuleAlias) int {
 	}
 }
 func (x ModuleAlias) AutoComplete(in base.AutoComplete) {
-	if bg, ok := in.GetUserParam().(utils.BuildGraphReadPort); ok {
+	if bg, ok := in.GetUserParam().(BuildGraphReadPort); ok {
 		ForeachBuildable(bg, func(_ BuildAlias, m Module) error {
 			it := m.GetModule().ModuleAlias
 			in.Add(it.String(), m.GetModule().ModuleType.String())
@@ -230,6 +229,27 @@ func (rules *ModuleRules) GetCpp() *CppRules {
 func (rules *ModuleRules) GetFacet() *Facet {
 	return rules.Facet.GetFacet()
 }
+
+func (x *ModuleRules) DeepCopy(src *ModuleRules) {
+	// first, copy by value
+	*x = *src
+
+	// then, clone reference values
+	x.CppRules.DeepCopy(&src.CppRules)
+
+	x.PublicDependencies = base.CopySlice(src.PublicDependencies...)
+	x.PrivateDependencies = base.CopySlice(src.PrivateDependencies...)
+	x.RuntimeDependencies = base.CopySlice(src.RuntimeDependencies...)
+
+	x.Customs = base.CopySlice(src.Customs...)
+	x.Generators = base.CopySlice(src.Generators...)
+
+	x.Facet.DeepCopy(&src.Facet)
+
+	x.PerTags = base.CopyMap(x.PerTags)
+
+}
+
 func (rules *ModuleRules) expandTagsRec(env *CompileEnv, dst *ModuleRules) {
 	for tags, tagged := range rules.PerTags {
 		if selectedTags := env.Tags.Intersect(tags); !selectedTags.Empty() {
@@ -240,17 +260,18 @@ func (rules *ModuleRules) expandTagsRec(env *CompileEnv, dst *ModuleRules) {
 	}
 }
 func (rules *ModuleRules) ExpandModule(env *CompileEnv) ModuleRules {
+	// first, create a deep copy module rules
+	var expanded ModuleRules
+	expanded.DeepCopy(rules)
+
 	// we use this getter to create new rules and apply PerTags properties
 	if env != nil && len(rules.PerTags) > 0 {
-		// make a copy of the current rules
-		custom := ModuleRules{}
-		custom = *rules
 		// apply tags matching compile env recursively
-		rules.expandTagsRec(env, &custom)
-		return custom
+		rules.expandTagsRec(env, &expanded)
 	}
+
 	// always return a copy: rules should not be modified outside of Build()
-	return *rules
+	return expanded
 }
 
 func (rules *ModuleRules) Decorate(bg BuildGraphReadPort, env *CompileEnv, unit *Unit) error {

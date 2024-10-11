@@ -51,6 +51,9 @@ type Cpp interface {
 func (rules *CppRules) GetCpp() *CppRules {
 	return rules
 }
+func (rules *CppRules) DeepCopy(src *CppRules) {
+	*rules = *src
+}
 func (rules *CppRules) Serialize(ar base.Archive) {
 	ar.Serializable(&rules.SizePerUnity)
 	ar.Serializable(&rules.Instructions)
