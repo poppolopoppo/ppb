@@ -3,7 +3,7 @@ module github.com/poppolopoppo/ppb
 go 1.23.0
 
 require (
-	github.com/AllenDang/giu v0.8.1
+	github.com/AllenDang/giu v0.9.0
 	github.com/DataDog/zstd v1.5.6
 	github.com/Showmax/go-fqdn v1.0.0
 	github.com/danjacques/gofslock v0.0.0-20240212154529-d899e02bfe22
@@ -15,14 +15,14 @@ require (
 	github.com/pkg/profile v1.7.0
 	github.com/quic-go/quic-go v0.47.0
 	github.com/shirou/gopsutil v3.21.11+incompatible
-	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
-	golang.org/x/image v0.20.0
-	golang.org/x/net v0.29.0
-	golang.org/x/sys v0.25.0
+	golang.org/x/exp v0.0.0-20241004190924-225e2abe05e6
+	golang.org/x/image v0.21.0
+	golang.org/x/net v0.30.0
+	golang.org/x/sys v0.26.0
 )
 
 require (
-	github.com/AllenDang/cimgui-go v1.0.1 // indirect
+	github.com/AllenDang/cimgui-go v1.0.2 // indirect
 	github.com/AllenDang/go-findfont v0.0.0-20200702051237-9f180485aeb8 // indirect
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/dsnet/compress v0.0.2-0.20210315054119-f66993602bf5 // indirect
@@ -41,16 +41,16 @@ require (
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.14 // indirect
-	github.com/tklauser/numcpus v0.8.0 // indirect
+	github.com/tklauser/numcpus v0.9.0 // indirect
 	github.com/ulikunitz/xz v0.5.12 // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.uber.org/mock v0.4.0 // indirect
 	golang.design/x/hotkey v0.4.1 // indirect
 	golang.design/x/mainthread v0.3.0 // indirect
-	golang.org/x/crypto v0.27.0 // indirect
+	golang.org/x/crypto v0.28.0 // indirect
 	golang.org/x/mod v0.21.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/tools v0.25.0 // indirect
+	golang.org/x/tools v0.26.0 // indirect
 	gopkg.in/eapache/queue.v1 v1.1.0 // indirect
 )
