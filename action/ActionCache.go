@@ -567,7 +567,7 @@ func newCacheDecompressor(decompressor func(reader io.Reader) base.CompressedRea
 						getActionCache().stats.StatRead(0, n)
 						return err
 					}
-				})
+				}).(io.ReadCloser)
 		}
 	} else {
 		return func(r io.Reader) io.ReadCloser {

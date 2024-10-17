@@ -2,6 +2,9 @@ package base
 
 import "io"
 
+// can be done, but we lose all incremental updates and just get one progress message...
+const enableObservableReaderFromWriterTo = false
+
 /***************************************
  * Observable Writer
  ***************************************/
@@ -26,14 +29,14 @@ func NewObservableWriter(w io.Writer, onWrite ObservableWriterFunc) io.Writer {
 		Writer:  w,
 		OnWrite: onWrite,
 	}
-	if _, ok := w.(io.ReaderFrom); ok {
-		return ObsersvableReaderFrom{
-			ObservableWriter: result,
+	if enableObservableReaderFromWriterTo {
+		if _, ok := w.(io.ReaderFrom); ok {
+			return ObsersvableReaderFrom{
+				ObservableWriter: result,
+			}
 		}
-	} else {
-		return result
 	}
-
+	return result
 }
 
 func (x ObservableWriter) Flush() error {
@@ -42,7 +45,7 @@ func (x ObservableWriter) Flush() error {
 func (x ObservableWriter) Close() error {
 	return CloseWriterIFP(x.Writer)
 }
-func (x ObservableWriter) Reset(w io.Writer) error {
+func (x *ObservableWriter) Reset(w io.Writer) error {
 	if err := FlushWriterIFP(x.Writer); err != nil {
 		return err
 	}
@@ -86,18 +89,29 @@ type ObservableWriterTo struct {
 	ObservableReader
 }
 
-func NewObservableReader(r io.Reader, onRead ObservableReaderFunc) io.ReadCloser {
+func NewObservableReader(r io.Reader, onRead ObservableReaderFunc) io.Reader {
 	Assert(func() bool { return r != nil })
 	Assert(func() bool { return onRead != nil })
-	return ObservableReader{
+	if onRead == nil {
+		return r
+	}
+	result := ObservableReader{
 		Reader: r,
 		OnRead: onRead,
 	}
+	if enableObservableReaderFromWriterTo {
+		if _, ok := r.(io.WriterTo); ok {
+			return ObservableWriterTo{
+				ObservableReader: result,
+			}
+		}
+	}
+	return result
 }
 func (x ObservableReader) Close() error {
 	return CloseReaderIFP(x.Reader)
 }
-func (x ObservableReader) Reset(r io.Reader) error {
+func (x *ObservableReader) Reset(r io.Reader) error {
 	if rst, ok := x.Reader.(ReadReseter); ok {
 		return rst.Reset(r)
 	} else {
