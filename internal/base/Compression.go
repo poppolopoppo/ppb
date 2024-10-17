@@ -158,7 +158,7 @@ func (x transientLz4Reader) Close() error {
 	return nil
 }
 
-var TransientLz4Reader = NewRecycler[*lz4.Reader](
+var TransientLz4Reader = NewRecycler(
 	func() *lz4.Reader {
 		r := lz4.NewReader(nil)
 		applyLz4Options(r)
@@ -181,7 +181,7 @@ func (x transientLz4Writer) GetCompressionFormat() CompressionFormat {
 	return COMPRESSION_FORMAT_LZ4
 }
 
-var TransientLz4Writer = NewRecycler[*lz4.Writer](
+var TransientLz4Writer = NewRecycler(
 	func() *lz4.Writer {
 		w := lz4.NewWriter(nil)
 		applyLz4Options(w,

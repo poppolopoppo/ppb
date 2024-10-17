@@ -301,11 +301,11 @@ func (set SetT[T]) Sort(less func(a, b T) bool) {
  * Shared map
  ***************************************/
 
-type SharedMapT[K comparable, V any] struct {
+type SharedMapT[K any, V any] struct {
 	intern sync.Map
 }
 
-func NewSharedMapT[K comparable, V any]() *SharedMapT[K, V] {
+func NewSharedMapT[K any, V any]() *SharedMapT[K, V] {
 	return &SharedMapT[K, V]{sync.Map{}}
 }
 func (shared *SharedMapT[K, V]) Len() (count int) {
@@ -371,14 +371,6 @@ func (shared *SharedMapT[K, V]) LoadAndDelete(key K) (V, bool) {
 		var defaultValue V
 		return defaultValue, false
 	}
-}
-func (shared *SharedMapT[K, V]) Pin() map[K]V {
-	result := make(map[K]V, shared.Len())
-	shared.Range(func(k K, v V) error {
-		result[k] = v
-		return nil
-	})
-	return result
 }
 func (shared *SharedMapT[K, V]) Make(fn func() (K, V)) V {
 	k, v := fn()

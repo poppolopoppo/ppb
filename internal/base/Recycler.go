@@ -10,25 +10,24 @@ import (
  * Recycler[T] is a generic sync.Pool
  ***************************************/
 
-type Recycler[T comparable] interface {
+type Recycler[T any] interface {
 	Allocate() T
 	Release(T)
 }
 
-type recyclerPool[T comparable] struct {
+type recyclerPool[T any] struct {
 	pool      sync.Pool
 	onRelease func(T)
 }
 
-func NewRecycler[T comparable](factory func() T, release func(T)) Recycler[T] {
-	result := &recyclerPool[T]{}
+func NewRecycler[T any](factory func() T, release func(T)) Recycler[T] {
+	result := new(recyclerPool[T])
 	result.pool.New = func() any { return factory() }
 	result.onRelease = release
-	if !DEBUG_ENABLED {
-		return result
-	} else {
+	if DEBUG_ENABLED {
 		return &debugRecyclerPool[T]{inner: result}
 	}
+	return result
 }
 func (x *recyclerPool[T]) Allocate() (result T) {
 	result = x.pool.Get().(T)
@@ -43,7 +42,7 @@ func (x *recyclerPool[T]) Release(item T) {
  * Debug Recycler
  ***************************************/
 
-type debugRecyclerPool[T comparable] struct {
+type debugRecyclerPool[T any] struct {
 	inner Recycler[T]
 	debug SharedMapT[T, bool]
 }
