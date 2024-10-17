@@ -104,7 +104,7 @@ type BuildGraphWritePort interface {
 	GetCriticalPathNodes() ([]BuildState, time.Duration)
 	GetMostExpansiveNodes(n int, inclusive bool) []BuildState
 
-	PrintSummary(startedAt time.Time, level base.LogLevel)
+	RecordSummary(startedAt time.Time) BuildSummary
 }
 
 type BuildGraph interface {

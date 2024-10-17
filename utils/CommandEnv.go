@@ -150,6 +150,23 @@ func (flags *CommandFlags) Apply() error {
 	}
 
 	if flags.Summary.Get() || (flags.Ide.Get() && !flags.Quiet.Get()) {
+		var buildSummaries []BuildSummary
+		CommandEnv.OnExit(func(cet *CommandEnvT) error {
+			base.PurgePinnedLogs()
+
+			// ide mode only prints execution time as a feedback for process termination
+			logLevel := base.LOG_CLAIM
+			if flags.Summary.Get() {
+				// queue print summary if specified on command-line
+				logLevel = base.LOG_ALL
+			}
+
+			for _, it := range buildSummaries {
+				it.PrintSummary(logLevel)
+			}
+
+			return nil
+		})
 		CommandEnv.OnBuildGraphLoaded(func(bg BuildGraph) error {
 			var startedAt time.Time
 			bg.OnBuildGraphStart(func(_ BuildGraphWritePort) error {
@@ -157,27 +174,13 @@ func (flags *CommandFlags) Apply() error {
 				return nil
 			})
 			bg.OnBuildGraphFinished(func(port BuildGraphWritePort) error {
-				if port.PortFlags().Any(BUILDGRAPH_QUIET) {
-					return nil
-				}
-
-				base.PurgePinnedLogs()
-
-				if flags.Summary.Get() {
-					// queue print summary if specified on command-line
-					port.PrintSummary(startedAt, base.LOG_ALL)
-				} else {
-					// ide mode only prints execution time as a feedback for process termination
-					port.PrintSummary(startedAt, base.LOG_CLAIM)
+				if !port.PortFlags().Any(BUILDGRAPH_QUIET) {
+					buildSummaries = append(buildSummaries, port.RecordSummary(startedAt))
 				}
 				return nil
 			})
 			return nil
 		})
-	}
-
-	if !flags.Color.IsInheritable() {
-		base.SetEnableAnsiColor(flags.Color.Get())
 	}
 
 	if flags.RootDir.Valid() {

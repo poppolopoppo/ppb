@@ -184,36 +184,84 @@ func (g *buildGraphWritePort) onBuildNodeFinished_ThreadSafe(node *buildState) {
  * Build Summary
  ***************************************/
 
-func (g *buildGraphWritePort) PrintSummary(startedAt time.Time, level base.LogLevel) {
-	// Total duration (always)
-	totalDuration := time.Since(startedAt)
-	base.LogForwardf("\nGraph for %q took %.3f seconds to run", g.name, totalDuration.Seconds())
+type BuildNodeReport struct {
+	Alias      BuildAlias
+	Annotation string
+	Error      error
+	Status     BuildStatus
+	Stats      BuildStats
+}
 
-	// Build durationl (if something was built)
+func newBuildNodeReport(state BuildState) BuildNodeReport {
+	buildResult, err := state.GetBuildResult()
+
+	annotation := ""
+	switch buildable := buildResult.Buildable.(type) {
+	case BuildableGeneratedFile:
+		if info, err := buildable.GetGeneratedFile().Info(); err == nil {
+			annotation = fmt.Sprintf(" (%v)", base.SizeInBytes(info.Size()))
+		}
+	case BuildableSourceFile:
+		if info, err := buildable.GetSourceFile().Info(); err == nil {
+			annotation = fmt.Sprintf(" (%v)", base.SizeInBytes(info.Size()))
+		}
+	}
+
+	return BuildNodeReport{
+		Alias:      state.Alias(),
+		Annotation: annotation,
+		Error:      err,
+		Status:     buildResult.Status,
+		Stats:      state.GetBuildStats(),
+	}
+}
+
+type BuildSummary struct {
+	PortName           base.ThreadPoolDebugId
+	TotalDuration      time.Duration
+	CriticalDuration   time.Duration
+	AggregatedStats    BuildStats
+	MostExpansiveNodes []BuildNodeReport
+	CriticalPath       []BuildNodeReport
+}
+
+func (g *buildGraphWritePort) RecordSummary(startedAt time.Time) BuildSummary {
+	totalDuration := time.Since(startedAt)
+	criticalPath, criticalDuration := g.GetCriticalPathNodes()
+
+	return BuildSummary{
+		TotalDuration:      totalDuration,
+		CriticalDuration:   criticalDuration,
+		PortName:           g.PortName(),
+		AggregatedStats:    g.GetAggregatedBuildStats(),
+		MostExpansiveNodes: base.Map(newBuildNodeReport, g.GetMostExpansiveNodes(10, false)...),
+		CriticalPath:       base.Map(newBuildNodeReport, criticalPath...),
+	}
+}
+
+func (g *BuildSummary) PrintSummary(level base.LogLevel) {
+	// Total duration (always)
+	base.LogForwardf("\nGraph for %q took %.3f seconds to run", g.PortName, g.TotalDuration.Seconds())
+
+	// Build duration (if something was built)
 	if !level.IsVisible(base.LOG_INFO) {
 		return
 	}
 
-	stats := g.GetAggregatedBuildStats()
-	if stats.Count == 0 {
-		return
-	}
-
 	base.LogForwardf("Took %.3f seconds to build %d nodes using %d threads (x%.2f)",
-		stats.Duration.Exclusive.Seconds(), stats.Count,
+		g.AggregatedStats.Duration.Exclusive.Seconds(), g.AggregatedStats.Count,
 		base.GetGlobalThreadPool().GetArity(),
-		float32(stats.Duration.Exclusive)/float32(totalDuration))
+		float32(g.AggregatedStats.Duration.Exclusive)/float32(g.TotalDuration))
 
 	// Most expansive nodes built
 	if !level.IsVisible(base.LOG_VERBOSE) {
 		return
 	}
 
-	printNodeStatus := func(node BuildState) fmt.Stringer {
+	printNodeStatus := func(report BuildNodeReport) fmt.Stringer {
 		return base.MakeStringer(func() (str string) {
-			result, err := node.GetBuildResult()
-			if err == nil {
-				switch result.Status {
+			if report.Error == nil {
+				switch report.Status {
 				case BUILDSTATUS_UNBUILT:
 					return fmt.Sprint(base.ANSI_FG0_BLACK.String(), "??")
 				case BUILDSTATUS_BUILT:
@@ -232,37 +280,24 @@ func (g *buildGraphWritePort) PrintSummary(startedAt time.Time, level base.LogLe
 
 	base.LogForwardf("\nMost expansive nodes built:")
 
-	for i, node := range g.GetMostExpansiveNodes(10, false) {
-		ns, _ := g.GetBuildStats(node)
-
-		fract := ns.Duration.Exclusive.Seconds() / stats.Duration.Exclusive.Seconds()
+	for i, node := range g.MostExpansiveNodes {
+		fract := node.Stats.Duration.Exclusive.Seconds() / g.AggregatedStats.Duration.Exclusive.Seconds()
 
 		// use percent of blocking duration
-		sstep := base.Smootherstep(ns.Duration.Exclusive.Seconds() / totalDuration.Seconds())
+		sstep := base.Smootherstep(node.Stats.Duration.Exclusive.Seconds() / float64(g.TotalDuration.Seconds()))
 		rowColor := base.NewColdHotColor(math.Sqrt(sstep))
 
-		annotation := ""
-		switch buildable := node.GetBuildable().(type) {
-		case BuildableGeneratedFile:
-			if info, err := buildable.GetGeneratedFile().Info(); err == nil {
-				annotation = fmt.Sprintf(" (%v)", base.SizeInBytes(info.Size()))
-			}
-		case BuildableSourceFile:
-			if info, err := buildable.GetSourceFile().Info(); err == nil {
-				annotation = fmt.Sprintf(" (%v)", base.SizeInBytes(info.Size()))
-			}
-		}
-
-		base.LogForwardf("%v[%02d] - %6.2f%% -  %7.3f  %7.3f  -- %s%v --  %s%v%v",
+		base.LogForwardf("%v[%02d] - %6.2f%% -  %7.3f  %7.3f  -- %s%v%v %s%v%v",
 			rowColor.Quantize(true).Ansi(true),
 			(i + 1),
 			100.0*fract,
-			ns.Duration.Exclusive.Seconds(),
-			ns.Duration.Inclusive.Seconds(),
+			node.Stats.Duration.Exclusive.Seconds(),
+			node.Stats.Duration.Inclusive.Seconds(),
 			printNodeStatus(node),
+			base.ANSI_RESET,
 			rowColor.Quantize(true).Ansi(true),
-			node.Alias(),
-			annotation,
+			node.Alias,
+			node.Annotation,
 			base.ANSI_RESET)
 	}
 
@@ -271,44 +306,29 @@ func (g *buildGraphWritePort) PrintSummary(startedAt time.Time, level base.LogLe
 		return
 	}
 
-	criticalPath, maxTime := g.GetCriticalPathNodes()
-	if len(criticalPath) < 2 {
+	if len(g.CriticalPath) < 2 {
 		return
 	}
 
-	base.LogForwardf("\nCritical path: %5.3f s", maxTime.Seconds())
+	base.LogForwardf("\nCritical path: %5.3f s", g.CriticalDuration.Seconds())
 
-	for depth, node := range criticalPath {
-		ns, _ := g.GetBuildStats(node)
-
-		fract := ns.Duration.Exclusive.Seconds() / stats.Duration.Exclusive.Seconds()
+	for depth, node := range g.CriticalPath {
+		fract := node.Stats.Duration.Exclusive.Seconds() / g.AggregatedStats.Duration.Exclusive.Seconds()
 		// use percent of blocking duration
-		sstep := base.Smootherstep(ns.Duration.Exclusive.Seconds() / totalDuration.Seconds())
+		sstep := base.Smootherstep(node.Stats.Duration.Exclusive.Seconds() / g.TotalDuration.Seconds())
 		rowColor := base.NewColdHotColor(math.Sqrt(sstep))
 
-		annotation := ``
-		switch buildable := node.GetBuildable().(type) {
-		case BuildableGeneratedFile:
-			if info, err := buildable.GetGeneratedFile().Info(); err == nil {
-				annotation = fmt.Sprintf(" (%v)", base.SizeInBytes(info.Size()))
-			}
-		case BuildableSourceFile:
-			if info, err := buildable.GetSourceFile().Info(); err == nil {
-				annotation = fmt.Sprintf(" (%v)", base.SizeInBytes(info.Size()))
-			}
-		}
-
-		base.LogForwardf("%v[%02d] - %6.2f%% -  %7.3f  %7.3f  -- %s%v --  %s%s%v%v",
+		base.LogForwardf("%v[%02d] - %6.2f%% -  %7.3f  %7.3f  -- %s%v %s%s%v%v",
 			rowColor.Quantize(true).Ansi(true),
 			depth,
 			100.0*fract,
-			ns.Duration.Exclusive.Seconds(),
-			ns.Duration.Inclusive.Seconds(),
+			node.Stats.Duration.Exclusive.Seconds(),
+			node.Stats.Duration.Inclusive.Seconds(),
 			printNodeStatus(node),
 			rowColor.Quantize(true).Ansi(true),
 			strings.Repeat(` `, depth),
-			node.Alias(),
-			annotation,
+			node.Alias,
+			node.Annotation,
 			base.ANSI_RESET)
 	}
 }
