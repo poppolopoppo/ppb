@@ -8,14 +8,14 @@ require (
 	github.com/Showmax/go-fqdn v1.0.0
 	github.com/danjacques/gofslock v0.0.0-20240212154529-d899e02bfe22
 	github.com/goccy/go-json v0.10.3
-	github.com/klauspost/compress v1.17.10
+	github.com/klauspost/compress v1.17.11
 	github.com/mholt/archiver/v3 v3.5.1
 	github.com/minio/sha256-simd v1.0.1
 	github.com/pierrec/lz4/v4 v4.1.21
 	github.com/pkg/profile v1.7.0
-	github.com/quic-go/quic-go v0.47.0
+	github.com/quic-go/quic-go v0.48.0
 	github.com/shirou/gopsutil v3.21.11+incompatible
-	golang.org/x/exp v0.0.0-20241004190924-225e2abe05e6
+	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
 	golang.org/x/image v0.21.0
 	golang.org/x/net v0.30.0
 	golang.org/x/sys v0.26.0
@@ -24,14 +24,14 @@ require (
 require (
 	github.com/AllenDang/cimgui-go v1.0.2 // indirect
 	github.com/AllenDang/go-findfont v0.0.0-20200702051237-9f180485aeb8 // indirect
-	github.com/andybalholm/brotli v1.1.0 // indirect
+	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/dsnet/compress v0.0.2-0.20210315054119-f66993602bf5 // indirect
 	github.com/faiface/mainthread v0.0.0-20171120011319-8b78f0a41ae3 // indirect
 	github.com/felixge/fgprof v0.9.5 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/google/pprof v0.0.0-20241001023024-f4c0cfd0cf1d // indirect
+	github.com/google/pprof v0.0.0-20241009165004-a3522334989c // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/mazznoer/csscolorparser v0.1.5 // indirect
