@@ -241,7 +241,7 @@ func (llvm *LlvmCompiler) CreateAction(u *Unit, payload PayloadType, model *acti
 		return nil
 	}
 }
-func (llvm *LlvmCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
+func (llvm *LlvmCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv, u *Unit) error {
 	if u.CompilerVerbose.Get() {
 		u.CompilerOptions.AppendUniq("-v")
 	}
@@ -249,13 +249,13 @@ func (llvm *LlvmCompiler) Decorate(compileEnv *CompileEnv, u *Unit) error {
 		u.LinkerOptions.AppendUniq("-v")
 	}
 
-	switch compileEnv.GetPlatform().Arch {
+	switch compileEnv.GetPlatform(bg).Arch {
 	case ARCH_X86:
 		u.AddCompilationFlag_NoAnalysis("-m32")
 	case ARCH_X64:
 		u.AddCompilationFlag_NoAnalysis("-m64")
 	default:
-		base.UnexpectedValue(compileEnv.GetPlatform().Arch)
+		base.UnexpectedValue(compileEnv.GetPlatform(bg).Arch)
 	}
 
 	// set compiler options from configuration
@@ -465,7 +465,7 @@ func (llvm *LlvmCompiler) Build(bc BuildContext) error {
 	}
 
 	llvm.Version = llvm.ProductInstall.ActualVer
-	llvm.CompilerRules.Features = base.MakeEnumSet(
+	llvm.CompilerRules.Features = base.NewEnumSet(
 		COMPILER_ALLOW_CACHING,
 		COMPILER_ALLOW_DISTRIBUTION,
 		COMPILER_ALLOW_SOURCEMAPPING)
