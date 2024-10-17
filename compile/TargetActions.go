@@ -66,7 +66,7 @@ type TargetActions struct {
 }
 
 func MakeTargetActionsAlias(ta TargetAlias) BuildAlias {
-	return MakeBuildAlias("Targets", ta.PlatformName, ta.ConfigName, ta.NamespaceName, ta.ModuleName)
+	return MakeBuildAlias("Target", ta.PlatformName, ta.ConfigName, ta.NamespaceName, ta.ModuleName)
 }
 
 func FindTargetActions(bg BuildGraphReadPort, targetAlias TargetAlias) (*TargetActions, error) {
