@@ -20,10 +20,11 @@ var CommandVcxproj = NewCommand(
 	"vcxproj",
 	"generate projects and solution for Visual Studio",
 	OptionCommandRun(func(cc CommandContext) error {
+		solutionFile := UFS.Output.File(CommandEnv.Prefix() + ".sln")
+		base.LogClaim(LogCommand, "generating Microsoft Visual Studio SLN solution in '%v'", solutionFile)
+
 		bg := CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "Vcxproj"})
 		defer bg.Close()
-
-		solutionFile := UFS.Output.File(CommandEnv.Prefix() + ".sln")
 
 		result := NeedSlnSolutionBuilder(solutionFile).Build(bg)
 
@@ -64,8 +65,6 @@ func (x *SlnSolutionBuilder) Build(bc BuildContext) error {
 		x.SlnSolution.SolutionOutput = outputFile
 		x.ModuleAliases = compile.ModuleAliases{}
 	}
-
-	base.LogClaim(LogCommand, "generating Microsoft Visual Studio SLN solution in '%v'", x.SolutionOutput)
 
 	x.VisualStudioVersion = "16" // #TODO: not hard-coding visual studio version
 	x.MinimumVisualStudioVersion = SlnDefaultMinimumVisualStudioVersion

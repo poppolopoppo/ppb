@@ -959,14 +959,12 @@ func (x *immediateLogger) Refresh() {
  ***************************************/
 
 var enableInteractiveShell bool = true
-var forceInteractiveShell bool = false
 
 func EnableInteractiveShell() bool {
 	return enableInteractiveShell
 }
 func SetEnableInteractiveShell(enabled bool) {
 	if enableInteractiveShell {
-		enabled = enabled || forceInteractiveShell
 		enableInteractiveShell = enabled
 	}
 }
@@ -1040,6 +1038,8 @@ func (x *interactiveLogPin) Set(v int64) {
 		}
 	}
 }
+
+var interactiveLoggerOutput = os.Stderr
 
 type interactiveWriter struct {
 	logger *interactiveLogger
@@ -1176,7 +1176,7 @@ func (x *interactiveLogger) refreshMessages(inner func()) {
 		inner()
 	}
 	x.inflight = prepareAttachMessages(&x.transient, x.messages...)
-	os.Stderr.Write(x.transient.Bytes())
+	interactiveLoggerOutput.Write(x.transient.Bytes())
 }
 func (x *interactiveLogger) hasInflightMessages() bool {
 	return x.inflight > 0
@@ -1230,7 +1230,7 @@ func (x *interactiveLogger) attachMessages() bool {
 	x.inflight = prepareAttachMessages(&x.transient, x.messages...)
 
 	// write all output with 1 call
-	os.Stderr.Write(x.transient.Bytes())
+	interactiveLoggerOutput.Write(x.transient.Bytes())
 
 	return true
 }
@@ -1244,7 +1244,7 @@ func (x *interactiveLogger) detachMessages() bool {
 	prepareDetachMessages(&x.transient, x.inflight)
 
 	// write all output with 1 call
-	os.Stderr.Write(x.transient.Bytes())
+	interactiveLoggerOutput.Write(x.transient.Bytes())
 
 	x.inflight = 0
 	return true
@@ -1330,8 +1330,8 @@ func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
 			ft := Smootherstep(math.Cos(t*1.5+float64(i)/(width-1)*math.Pi)*0.5 + 0.5)
 			mi := 0.5
 
-			fg := colorF.Brightness(ft*.09 + mi - .05).Quantize(true)
-			bg := colorF.Brightness(ft*.07 + .28).Quantize(true)
+			fg := colorF.Brightness(ft*0.09 + mi - 0.05).Quantize(true)
+			bg := colorF.Brightness(ft*0.07 + 0.28).Quantize(true)
 
 			var ch rune
 			if i < fi {
@@ -1372,11 +1372,12 @@ func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
 			lw.WriteString(ANSI_FG0_YELLOW.String())
 			fmt.Fprintf(lw, "%8.2f %s/s", x.avgSpeed/eltUnitDiv, eltUnitStr)
 
-			remainingTime := time.Duration(float64((last-progress)*int64(time.Second)) / (x.avgSpeed + 1e-6)).
-				Round(10 * time.Millisecond) // restrict precision
+			// remove remaining time until estimation is changed to use a moving average of speed per item based of each item duration, instead of whole duration divided by count of actions
+			// remainingTime := time.Duration(float64((last-progress)*int64(time.Second)) / (x.avgSpeed + 1e-6)).
+			// 	Round(10 * time.Millisecond) // restrict precision
 
-			lw.WriteString(ANSI_FG0_GREEN.String())
-			fmt.Fprintf(lw, "  -%v", remainingTime)
+			// lw.WriteString(ANSI_FG0_GREEN.String())
+			// fmt.Fprintf(lw, "  -%v", remainingTime)
 		}
 
 	} else {

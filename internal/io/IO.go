@@ -1,14 +1,24 @@
 package io
 
 import (
+	"os"
+
 	"github.com/poppolopoppo/ppb/internal/base"
 	"github.com/poppolopoppo/ppb/utils"
 )
 
 var LogIO = base.NewLogCategory("IO")
 
+var IsOutputRedirectToPipe = isOutputRedirectToPipe()
+
 func InitIO() {
 	base.LogTrace(LogIO, "internal/io.Init()")
+
+	// disable ansi colors when pipe output is detected
+	if IsOutputRedirectToPipe {
+		base.SetEnableAnsiColor(false)
+		base.SetEnableInteractiveShell(false)
+	}
 
 	base.RegisterSerializable[CompressedUnarchiver]()
 	base.RegisterSerializable[Downloader]()
@@ -17,6 +27,11 @@ func InitIO() {
 	base.RegisterSerializable[DirectoryGlob]()
 	base.RegisterSerializable[DirectoryList]()
 	base.RegisterSerializable[FileDigest]()
+}
+
+func isOutputRedirectToPipe() bool {
+	o, _ := os.Stdout.Stat()
+	return (o.Mode() & os.ModeCharDevice) != os.ModeCharDevice
 }
 
 /***************************************

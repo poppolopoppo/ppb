@@ -50,7 +50,7 @@ var GetCommandFlags = NewGlobalCommandParsableFlags("global command options", &C
 	Diagnostics:    base.MakeBoolVar(base.DEBUG_ENABLED),
 	Jobs:           base.InheritableInt(base.INHERIT_VALUE),
 	Color:          base.INHERITABLE_INHERIT,
-	Ide:            base.INHERITABLE_FALSE,
+	Ide:            base.INHERITABLE_INHERIT,
 	Timestamp:      base.INHERITABLE_FALSE,
 	StopOnError:    base.INHERITABLE_FALSE,
 	Summary:        base.INHERITABLE_FALSE,
@@ -102,6 +102,7 @@ func (flags *CommandFlags) Apply() error {
 
 	if flags.LogFile.Valid() {
 		if outp, err := UFS.CreateWriter(flags.LogFile); err == nil {
+			base.SetEnableAnsiColor(false)
 			base.SetEnableInteractiveShell(false)
 			base.GetLogger().SetWriter(outp)
 		} else {
@@ -120,6 +121,10 @@ func (flags *CommandFlags) Apply() error {
 	if flags.Debug.Get() {
 		base.SetLogVisibleLevel(base.LOG_DEBUG)
 		base.SetEnableDiagnostics(true)
+	}
+
+	if !flags.Color.IsInheritable() {
+		base.SetEnableAnsiColor(flags.Color.Get())
 	}
 
 	if flags.Verbose.Get() {
