@@ -16,12 +16,6 @@ func InitGenericCompile() {
 	base.RegisterSerializable[ExternalSDKHeaderGenerator]()
 	base.RegisterSerializable[ExternalSDKGeneratedHeader]()
 
-	base.RegisterSerializable[GlslangHeaderGenerator]()
-	base.RegisterSerializable[GlslangGeneratedHeader]()
-
-	base.RegisterSerializable[SpirvToolsHeaderGenerator]()
-	base.RegisterSerializable[SpirvToolsGeneratedHeader]()
-
 	base.RegisterSerializable[VulkanHeaderGenerator]()
 	base.RegisterSerializable[VulkanGeneratedHeader]()
 
