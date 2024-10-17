@@ -219,6 +219,14 @@ func BuildDirectoryGlob(
 	excludedFiles utils.FileSet) utils.BuildFactoryTyped[*DirectoryGlob] {
 	base.Assert(func() bool { return source.Valid() })
 	base.Assert(func() bool { return len(includedGlobs) > 0 })
+
+	// make build alias determinist for DirectoryGlob
+	includedGlobs.Sort()
+	excludedGlobs.Sort()
+
+	excludedFiles = excludedFiles.Normalize()
+	excludedFiles.Sort()
+
 	return utils.MakeBuildFactory(func(init utils.BuildInitializer) (DirectoryGlob, error) {
 		return DirectoryGlob{
 			Source:        utils.SafeNormalize(source),
