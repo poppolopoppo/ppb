@@ -8,7 +8,7 @@ import (
 	"github.com/poppolopoppo/ppb/internal/base"
 )
 
-const PROCESS_VERSION = "0.3.0"
+const PROCESS_VERSION = "0.4.0"
 
 /***************************************
  * Process Fingerprint
