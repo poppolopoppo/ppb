@@ -67,7 +67,7 @@ type Downloader struct {
 }
 
 func (dl *Downloader) Alias() utils.BuildAlias {
-	return utils.MakeBuildAlias("Download", dl.Source.String(), dl.DownloadDir.String())
+	return utils.MakeBuildAlias("Download", dl.Source.String(), "->", dl.DownloadDir.String())
 }
 func (dl *Downloader) Build(bc utils.BuildContext) error {
 	var err error
