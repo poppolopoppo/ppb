@@ -300,6 +300,10 @@ var ProgressBar = utils.NewCommand(
 			base.NewColor3f(0.1, 0.1, 1).Brightness(0.3).Quantize(true).Ansi(false),
 			"Light Red On Dark Blue", base.ANSI_RESET.String())
 
+		base.LogForwardln("Unicode emojis:")
+		base.LogForwardln(string(base.UnicodeEmojis))
+		base.LogForwardln(string(base.UnicodeEmojisShuffled))
+
 		if !base.EnableInteractiveShell() || !base.IsLogLevelActive(base.LOG_INFO) {
 			return nil
 		}

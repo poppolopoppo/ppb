@@ -416,9 +416,8 @@ func executeOrDistributeAction(bc utils.BuildContext, action *ActionRules, flags
 
 			internal_io.OptionProcessOnSpinnerMessage(func(executable utils.Filename, arguments base.StringSet, options *internal_io.ProcessOptions) base.ProgressScope {
 				spinner := base.LogSpinnerEx(
-					base.ProgressOptionFormat("[W:%02d/%2d] %v",
-						tc.GetThreadId()+1,
-						tc.GetThreadPool().GetArity(),
+					base.ProgressOptionFormat("%c %v",
+						base.UnicodeEmojisShuffled[int(tc.GetThreadId())%len(base.UnicodeEmojisShuffled)],
 						utils.ForceLocalFilename(action.GetGeneratedFile())),
 					base.ProgressOptionColor(base.NewPastelizerColor(float64(tc.GetThreadId())/float64(tc.GetThreadPool().GetArity())).Quantize(true)))
 				return spinner

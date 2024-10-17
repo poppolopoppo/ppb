@@ -263,16 +263,16 @@ func (g *BuildSummary) PrintSummary(level base.LogLevel) {
 			if report.Error == nil {
 				switch report.Status {
 				case BUILDSTATUS_UNBUILT:
-					return fmt.Sprint(base.ANSI_FG0_BLACK.String(), "??")
+					return "❔️"
 				case BUILDSTATUS_BUILT:
-					return fmt.Sprint(base.ANSI_FG1_GREEN.String(), "OK")
+					return "🔄"
 				case BUILDSTATUS_UPDATED:
-					return fmt.Sprint(base.ANSI_FG0_YELLOW.String(), "=>")
+					return "✴️"
 				case BUILDSTATUS_UPTODATE:
-					return fmt.Sprint(base.ANSI_FG0_GREEN.String(), "OK")
+					return "✅"
 				}
 			} else {
-				return fmt.Sprint(base.ANSI_FG1_RED, base.ANSI_BLINK1, "KO")
+				return fmt.Sprint(base.ANSI_BLINK1, "❌️")
 			}
 			return
 		})
