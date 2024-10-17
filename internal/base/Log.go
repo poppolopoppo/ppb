@@ -1212,10 +1212,12 @@ func prepareAttachMessages(buf LogWriter, messages ...*interactiveLogPin) (infli
 	return
 }
 func prepareDetachMessages(buf LogWriter, inflight int) {
-	fmt.Fprint(buf,
-		ANSI_ERASE_ALL_LINE.Always(),
-		"\033[", inflight, "F", // move cursor up # lines
-		ANSI_ERASE_SCREEN_FROM_CURSOR.Always())
+	if inflight > 0 {
+		fmt.Fprint(buf,
+			ANSI_ERASE_ALL_LINE.Always(),
+			"\033[", inflight, "F", // move cursor up # lines
+			ANSI_ERASE_SCREEN_FROM_CURSOR.Always())
+	}
 }
 
 func (x *interactiveLogger) attachMessages() bool {
