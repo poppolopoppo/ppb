@@ -22,6 +22,12 @@ func (x *Regexp) Set(in string) (err error) {
 	x.Regexp, err = regexp.Compile(in)
 	return
 }
+func (x Regexp) String() string {
+	if x.Regexp != nil {
+		return x.Regexp.String()
+	}
+	return ""
+}
 func (x *Regexp) MarshalText() ([]byte, error) {
 	return UnsafeBytesFromString(x.String()), nil
 }

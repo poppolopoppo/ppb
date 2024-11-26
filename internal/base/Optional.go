@@ -43,6 +43,12 @@ func (x Optional[T]) GetOrElse(orElse T) T {
 		return orElse
 	}
 }
+func (x *Optional[T]) WhatIf(cond func(*T) error) error {
+	if x.err == nil {
+		return cond(&x.value)
+	}
+	return nil
+}
 
 func SetOptional[T any, E interface {
 	*T

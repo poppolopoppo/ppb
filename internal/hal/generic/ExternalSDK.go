@@ -76,24 +76,17 @@ func (x ExternalSDKHeaderGenerator) CreateGenerated(unit *compile.Unit, output u
 		return nil, err
 	}
 
-	// Archive
+	// Archive from local filesystem
 	if err := setOptionalSdkParam(unit, "SDK/ArchiveFile", &result.ArchiveFile); err != nil {
 		return nil, err
 	}
+
+	// Archive from remote url
 	if err := setOptionalSdkParam(unit, "SDK/ArchiveURL", &result.ArchiveURL); err != nil {
 		return nil, err
 	}
 	if err := setOptionalSdkParam(unit, "SDK/FollowRedirect", &result.FollowRedirect); err != nil {
 		return nil, err
-	}
-
-	// construct absolute path from relative dirname provided (or not in the configuration)
-	var extractDirname base.Optional[base.InheritableString]
-	if err := setOptionalSdkParam(unit, "SDK/ExtractDirname", &extractDirname); err != nil {
-		return nil, err
-	}
-	if relativeDirname, err := extractDirname.Get(); err == nil {
-		result.ExtractDir = base.NewOption(unit.ModuleDir.AbsoluteFolder(relativeDirname.Get()))
 	}
 
 	// Headers/Libraries
@@ -108,6 +101,15 @@ func (x ExternalSDKHeaderGenerator) CreateGenerated(unit *compile.Unit, output u
 	}
 	if err := setOptionalSdkParam(unit, "SDK/LibrariesRegexp", &result.LibrariesRegexp); err != nil {
 		return nil, err
+	}
+
+	// Construct absolute path from relative dirname provided (or not in the configuration)
+	var extractDirname base.Optional[base.InheritableString]
+	if err := setOptionalSdkParam(unit, "SDK/ExtractDirname", &extractDirname); err != nil {
+		return nil, err
+	}
+	if relativeDirname, err := extractDirname.Get(); err == nil {
+		result.ExtractDir = base.NewOption(unit.ModuleDir.AbsoluteFolder(relativeDirname.Get()).Normalize())
 	}
 
 	// Relative include sub-directory in external SDK (defaults to "./include/")
@@ -184,7 +186,16 @@ func (x *ExternalSDKGeneratedHeader) prepareSDKDir(bc utils.BuildContext) (utils
 		base.LogVerbose(LogExternalSDK, "%s: using external directory %q for external SDK", x.SDKName, sdkDir)
 
 		// External SDK stored at designated location
-		sdkFiles, err := internal_io.ListDirectory(bc, sdkDir)
+		sdkFiles, err := internal_io.MatchDirectory(bc, sdkDir,
+			base.Regexp{}, base.Regexp{}, utils.FileSet{})
+
+		if err == nil {
+			acceptListRe := x.getArchiveAcceptList()
+			sdkFiles = base.RemoveUnless(func(f utils.Filename) bool {
+				return acceptListRe.MatchString(f.Relative(sdkDir))
+			}, sdkFiles...)
+		}
+
 		return sdkDir, sdkFiles, err
 
 	} else if extractDir, err := x.ExtractDir.Get(); err == nil {
@@ -297,7 +308,7 @@ func (x *ExternalSDKGeneratedHeader) Generate(bc utils.BuildContext, generated *
 		}
 	}
 
-	base.LogVerbose(LogExternalSDK, "%s: found %d SDK library files %q", x.SDKName, len(sdkLibraries))
+	base.LogVerbose(LogExternalSDK, "%s: found %d SDK library files", x.SDKName, len(sdkLibraries))
 	if base.IsLogLevelActive(base.LOG_VERYVERBOSE) {
 		for _, it := range sdkLibraries {
 			base.LogVeryVerbose(LogExternalSDK, "%s: found SDK library %q", x.SDKName, it)

@@ -24,8 +24,9 @@ func InitIO() {
 	base.RegisterSerializable[Downloader]()
 
 	base.RegisterSerializable[DirectoryCreator]()
-	base.RegisterSerializable[DirectoryGlob]()
 	base.RegisterSerializable[DirectoryList]()
+	base.RegisterSerializable[DirectoryMatch]()
+
 	base.RegisterSerializable[FileDigest]()
 }
 
@@ -196,74 +197,77 @@ func GlobDirectory(
 	includedGlobs base.StringSet,
 	excludedGlobs base.StringSet,
 	excludedFiles utils.FileSet) (utils.FileSet, error) {
-	factory := BuildDirectoryGlob(source, includedGlobs, excludedGlobs, excludedFiles)
-	if glob, err := factory.Need(bc); err == nil {
-		return glob.Results, nil
+	return MatchDirectory(bc, source,
+		utils.MakeGlobRegexp(includedGlobs...),
+		utils.MakeGlobRegexp(excludedGlobs...),
+		excludedFiles)
+}
+
+/***************************************
+ * Directory Match
+ ***************************************/
+
+func MatchDirectory(
+	bc utils.BuildContext,
+	source utils.Directory,
+	includedRe base.Regexp,
+	excludedRe base.Regexp,
+	excludedFiles utils.FileSet) (utils.FileSet, error) {
+	factory := BuildDirectoryMatch(source, includedRe, excludedRe, excludedFiles)
+	if match, err := factory.Need(bc); err == nil {
+		return match.Results, nil
 	} else {
 		return utils.FileSet{}, err
 	}
 }
 
-type DirectoryGlob struct {
+type DirectoryMatch struct {
 	Source        utils.Directory
-	IncludedGlobs base.StringSet
-	ExcludedGlobs base.StringSet
+	IncludedRe    base.Regexp
+	ExcludedRe    base.Regexp
 	ExcludedFiles utils.FileSet
-	Results       utils.FileSet
+
+	Results utils.FileSet
 }
 
-func BuildDirectoryGlob(
+func BuildDirectoryMatch(
 	source utils.Directory,
-	includedGlobs base.StringSet,
-	excludedGlobs base.StringSet,
-	excludedFiles utils.FileSet) utils.BuildFactoryTyped[*DirectoryGlob] {
+	includedRe base.Regexp,
+	excludedRe base.Regexp,
+	excludedFiles utils.FileSet) utils.BuildFactoryTyped[*DirectoryMatch] {
 	base.Assert(func() bool { return source.Valid() })
-	base.Assert(func() bool { return len(includedGlobs) > 0 })
+
+	if !includedRe.Valid() {
+		includedRe = utils.MakeGlobRegexp("*")
+	}
 
 	// make build alias determinist for DirectoryGlob
-	includedGlobs.Sort()
-	excludedGlobs.Sort()
-
 	excludedFiles = excludedFiles.Normalize()
 	excludedFiles.Sort()
 
-	return utils.MakeBuildFactory(func(init utils.BuildInitializer) (DirectoryGlob, error) {
-		return DirectoryGlob{
+	return utils.MakeBuildFactory(func(init utils.BuildInitializer) (DirectoryMatch, error) {
+		return DirectoryMatch{
 			Source:        utils.SafeNormalize(source),
-			IncludedGlobs: includedGlobs,
-			ExcludedGlobs: excludedGlobs,
+			IncludedRe:    includedRe,
+			ExcludedRe:    excludedRe,
 			ExcludedFiles: excludedFiles,
 			Results:       utils.FileSet{},
 		}, nil //init.NeedDirectories(source) // no dependency so to be built every-time
 	})
 }
 
-func (x *DirectoryGlob) GetSourceDirectory() utils.Directory {
+func (x *DirectoryMatch) GetSourceDirectory() utils.Directory {
 	return x.Source
 }
-func (x *DirectoryGlob) Alias() utils.BuildAlias {
+func (x *DirectoryMatch) Alias() utils.BuildAlias {
 	var bb utils.BuildAliasBuilder
 	utils.MakeBuildAliasBuilder(&bb, "UFS", len(x.Source.Path)+1+len(x.Source.Basename())+4)
 
-	bb.WriteString('/', "Glob")
+	bb.WriteString('/', "Match")
 	bb.WriteString('/', x.Source.Path)
 	bb.WriteString('/', x.Source.Basename())
-
-	for i, it := range x.IncludedGlobs {
-		if i == 0 {
-			bb.WriteString('|', it)
-		} else {
-			bb.WriteString(';', it)
-		}
-	}
-
-	for i, it := range x.ExcludedGlobs {
-		if i == 0 {
-			bb.WriteString('|', it)
-		} else {
-			bb.WriteString(';', it)
-		}
-	}
+	bb.WriteString('|', x.IncludedRe.String())
+	bb.WriteString('|', x.ExcludedRe.String())
 
 	for i, it := range x.ExcludedFiles {
 		if i == 0 {
@@ -276,7 +280,7 @@ func (x *DirectoryGlob) Alias() utils.BuildAlias {
 
 	return bb.Alias()
 }
-func (x *DirectoryGlob) Build(bc utils.BuildContext) error {
+func (x *DirectoryMatch) Build(bc utils.BuildContext) error {
 	x.Results = utils.FileSet{}
 
 	if info, err := x.Source.Info(); err == nil {
@@ -285,21 +289,15 @@ func (x *DirectoryGlob) Build(bc utils.BuildContext) error {
 		return err
 	}
 
-	includeRE := utils.MakeGlobRegexp(x.IncludedGlobs...)
-	excludeRE := utils.MakeGlobRegexp(x.ExcludedGlobs...)
-	if !includeRE.Valid() {
-		includeRE = utils.MakeGlobRegexp("*")
-	}
-
 	err := x.Source.MatchFilesRec(func(f utils.Filename) error {
 		f = utils.SafeNormalize(f)
 		if !x.ExcludedFiles.Contains(f) {
-			if !excludeRE.Valid() || !excludeRE.MatchString(f.String()) {
+			if !x.ExcludedRe.Valid() || !x.ExcludedRe.MatchString(f.String()) {
 				x.Results.Append(f)
 			}
 		}
 		return nil
-	}, includeRE)
+	}, x.IncludedRe)
 
 	if err == nil {
 		bc.Annotate(utils.AnnocateBuildCommentf("%d files", len(x.Results)))
@@ -307,10 +305,10 @@ func (x *DirectoryGlob) Build(bc utils.BuildContext) error {
 
 	return err
 }
-func (x *DirectoryGlob) Serialize(ar base.Archive) {
+func (x *DirectoryMatch) Serialize(ar base.Archive) {
 	ar.Serializable(&x.Source)
-	ar.Serializable(&x.IncludedGlobs)
-	ar.Serializable(&x.ExcludedGlobs)
+	ar.Serializable(&x.IncludedRe)
+	ar.Serializable(&x.ExcludedRe)
 	ar.Serializable(&x.ExcludedFiles)
 	ar.Serializable(&x.Results)
 }
