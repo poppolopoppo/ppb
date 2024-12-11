@@ -343,7 +343,7 @@ func GetClangCompiler(arch compile.ArchType) BuildFactoryTyped[*ClangCompiler] {
 			UseMsvcLinker:    false,
 			MsvcCompiler: MsvcCompiler{
 				Arch:          arch,
-				CompilerRules: compile.NewCompilerRules(compile.NewCompilerAlias("clang-cl", "LLVM", arch.String())),
+				CompilerRules: compile.NewCompilerRules(compile.NewCompilerAlias("clang", "cl", arch.String())),
 			},
 		}
 		base.Assert(func() bool {
