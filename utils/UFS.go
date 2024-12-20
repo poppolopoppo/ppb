@@ -1105,8 +1105,13 @@ func MakeGlobRegexpExpr(glob ...string) string {
 	if len(glob) == 0 {
 		return ".*"
 	}
+
 	var expr strings.Builder
-	expr.WriteString("(?i)(?:") // insensitive, non-capturing group
+	expr.WriteString("(?i)") // insensitive
+	if len(glob) > 1 {       // non-capturing group
+		expr.WriteString("(?:")
+	}
+
 	for i, it := range glob {
 		it = regexp.QuoteMeta(it)
 		it = strings.ReplaceAll(it, "\\?", ".")
@@ -1121,7 +1126,10 @@ func MakeGlobRegexpExpr(glob ...string) string {
 		expr.WriteString(it)
 		expr.WriteRune(')')
 	}
-	expr.WriteString(")")
+
+	if len(glob) > 1 { // non-capturing group
+		expr.WriteRune(')')
+	}
 	return expr.String()
 }
 func MakeGlobRegexp(glob ...string) base.Regexp {

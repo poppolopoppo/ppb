@@ -19,7 +19,11 @@ func NewRegexp(pattern string) Regexp {
 }
 func (x Regexp) Valid() bool { return x.Regexp != nil }
 func (x *Regexp) Set(in string) (err error) {
-	x.Regexp, err = regexp.Compile(in)
+	if len(in) > 0 {
+		x.Regexp, err = regexp.Compile(in)
+	} else {
+		x.Regexp = nil
+	}
 	return
 }
 func (x Regexp) String() string {
