@@ -1,6 +1,7 @@
 package io
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -115,6 +116,8 @@ func (nonCachableResponse) ShouldCache() bool {
 	return false
 }
 
+var errMissingHTTPHeaderContentLength = errors.New("missing HTTP header `Content-Length`, not a file URL?")
+
 func downloadFromCache(resp *http.Response) (utils.Filename, downloadCacheResult) {
 	var contentHash []string
 	if contentHash = resp.Header.Values("Content-Md5"); contentHash == nil {
@@ -133,15 +136,19 @@ func downloadFromCache(resp *http.Response) (utils.Filename, downloadCacheResult
 		base.LogPanicIfFailed(LogDownload, err)
 
 		inCache := utils.UFS.Transient.Folder("DownloadCache").File(fmt.Sprintf("%v.bin", uid))
+
 		if info, err := inCache.Info(); info != nil && err == nil {
-			var totalSize int
-			totalSize, err = strconv.Atoi(resp.Header.Get("Content-Length"))
-			if err != nil {
-				return inCache, nonCachableResponse{err}
+			var contentLength int64
+			if contentLengthStr := resp.Header.Get("Content-Length"); len(contentLengthStr) > 0 {
+				if contentLength, err = strconv.ParseInt(contentLengthStr, 10, 64); err != nil {
+					return inCache, nonCachableResponse{err}
+				}
+			} else {
+				return inCache, nonCachableResponse{errMissingHTTPHeaderContentLength}
 			}
 
-			if totalSize != int(info.Size()) {
-				return inCache, invalidCacheItem{fmt.Errorf("%v: size don't match (%v != %v)", inCache, totalSize, info.Size())}
+			if contentLength != info.Size() {
+				return inCache, invalidCacheItem{fmt.Errorf("%v: size don't match (%v != %v)", inCache, contentLength, info.Size())}
 			}
 
 			return inCache, nil // cache hit
@@ -189,13 +196,17 @@ func DownloadFile(dst utils.Filename, src base.Url) (int64, error) {
 		return cacheInfo.Size(), err
 
 	} else { // cache miss
-		written, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
-		if err != nil {
-			return 0, err
+		var contentLength int64
+		if contentLengthStr := resp.Header.Get("Content-Length"); len(contentLengthStr) > 0 {
+			if contentLength, err = strconv.ParseInt(contentLengthStr, 10, 64); err != nil {
+				return 0, err
+			}
+		} else {
+			return 0, errMissingHTTPHeaderContentLength
 		}
 
 		err = utils.UFS.CreateFile(dst, func(w *os.File) error {
-			return base.CopyWithProgress(dst.Basename, int64(written), w, resp.Body)
+			return base.CopyWithProgress(dst.Basename, contentLength, w, resp.Body)
 		})
 
 		if err == nil && cacheResult.ShouldCache() {
@@ -205,7 +216,7 @@ func DownloadFile(dst utils.Filename, src base.Url) (int64, error) {
 			}
 		}
 
-		return written, err
+		return contentLength, err
 	}
 }
 
