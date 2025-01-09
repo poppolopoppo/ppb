@@ -173,11 +173,12 @@ func (x *SlnSolutionBuilder) Build(bc BuildContext) error {
 }
 
 func (x *SlnSolutionBuilder) createBuildConfigProject(bc BuildContext, solutionFolders *map[string]*base.StringSet) (*VcxProject, error) {
-	buildProject := VcxProject{}
-	buildProject.ProjectOutput = UFS.Projects.File("BuildConfig.vcxproj")
+	buildProject := VcxProject{
+		ProjectOutput:  UFS.Projects.File("BuildConfig.vcxproj"),
+		SolutionFolder: "Build",
+		BasePath:       UFS.Root,
+	}
 	buildProject.ProjectGuid = base.StringFingerprint(buildProject.ProjectOutput.String()).Guid()
-	buildProject.SolutionFolder = "Build"
-	buildProject.BasePath = UFS.Root
 
 	// #TODO: remove PPE files from this "build" project
 	buildProject.Files.Append(
@@ -195,16 +196,30 @@ func (x *SlnSolutionBuilder) createBuildConfigProject(bc BuildContext, solutionF
 		return f.Exists()
 	}, buildProject.Files...)
 
-	source := compile.ModuleSource{}
-	source.SourceDirs.Append(UFS.Root.Folder("Build"))
-	source.SourceGlobs = base.NewStringSet("*.go", "*.bff", "*.json", "*.exe", "*.dll")
-	source.ExcludedGlobs = base.NewStringSet(`*/.vs/*`, `*/.vscode/*`)
-	if sourceFiles, err := source.GetFileSet(bc); err == nil {
+	// PPB `build` GO sources
+	buildSources := compile.ModuleSource{
+		SourceDirs:    NewDirSet(UFS.Root.Folder("Build")),
+		SourceGlobs:   base.NewStringSet("*.go", "*.bff", "*.json", "*.exe", "*.dll"),
+		ExcludedGlobs: base.NewStringSet(`*/.vs/*`, `*/.vscode/*`),
+	}
+	if sourceFiles, err := buildSources.GetFileSet(bc); err == nil {
 		buildProject.Files.AppendUniq(sourceFiles...)
 	} else {
 		return nil, err
 	}
 
+	// PPB data model
+	modelSources := compile.ModuleSource{
+		SourceDirs:  NewDirSet(UFS.Root),
+		SourceGlobs: base.NewStringSet("*-namespace.json", "*-module.json"),
+	}
+	if sourceFiles, err := modelSources.GetFileSet(bc); err == nil {
+		buildProject.Files.AppendUniq(sourceFiles...)
+	} else {
+		return nil, err
+	}
+
+	// Build command for `Build` project with configure data model and generate VS solution files
 	selfExecutable := fmt.Sprintf("%q -Ide -RootDir=%q", UFS.Executable, UFS.Root)
 	buildProject.BuildCommand = fmt.Sprint(selfExecutable, " configure -and vcxroj")
 	buildProject.RebuildCommand = fmt.Sprint(selfExecutable, " configure -and vcxroj -f")
