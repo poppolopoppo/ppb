@@ -61,6 +61,10 @@ func JsonSerialize(x interface{}, dst io.Writer, options ...JsonOptionFunc) erro
 }
 func JsonDeserialize(x interface{}, src io.Reader) error {
 	decoder := fastJson.NewDecoder(src)
+
+	// we want errors by default when unknown fields are found in json file
+	decoder.DisallowUnknownFields()
+
 	if err := decoder.Decode(x); err == nil {
 		return nil
 	} else {
