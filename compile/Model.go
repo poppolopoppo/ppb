@@ -370,10 +370,10 @@ type ExtensionModel struct {
 	Source    utils.Filename `json:"-"`
 	Namespace string         `json:"-"`
 
-	Archetypes      base.StringSet
-	AllowedPlaforms base.SetT[PlatformAlias]
-	HAL             map[base.HostId]ModuleModel
-	TAG             map[TagFlags]ModuleModel
+	Archetypes       base.StringSet
+	AllowedPlatforms base.SetT[PlatformAlias]
+	HAL              map[base.HostId]ModuleModel
+	TAG              map[TagFlags]ModuleModel
 
 	Facet
 }
@@ -412,7 +412,7 @@ func (x *ExtensionModel) GetNamespaceModel(bg utils.BuildGraphReadPort) (*Namesp
 }
 func (x *ExtensionModel) Append(o *ExtensionModel) {
 	x.Archetypes.AppendUniq(o.Archetypes...)
-	x.AllowedPlaforms.AppendUniq(o.AllowedPlaforms...)
+	x.AllowedPlatforms.AppendUniq(o.AllowedPlatforms...)
 
 	for k, v := range o.HAL {
 		if w, ok := x.HAL[k]; ok {
@@ -435,7 +435,7 @@ func (x *ExtensionModel) Append(o *ExtensionModel) {
 }
 func (x *ExtensionModel) Prepend(o *ExtensionModel) {
 	x.Archetypes.PrependUniq(o.Archetypes...)
-	x.AllowedPlaforms.PrependUniq(o.AllowedPlaforms...)
+	x.AllowedPlatforms.PrependUniq(o.AllowedPlatforms...)
 
 	for k, v := range o.HAL {
 		if w, ok := x.HAL[k]; ok {
@@ -461,7 +461,7 @@ func (x *ExtensionModel) Serialize(ar base.Archive) {
 	ar.Serializable(&x.Source)
 	ar.String(&x.Namespace)
 	ar.Serializable(&x.Archetypes)
-	base.SerializeSlice(ar, x.AllowedPlaforms.Ref())
+	base.SerializeSlice(ar, x.AllowedPlatforms.Ref())
 	base.SerializeMap(ar, &x.HAL)
 	base.SerializeMap(ar, &x.TAG)
 	ar.Serializable(&x.Facet)
@@ -471,16 +471,16 @@ func (x *ExtensionModel) DeepCopy(src *ExtensionModel) {
 	x.Source = src.Source
 	x.Namespace = src.Namespace
 	x.Archetypes = base.NewStringSet(src.Archetypes...)
-	x.AllowedPlaforms = base.NewSet(src.AllowedPlaforms.Slice()...)
+	x.AllowedPlatforms = base.NewSet(src.AllowedPlatforms.Slice()...)
 	x.HAL = base.CopyMap(src.HAL)
 	x.TAG = base.CopyMap(src.TAG)
 	x.Facet.DeepCopy(&src.Facet)
 }
 
 func (src *ExtensionModel) hasAllowedPlatforms(name fmt.Stringer) bool {
-	if len(src.AllowedPlaforms) > 0 {
+	if len(src.AllowedPlatforms) > 0 {
 		localPlatform := GetLocalHostPlatformAlias()
-		if src.AllowedPlaforms.Contains(localPlatform) {
+		if !src.AllowedPlatforms.Contains(localPlatform) {
 			base.LogTrace(LogModel, "%v: not allowed on <%v> platform", name, localPlatform)
 			return false
 		}
