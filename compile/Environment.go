@@ -142,11 +142,13 @@ func (env *CompileEnv) IntermediateDir() Directory {
 }
 func (env *CompileEnv) GetCpp(bg BuildGraphReadPort, module *ModuleRules) CppRules {
 	result := CppRules{}
-	result.Inherit((*CppRules)(&env.CompileFlags))
 
 	if module != nil {
 		result.Inherit(&module.CppRules)
 	}
+
+	result.Inherit((*CppRules)(&env.CompileFlags))
+
 	if config := env.GetConfig(bg); config != nil {
 		result.Inherit(&env.GetConfig(bg).CppRules)
 	}
