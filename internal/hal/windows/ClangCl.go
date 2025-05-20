@@ -18,6 +18,8 @@ import (
 	. "github.com/poppolopoppo/ppb/utils"
 )
 
+var LogClangCl = base.NewLogCategory("ClangCl")
+
 /***************************************
  * LLVM for Windows
  ***************************************/
@@ -124,6 +126,20 @@ func (clang *ClangCompiler) Decorate(bg BuildGraphReadPort, compileEnv *compile.
 	if u.CppRules.CompilerVerbose.Get() {
 		// enable compiler verbose output
 		u.CompilerOptions.AppendUniq("-v")
+	}
+
+	switch u.Warnings.Default {
+	case compile.WARNING_ERROR, compile.WARNING_DISABLED, compile.WARNING_INHERIT:
+	case compile.WARNING_WARN:
+		if u.Warnings.Pedantic.IsEnabled() {
+			if u.Warnings.Default == compile.WARNING_ERROR {
+				base.LogVeryVerbose(LogClangCl, "%v: enable standard and pedantic errors", u)
+				u.AddCompilationFlag("-pedantic-errors")
+			} else {
+				base.LogVeryVerbose(LogClangCl, "%v: enable standard and pedantic warnings", u)
+				u.AddCompilationFlag("-pedantic")
+			}
+		}
 	}
 
 	if u.Deterministic.Get() {
@@ -250,22 +266,17 @@ func (clang *ClangCompiler) Build(bc BuildContext) error {
 		rules.CompilerOptions.Append("/clang:-ftime-trace")
 	}
 
-	if clang.WindowsFlags.Permissive.Get() {
-		rules.AddCompilationFlag_NoAnalysis("-Wno-error")
-	} else {
-		rules.AddCompilationFlag_NoAnalysis(
-			"-Werror",
-			"-Wno-assume",                        // the argument to '__assume' has side effects that will be discarded
-			"-Wno-ignored-pragma-optimize",       // pragma optimize n'est pas supporté
-			"-Wno-unused-command-line-argument",  // ignore les options non suportées par CLANG (sinon échoue a cause de /WError)
-			"-Wno-ignored-attributes",            // ignore les attributs de classe/fonction non supportées par CLANG (sinon échoue a cause de /WError)
-			"-Wno-unknown-pragmas",               // ignore les directives pragma non supportées par CLANG (sinon échoue a cause de /WError)
-			"-Wno-unused-local-typedef",          // ignore les typedefs locaux non utilisés (nécessaire pour STATIC_ASSERT(x))
-			"-Wno-#pragma-messages",              // don't consider #pragma message as warnings
-			"-Wno-unneeded-internal-declaration", // ignore unused internal functions beeing stripped)
-			"-Wno-nan-infinity-disabled",         // ignore fp fast mast disabling NaN/InF support
-		)
-	}
+	rules.AddCompilationFlag_NoAnalysis(
+		"-Wno-assume",                        // the argument to '__assume' has side effects that will be discarded
+		"-Wno-ignored-pragma-optimize",       // pragma optimize n'est pas supporté
+		"-Wno-unused-command-line-argument",  // ignore les options non suportées par CLANG (sinon échoue a cause de /WError)
+		"-Wno-ignored-attributes",            // ignore les attributs de classe/fonction non supportées par CLANG (sinon échoue a cause de /WError)
+		"-Wno-unknown-pragmas",               // ignore les directives pragma non supportées par CLANG (sinon échoue a cause de /WError)
+		"-Wno-unused-local-typedef",          // ignore les typedefs locaux non utilisés (nécessaire pour STATIC_ASSERT(x))
+		"-Wno-#pragma-messages",              // don't consider #pragma message as warnings
+		"-Wno-unneeded-internal-declaration", // ignore unused internal functions beeing stripped)
+		"-Wno-nan-infinity-disabled",         // ignore fp fast mast disabling NaN/InF support
+	)
 
 	rules.SystemIncludePaths.Append(
 		llvm.InstallDir.Folder("include", "clang-c"),
