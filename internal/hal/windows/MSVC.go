@@ -24,6 +24,8 @@ import (
 // #TODO: support for automatic upload to a symstore? :p
 const MSVC_ENABLE_PATHMAP = false
 
+var LogMsvc = base.NewLogCategory("MSVC")
+
 /***************************************
  * MSVC Compiler
  ***************************************/
@@ -122,7 +124,7 @@ func (msvc *MsvcCompiler) CppRtti(f *Facet, enabled bool) {
 }
 func (msvc *MsvcCompiler) CppStd(f *Facet, std CppStdType) {
 	maxSupported, err := getCppStdFromMsc(msvc.MSC_VER)
-	base.LogPanicIfFailed(LogWindows, err)
+	base.LogPanicIfFailed(LogMsvc, err)
 
 	if int32(std) > int32(maxSupported) {
 		std = maxSupported
@@ -131,7 +133,7 @@ func (msvc *MsvcCompiler) CppStd(f *Facet, std CppStdType) {
 	switch std {
 	case CPPSTD_23:
 		// f.AddCompilationFlag("/std:c++23") // still not supported as of 07/24/24
-		base.LogWarningOnce(LogWindows, "c++23 is still not completely supported by MSVC v%v, fallback on C++latest", msvc.MSC_VER)
+		base.LogWarningOnce(LogMsvc, "c++23 is still not completely supported by MSVC v%v, fallback on C++latest", msvc.MSC_VER)
 		fallthrough // fallback on C++20 for the moment
 	case CPPSTD_LATEST:
 		f.AddCompilationFlag("/std:c++latest")
@@ -152,21 +154,21 @@ func (msvc *MsvcCompiler) AllowCaching(u *Unit, payload PayloadType) (result act
 	switch payload {
 	case PAYLOAD_PRECOMPILEDHEADER:
 		result = action.CACHE_NONE
-		base.LogVeryVerbose(LogWindows, "%v/%v: can't cache precompiled headers (can still cache objects compiled with PCH)", u, payload)
+		base.LogVeryVerbose(LogMsvc, "%v/%v: can't cache precompiled headers (can still cache objects compiled with PCH)", u, payload)
 	case PAYLOAD_OBJECTLIST:
 		if u.DebugInfo == DEBUGINFO_EMBEDDED {
 			result = action.CACHE_READWRITE
 		} else {
 			result = action.CACHE_NONE
-			base.LogVeryVerbose(LogWindows, "%v/%v: can't use caching with %v debug symbols", u, payload, u.DebugInfo)
+			base.LogVeryVerbose(LogMsvc, "%v/%v: can't use caching with %v debug symbols", u, payload, u.DebugInfo)
 		}
 	case PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB:
 		if u.Incremental.Get() {
 			result = action.CACHE_NONE
-			base.LogVeryVerbose(LogWindows, "%v/%v: can't use caching with incremental linker", u, payload)
+			base.LogVeryVerbose(LogMsvc, "%v/%v: can't use caching with incremental linker", u, payload)
 		} else if u.DebugFastLink.Get() {
 			result = action.CACHE_NONE
-			base.LogVeryVerbose(LogWindows, "%v/%v: can't use caching with debug fast link", u, payload)
+			base.LogVeryVerbose(LogMsvc, "%v/%v: can't use caching with debug fast link", u, payload)
 		} else {
 			result = action.CACHE_READWRITE
 		}
@@ -180,7 +182,7 @@ func (msvc *MsvcCompiler) AllowCaching(u *Unit, payload PayloadType) (result act
 	}
 	if result != action.CACHE_NONE && !u.Deterministic.Get() {
 		result = action.CACHE_NONE
-		base.LogVeryVerbose(LogWindows, "%v/%v: can't use caching without determinism", u, payload)
+		base.LogVeryVerbose(LogMsvc, "%v/%v: can't use caching without determinism", u, payload)
 	}
 	return result
 }
@@ -193,7 +195,7 @@ func (msvc *MsvcCompiler) AllowDistribution(u *Unit, payload PayloadType) (resul
 			result = action.DIST_ENABLE
 		} else {
 			result = action.DIST_NONE
-			base.LogVeryVerbose(LogWindows, "%v/%v: can't use distribution with %v debug symbols", u, payload, u.DebugInfo)
+			base.LogVeryVerbose(LogMsvc, "%v/%v: can't use distribution with %v debug symbols", u, payload, u.DebugInfo)
 		}
 	case PAYLOAD_EXECUTABLE, PAYLOAD_SHAREDLIB, PAYLOAD_STATICLIB, PAYLOAD_HEADERUNIT, PAYLOAD_DEBUGSYMBOLS:
 		result = action.DIST_ENABLE
@@ -407,7 +409,7 @@ func (msvc *MsvcCompiler) CreateAction(u *Unit, payload PayloadType, model *acti
 }
 
 func (msvc *MsvcCompiler) AddResources(bg BuildGraphReadPort, compileEnv *CompileEnv, u *Unit, rc Filename) error {
-	base.LogVeryVerbose(LogWindows, "MSVC: add resource compiler custom unit to %v", u.Alias())
+	base.LogVeryVerbose(LogMsvc, "MSVC: add resource compiler custom unit to %v", u.Alias())
 
 	resourceCompiler, err := msvc.GetResourceCompiler(bg)
 	if err != nil {
@@ -484,18 +486,18 @@ func (msvc *MsvcCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv
 
 	// sanitizer sanity check
 	if u.Sanitizer.IsEnabled() && u.Sanitizer != SANITIZER_ADDRESS {
-		base.LogWarning(LogWindows, "%v: sanitizer %v is not supported on windows", u, u.Sanitizer)
+		base.LogWarning(LogMsvc, "%v: sanitizer %v is not supported on windows", u, u.Sanitizer)
 		u.Sanitizer = SANITIZER_NONE
 	}
 
 	// hot-reload can override LTCG
 	if u.DebugInfo == DEBUGINFO_HOTRELOAD {
 		if u.LTO.Get() {
-			base.LogWarning(LogWindows, "%v: can't enable LTO while HOTRELOAD is enabled", u)
+			base.LogWarning(LogMsvc, "%v: can't enable LTO while HOTRELOAD is enabled", u)
 			u.LTO.Disable()
 		}
 		if u.LinkerOptions.Contains("/LTCG") || u.LinkerOptions.Contains("/LTCG:INCREMENTAL") {
-			base.LogWarning(LogWindows, "%v: LTCG found while HOTRELOAD is enabled, reverting to SYMBOLS", u)
+			base.LogWarning(LogMsvc, "%v: LTCG found while HOTRELOAD is enabled, reverting to SYMBOLS", u)
 			u.DebugInfo = DEBUGINFO_SYMBOLS
 		}
 	}
@@ -544,19 +546,19 @@ func (msvc *MsvcCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv
 	// fine tune warning levels
 	switch u.Warnings.Default {
 	case WARNING_ERROR:
-		base.LogVeryVerbose(LogWindows, "%v: treat warnings as errors", u)
+		base.LogVeryVerbose(LogMsvc, "%v: treat warnings as errors", u)
 		u.AddCompilationFlag("/WX")
 		fallthrough
 	case WARNING_WARN:
 		if u.Warnings.Pedantic.IsEnabled() {
-			base.LogVeryVerbose(LogWindows, "%v: enable standard and pedantic warnings", u)
+			base.LogVeryVerbose(LogMsvc, "%v: enable standard and pedantic warnings", u)
 			u.AddCompilationFlag("/W4")
 		} else {
-			base.LogVeryVerbose(LogWindows, "%v: enable standard warnings", u)
+			base.LogVeryVerbose(LogMsvc, "%v: enable standard warnings", u)
 			u.AddCompilationFlag("/W3")
 		}
 	case WARNING_DISABLED, WARNING_INHERIT:
-		base.LogVeryVerbose(LogWindows, "%v: disable all warnings", u)
+		base.LogVeryVerbose(LogMsvc, "%v: disable all warnings", u)
 		u.AddCompilationFlag("/W0", "/WX-")
 	}
 
@@ -576,7 +578,7 @@ func (msvc *MsvcCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv
 		// Use C++20 header units instead of precompiled headers
 		if msvc.WindowsFlags.TranslateInclude.Get() && (u.PCH == PCH_SHARED || u.PCH == PCH_MONOLITHIC) {
 			u.PCH = PCH_HEADERUNIT
-			base.LogVeryVerbose(LogWindows, "%v: generate a C++20 header unit instead of a precompiled header with /translateInclude", u)
+			base.LogVeryVerbose(LogMsvc, "%v: generate a C++20 header unit instead of a precompiled header with /translateInclude", u)
 		}
 	}
 
@@ -593,13 +595,13 @@ func (msvc *MsvcCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv
 	stackSize := msvc.WindowsFlags.StackSize.Get()
 	if u.Sanitizer.IsEnabled() {
 		stackSize *= 2
-		base.LogVeryVerbose(LogWindows, "%v: doubling thread stack size due to msvc sanitizer (%d)", u, stackSize)
+		base.LogVeryVerbose(LogMsvc, "%v: doubling thread stack size due to msvc sanitizer (%d)", u, stackSize)
 	}
 	u.AddCompilationFlag(fmt.Sprintf("/F%d", stackSize))
 	u.LinkerOptions.Append(fmt.Sprintf("/STACK:%d", stackSize))
 
 	if msvc.WindowsFlags.Analyze.Get() {
-		base.LogVeryVerbose(LogWindows, "%v: using msvc static analysis", u)
+		base.LogVeryVerbose(LogMsvc, "%v: using msvc static analysis", u)
 
 		msvcProduct, err := msvc.GetMsvcProduct(bg)
 		if err != nil {
@@ -618,7 +620,7 @@ func (msvc *MsvcCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv
 	// set dependent linker options
 
 	if u.Sanitizer.IsEnabled() {
-		base.LogVeryVerbose(LogWindows, "%v: using sanitizer %v", u, u.Sanitizer)
+		base.LogVeryVerbose(LogMsvc, "%v: using sanitizer %v", u, u.Sanitizer)
 		// https://github.com/google/sanitizers/wiki/AddressSanitizerFlags
 		asanOptions := "check_initialization_order=1"
 		if msvc.WindowsFlags.UseAfterReturn.Get() {
@@ -634,18 +636,18 @@ func (msvc *MsvcCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv
 		u.Environment.Append("ASAN_OPTIONS", asanOptions)
 
 		if u.Incremental.Get() {
-			base.LogWarning(LogWindows, "%v: can't enable incremental linker while %v is enabled", u, u.Sanitizer)
+			base.LogWarning(LogMsvc, "%v: can't enable incremental linker while %v is enabled", u, u.Sanitizer)
 			u.Incremental.Assign(false)
 		}
 
 		if u.RemoveCompilationFlag("/INCREMENTAL") > 0 {
-			base.LogVeryVerbose(LogWindows, "%v: remove /INCREMENTAL due to %v", u, u.Sanitizer)
+			base.LogVeryVerbose(LogMsvc, "%v: remove /INCREMENTAL due to %v", u, u.Sanitizer)
 		}
 		if u.RemoveCompilationFlag("/LTCG", "/LTCG:INCREMENTAL") > 0 {
-			base.LogVeryVerbose(LogWindows, "%v: remove /LTCG due to %v", u, u.Sanitizer)
+			base.LogVeryVerbose(LogMsvc, "%v: remove /LTCG due to %v", u, u.Sanitizer)
 		}
 		if u.RemoveCompilationFlag("/GS", "/GUARD:CF", "/sdl", "/RTC1") > 0 {
-			base.LogVeryVerbose(LogWindows, "%v: remove runtime checks /RTC1 due to %v", u, u.Sanitizer)
+			base.LogVeryVerbose(LogMsvc, "%v: remove runtime checks /RTC1 due to %v", u, u.Sanitizer)
 		}
 	}
 
@@ -663,14 +665,14 @@ func (msvc *MsvcCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv
 				u.LinkerOptions.Append("/Brepro", "/experimental:deterministic", pathMap, "/pdbaltpath:%_PDB%")
 			}
 		case DEBUGINFO_HOTRELOAD:
-			base.LogWarning(LogWindows, "%v: can't enable determinism while %v is enabled", u, u.DebugInfo)
+			base.LogWarning(LogMsvc, "%v: can't enable determinism while %v is enabled", u, u.DebugInfo)
 		default:
 			base.UnexpectedValuePanic(u.DebugInfo, u.DebugInfo)
 		}
 	}
 
 	if u.Incremental.Get() {
-		base.LogVeryVerbose(LogWindows, "%v: using msvc incremental linker", u)
+		base.LogVeryVerbose(LogMsvc, "%v: using msvc incremental linker", u)
 		if u.LinkerOptions.Contains("/INCREMENTAL") {
 			u.LinkerOptions.Remove("/LTCG")
 		} else if u.LinkerOptions.Contains("/LTCG") {
@@ -683,7 +685,7 @@ func (msvc *MsvcCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv
 			u.LinkerOptions.Remove("/OPT:NOREF")
 		}
 	} else if !u.LinkerOptions.Contains("/INCREMENTAL") {
-		base.LogVeryVerbose(LogWindows, "%v: using non-incremental msvc linker", u)
+		base.LogVeryVerbose(LogMsvc, "%v: using non-incremental msvc linker", u)
 		u.LinkerOptions.Append("/INCREMENTAL:NO")
 	}
 
@@ -711,7 +713,7 @@ func (msvc *MsvcCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv
 
 	// enable perfSDK if necessary
 	if msvc.WindowsFlags.PerfSDK.Get() {
-		base.LogVeryVerbose(LogWindows, "%v: using Windows PerfSDK", u)
+		base.LogVeryVerbose(LogMsvc, "%v: using Windows PerfSDK", u)
 		var perfSDK Directory
 		switch compileEnv.GetPlatform(bg).Arch {
 		case ARCH_X64:
@@ -774,13 +776,13 @@ func msvc_CXX_runtimeLibrary(u *Unit, staticCrt bool, debug bool) {
 	var runtimeFlag string
 	if staticCrt {
 		runtimeFlag = "/MT"
-		base.LogVeryVerbose(LogWindows, "%v: using msvc static CRT libraries %s%s (debug=%v)", u, runtimeFlag, suffix, debug)
+		base.LogVeryVerbose(LogMsvc, "%v: using msvc static CRT libraries %s%s (debug=%v)", u, runtimeFlag, suffix, debug)
 		// u.AddCompilationFlag(
 		// 	"libcmt"+suffix+".lib",
 		// 	"libvcruntime"+suffix+".lib",
 		// 	"libucrt"+suffix+".lib")
 	} else {
-		base.LogVeryVerbose(LogWindows, "%v: using msvc dynamic CRT libraries %s%s (debug=%v)", u, runtimeFlag, suffix, debug)
+		base.LogVeryVerbose(LogMsvc, "%v: using msvc dynamic CRT libraries %s%s (debug=%v)", u, runtimeFlag, suffix, debug)
 		runtimeFlag = "/MD"
 		u.Defines.Append("_DLL")
 	}
@@ -790,27 +792,27 @@ func msvc_CXX_runtimeLibrary(u *Unit, staticCrt bool, debug bool) {
 func msvc_CXX_linkTimeCodeGeneration(u *Unit, enabled bool) {
 	if !u.LinkerOptions.Any("/LTCG", "/LTCG:OFF", "/LTCG:INCREMENTAL") {
 		if enabled {
-			base.LogVeryVerbose(LogWindows, "%v: using msvc link time code generation", u)
+			base.LogVeryVerbose(LogMsvc, "%v: using msvc link time code generation", u)
 			u.LinkerOptions.Append("/LTCG")
 		} else {
-			base.LogVeryVerbose(LogWindows, "%v: disabling msvc link time code generation", u)
+			base.LogVeryVerbose(LogMsvc, "%v: disabling msvc link time code generation", u)
 			u.LinkerOptions.Append("/LTCG:OFF")
 		}
 	}
 }
 func msvc_CXX_runtimeChecks(u *Unit, enabled bool, rtc1 bool) {
 	if enabled {
-		base.LogVeryVerbose(LogWindows, "%v: using msvc runtime checks and control flow guard", u)
+		base.LogVeryVerbose(LogMsvc, "%v: using msvc runtime checks and control flow guard", u)
 		// https://msdn.microsoft.com/fr-fr/library/jj161081(v=vs.140).aspx
 		u.AddCompilationFlag("/GS", "/sdl")
 		if rtc1 {
-			base.LogVeryVerbose(LogWindows, "%v: using msvc RTC1 checks", u)
+			base.LogVeryVerbose(LogMsvc, "%v: using msvc RTC1 checks", u)
 			// https://msdn.microsoft.com/fr-fr/library/8wtf2dfz.aspx
 			u.AddCompilationFlag("/RTC1")
 		}
 		u.LinkerOptions.Append("/GUARD:CF")
 	} else {
-		base.LogVeryVerbose(LogWindows, "%v: disabling msvc runtime checks", u)
+		base.LogVeryVerbose(LogMsvc, "%v: disabling msvc runtime checks", u)
 		u.AddCompilationFlag("/GS-", "/sdl-")
 		u.LinkerOptions.Append("/GUARD:NO")
 	}
@@ -819,15 +821,15 @@ func msvc_CXX_set_warning_level(u *Unit, warningId int, warningDesc string, leve
 	var compilationFlag string
 	switch level {
 	case WARNING_DISABLED, WARNING_INHERIT:
-		base.LogVeryVerbose(LogWindows, "%v: disable warnings about %s (C%d)", u, warningDesc, warningId)
+		base.LogVeryVerbose(LogMsvc, "%v: disable warnings about %s (C%d)", u, warningDesc, warningId)
 
 		compilationFlag = "/wd"
 	case WARNING_WARN:
-		base.LogVeryVerbose(LogWindows, "%v: display warnings about %s (C%d)", u, warningDesc, warningId)
+		base.LogVeryVerbose(LogMsvc, "%v: display warnings about %s (C%d)", u, warningDesc, warningId)
 
 		compilationFlag = "/w1"
 	case WARNING_ERROR:
-		base.LogVeryVerbose(LogWindows, "%v: display errors about %s (C%d)", u, warningDesc, warningId)
+		base.LogVeryVerbose(LogMsvc, "%v: display errors about %s (C%d)", u, warningDesc, warningId)
 
 		compilationFlag = "/we"
 	}
@@ -835,19 +837,19 @@ func msvc_CXX_set_warning_level(u *Unit, warningId int, warningDesc string, leve
 }
 func msvc_STL_debugHeap(u *Unit, enabled bool) {
 	if !enabled {
-		base.LogVeryVerbose(LogWindows, "%v: disabling msvc debug heap", u)
+		base.LogVeryVerbose(LogMsvc, "%v: disabling msvc debug heap", u)
 		u.Defines.Append("_NO_DEBUG_HEAP=1")
 	}
 }
 func msvc_STL_iteratorDebug(u *Unit, enabled bool) {
 	if enabled && u.CompilerOptions.Any("/MDd", "/MTd") {
-		base.LogVeryVerbose(LogWindows, "%v: enable msvc STL iterator debugging", u)
+		base.LogVeryVerbose(LogMsvc, "%v: enable msvc STL iterator debugging", u)
 		u.Defines.Append(
 			"_SECURE_SCL=1",             // https://msdn.microsoft.com/fr-fr/library/aa985896.aspx
 			"_ITERATOR_DEBUG_LEVEL=2",   // https://msdn.microsoft.com/fr-fr/library/hh697468.aspx
 			"_HAS_ITERATOR_DEBUGGING=1") // https://msdn.microsoft.com/fr-fr/library/aa985939.aspx")
 	} else {
-		base.LogVeryVerbose(LogWindows, "%v: disable msvc STL iterator debugging", u)
+		base.LogVeryVerbose(LogMsvc, "%v: disable msvc STL iterator debugging", u)
 		u.Defines.Append(
 			"_SECURE_SCL=0",             // https://msdn.microsoft.com/fr-fr/library/aa985896.aspx
 			"_ITERATOR_DEBUG_LEVEL=0",   // https://msdn.microsoft.com/fr-fr/library/hh697468.aspx
@@ -1230,24 +1232,24 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 
 	// strict vs permissive
 	if msvc.WindowsFlags.Permissive.Get() {
-		base.LogVeryVerbose(LogWindows, "MSVC: using permissive compilation options")
+		base.LogVeryVerbose(LogMsvc, "MSVC: using permissive compilation options")
 
 		facet.AddCompilationFlag("/permissive")
 	} else {
-		base.LogVeryVerbose(LogWindows, "MSVC: using strict warnings and warings as error")
+		base.LogVeryVerbose(LogMsvc, "MSVC: using strict warnings and warings as error")
 		// https://docs.microsoft.com/en-us/cpp/build/reference/permissive-standards-conformance
 		facet.AddCompilationFlag("/permissive-")
 	}
 
 	if compileFlags.Benchmark.Get() {
-		base.LogVeryVerbose(LogWindows, "MSVC: will dump compilation timings")
+		base.LogVeryVerbose(LogMsvc, "MSVC: will dump compilation timings")
 		facet.CompilerOptions.Append("/d2cgsummary", "/Bt+")
 		facet.LinkerOptions.Append("/d2:-cgsummary")
 	}
 
 	if msc_ver >= MSC_VER_2019 {
 		if msvc.WindowsFlags.JustMyCode.Get() {
-			base.LogVeryVerbose(LogWindows, "MSVC: using just-my-code")
+			base.LogVeryVerbose(LogMsvc, "MSVC: using just-my-code")
 			facet.AddCompilationFlag_NoAnalysis("/JMC")
 		} else {
 			facet.AddCompilationFlag_NoAnalysis("/JMC-")
@@ -1255,7 +1257,7 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 	}
 
 	if msc_ver >= MSC_VER_2019 {
-		base.LogVeryVerbose(LogWindows, "MSCV: using external headers to ignore warnings in foreign code")
+		base.LogVeryVerbose(LogMsvc, "MSCV: using external headers to ignore warnings in foreign code")
 		// https://docs.microsoft.com/fr-fr/cpp/build/reference/jmc?view=msvc-160
 		facet.Defines.Append("USE_PPE_MSVC_PRAGMA_SYSTEMHEADER")
 		facet.AddCompilationFlag_NoAnalysis(
