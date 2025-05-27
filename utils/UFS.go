@@ -1107,8 +1107,8 @@ func MakeGlobRegexpExpr(glob ...string) string {
 	}
 
 	var expr strings.Builder
-	expr.WriteString("(?i)") // insensitive
-	if len(glob) > 1 {       // non-capturing group
+	expr.WriteString("^(?i)") // insensitive
+	if len(glob) > 1 {        // non-capturing group
 		expr.WriteString("(?:")
 	}
 
@@ -1130,6 +1130,7 @@ func MakeGlobRegexpExpr(glob ...string) string {
 	if len(glob) > 1 { // non-capturing group
 		expr.WriteRune(')')
 	}
+	expr.WriteRune('$')
 	return expr.String()
 }
 func MakeGlobRegexp(glob ...string) base.Regexp {
