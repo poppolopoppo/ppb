@@ -91,7 +91,7 @@ func (future *sync_future[T]) Join() Result[T] {
 			if await != nil {
 				return nil
 			}
-			return fmt.Errorf("future reentrancy!\n%s", MakeStringerSet(future.debug...).Join("\n"))
+			return fmt.Errorf("future reentrancy: await=%p!\n%s", await, MakeStringerSet(future.debug...).Join("\n"))
 		})
 		future.await = nil
 		value, err := await()
