@@ -31,6 +31,9 @@ type BuildGenerated struct {
 func (x *BuildGenerated) Alias() utils.BuildAlias {
 	return MakeGeneratedAlias(x.OutputFile)
 }
+func (x *BuildGenerated) GetGeneratedFile() utils.Filename {
+	return x.OutputFile
+}
 func (x *BuildGenerated) Build(bc utils.BuildContext) error {
 	err := utils.UFS.CreateBuffered(x.OutputFile, func(w io.Writer) error {
 		return x.Generate(bc, x, w)

@@ -913,6 +913,17 @@ func AnnocateBuildTimestamp(timestamp time.Time) BuildAnnotateFunc {
  * Launch build for a node
  ***************************************/
 
+func nodeFilenameOrAliasForLog(node *buildNode) fmt.Stringer {
+	switch file := node.Buildable.(type) {
+	case BuildableGeneratedFile:
+		return file.GetGeneratedFile()
+	case BuildableSourceFile:
+		return file.GetSourceFile()
+	default:
+		return node.Alias()
+	}
+}
+
 func (g *buildGraphWritePort) launchBuild(node *buildNode, options *BuildOptions) base.Future[BuildResult] {
 	base.AssertErr(func() error {
 		if alias := node.Buildable.Alias(); alias.Equals(node.BuildAlias) {
@@ -989,7 +1000,7 @@ func (g *buildGraphWritePort) launchBuild(node *buildNode, options *BuildOptions
 					"%s%s %q in %v%s",
 					base.Blend(``, `force `, options.Force),
 					base.Blend(`build`, `update`, changed),
-					node.BuildAlias,
+					nodeFilenameOrAliasForLog(node),
 					context.stats.Duration.Exclusive,
 					base.MakeStringer(func() (annotations string) {
 						if len(context.annotations.Comments) > 0 {
@@ -1010,9 +1021,9 @@ func (g *buildGraphWritePort) launchBuild(node *buildNode, options *BuildOptions
 			result.Status = BUILDSTATUS_UPTODATE
 
 			if options.Force {
-				base.LogVerbose(LogBuildGraph, "force up-to-date %q", node.BuildAlias)
+				base.LogVerbose(LogBuildGraph, "force up-to-date %q", nodeFilenameOrAliasForLog(node))
 			} else {
-				base.LogVerbose(LogBuildGraph, "up-to-date %q", node.BuildAlias)
+				base.LogVerbose(LogBuildGraph, "up-to-date %q", nodeFilenameOrAliasForLog(node))
 			}
 		}
 
