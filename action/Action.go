@@ -447,9 +447,9 @@ type ActionSet []Action
 
 func (x ActionSet) Slice() []Action { return x }
 func (x ActionSet) Aliases() ActionAliases {
-	aliases := make([]ActionAlias, len(x))
-	for i, it := range x {
-		aliases[i] = it.GetAction().GetActionAlias()
+	aliases := make(ActionAliases, 0, len(x))
+	for _, it := range x {
+		aliases.Append(it.GetAction().GetActionAlias())
 	}
 	return aliases
 }
@@ -494,16 +494,17 @@ func (x ActionSet) AppendDependencies(bg utils.BuildGraphReadPort, result *Actio
 	base.ReverseSlice((*result)[before:]...)
 	return nil
 }
-func (x ActionSet) GetOutputFiles() (result utils.FileSet) {
+func (x ActionSet) GetOutputFiles() (results utils.FileSet) {
+	results = make(utils.FileSet, 0, len(x))
 	for _, action := range x {
-		result.Append(action.GetAction().OutputFiles...)
+		results.Append(action.GetAction().OutputFiles...)
 	}
-	return result
+	return
 }
 func (x ActionSet) GetExportFiles() (results utils.FileSet) {
-	results = make(utils.FileSet, len(x))
-	for i, action := range x {
-		results[i] = action.GetAction().GetGeneratedFile()
+	results = make(utils.FileSet, 0, len(x))
+	for _, action := range x {
+		results.Append(action.GetAction().GetGeneratedFile())
 	}
 	return
 }
@@ -523,11 +524,11 @@ func ForeachBuildAction(bg utils.BuildGraphReadPort, each func(utils.BuildNode, 
 }
 
 func GetBuildActions(bg utils.BuildGraphReadPort, aliases ...ActionAlias) (ActionSet, error) {
-	result := make(ActionSet, len(aliases))
-	for i, alias := range aliases {
+	result := make(ActionSet, 0, len(aliases))
+	for _, alias := range aliases {
 		if action, err := FindBuildAction(bg, alias); err == nil {
 			base.Assert(func() bool { return nil != action })
-			result[i] = action
+			result.Append(action)
 		} else {
 			return ActionSet{}, err
 		}
