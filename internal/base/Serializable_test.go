@@ -8,19 +8,19 @@ import (
 	"time"
 )
 
-var archiveFlagsForTest = [][]ArchiveFlag{
-	{},
-	{AR_DETERMINISM},
+var archiveFlagsForTest = []ArchiveFlags{
+	AR_FLAGS_NONE,
+	AR_FLAGS_DETERMINISM,
 }
 
 type serializeFunc = func(Archive) error
-type archiveFactoryFunc = func(io.ReadWriter, ...ArchiveFlag) (name string, rd func(serializeFunc) error, wr func(serializeFunc) error)
+type archiveFactoryFunc = func(io.ReadWriter, ArchiveFlags) (name string, rd func(serializeFunc) error, wr func(serializeFunc) error)
 
 func archiveFactoryTestEquals[T any](t *testing.T, arf archiveFactoryFunc, serialize func(Archive, *T), equals func(T, T) bool, values ...T) {
 	for _, flags := range archiveFlagsForTest {
 		for _, value := range values {
 			tmp := bytes.Buffer{}
-			name, rd, wr := arf(&tmp, flags...)
+			name, rd, wr := arf(&tmp, flags)
 
 			if err := wr(func(ar Archive) error {
 				serialize(ar, &value)
@@ -46,28 +46,28 @@ func archiveFactoryTestEquals[T any](t *testing.T, arf archiveFactoryFunc, seria
 	}
 }
 
-func binaryArchiveFactory(rw io.ReadWriter, flags ...ArchiveFlag) (name string, rd func(serializeFunc) error, wr func(serializeFunc) error) {
-	name = fmt.Sprintf(`raw binary [%v]`, NewEnumSet(flags...))
+func binaryArchiveFactory(rw io.ReadWriter, flags ArchiveFlags) (name string, rd func(serializeFunc) error, wr func(serializeFunc) error) {
+	name = fmt.Sprintf(`raw binary [%v]`, flags)
 	rd = func(read serializeFunc) error {
-		return WithArchiveBinaryReader(rw, read, flags...)
+		return WithArchiveBinaryReader(rw, read, flags)
 	}
 	wr = func(write serializeFunc) error {
-		return WithArchiveBinaryWriter(rw, write, flags...)
+		return WithArchiveBinaryWriter(rw, write, flags)
 	}
 	return
 }
 func compressedArchiveFactory(options ...CompressionOptionFunc) archiveFactoryFunc {
-	return func(rw io.ReadWriter, flags ...ArchiveFlag) (name string, rd func(serializeFunc) error, wr func(serializeFunc) error) {
+	return func(rw io.ReadWriter, flags ArchiveFlags) (name string, rd func(serializeFunc) error, wr func(serializeFunc) error) {
 		co := NewCompressionOptions(options...)
-		name = fmt.Sprintf(`compressed %v:%v [%v]`, co.Format, co.Level, NewEnumSet(flags...))
+		name = fmt.Sprintf(`compressed %v:%v [%v]`, co.Format, co.Level, flags)
 		rd = func(read serializeFunc) error {
 			return WithCompressedReader(rw, func(cr io.Reader) error {
-				return WithArchiveBinaryReader(cr, read, flags...)
+				return WithArchiveBinaryReader(cr, read, flags)
 			}, options...)
 		}
 		wr = func(write serializeFunc) error {
 			return WithCompressedWriter(rw, func(cw io.Writer) error {
-				return WithArchiveBinaryWriter(cw, write, flags...)
+				return WithArchiveBinaryWriter(cw, write, flags)
 			}, options...)
 		}
 		return

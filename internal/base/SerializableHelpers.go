@@ -39,7 +39,7 @@ func (x *Regexp) UnmarshalText(data []byte) error {
 	return x.Set(UnsafeStringFromBytes(data))
 }
 func (x *Regexp) Serialize(ar Archive) {
-	if ar.Flags().IsLoading() {
+	if ar.Flags().Has(AR_LOADING) {
 		var url string
 		ar.String(&url)
 		if err := x.Set(url); err != nil {
@@ -102,7 +102,7 @@ func (x *Url) UnmarshalText(data []byte) error {
 	return x.Set(UnsafeStringFromBytes(data))
 }
 func (x *Url) Serialize(ar Archive) {
-	if ar.Flags().IsLoading() {
+	if ar.Flags().Has(AR_LOADING) {
 		var url string
 		ar.String(&url)
 		if err := x.Set(url); err != nil {

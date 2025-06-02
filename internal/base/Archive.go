@@ -31,9 +31,9 @@ type ArchiveBinaryReader struct {
 	basicArchive
 }
 
-func WithArchiveBinaryReader(reader io.Reader, scope func(ar Archive) error, flags ...ArchiveFlag) error {
+func WithArchiveBinaryReader(reader io.Reader, scope func(ar Archive) error, flags ArchiveFlags) error {
 	return Recover(func() (err error) {
-		ar := NewArchiveBinaryReader(reader, flags...)
+		ar := NewArchiveBinaryReader(reader, flags)
 		defer ar.closeOnlySelf()
 		if err = scope(&ar); err == nil {
 			err = ar.Error()
@@ -42,11 +42,11 @@ func WithArchiveBinaryReader(reader io.Reader, scope func(ar Archive) error, fla
 	})
 }
 
-func NewArchiveBinaryReader(reader io.Reader, flags ...ArchiveFlag) ArchiveBinaryReader {
+func NewArchiveBinaryReader(reader io.Reader, flags ArchiveFlags) ArchiveBinaryReader {
 	return ArchiveBinaryReader{
 		reader:        reader,
 		indexToString: []string{},
-		basicArchive:  newBasicArchive(append(flags, AR_LOADING)...),
+		basicArchive:  newBasicArchive(flags.Concat(AR_LOADING)),
 	}
 }
 
@@ -183,9 +183,9 @@ type ArchiveBinaryWriter struct {
 	basicArchive
 }
 
-func WithArchiveBinaryWriter(writer io.Writer, scope func(ar Archive) error, flags ...ArchiveFlag) error {
+func WithArchiveBinaryWriter(writer io.Writer, scope func(ar Archive) error, flags ArchiveFlags) error {
 	return Recover(func() (err error) {
-		ar := NewArchiveBinaryWriter(writer, flags...)
+		ar := NewArchiveBinaryWriter(writer, flags)
 		defer ar.closeOnlySelf()
 		if err = scope(&ar); err == nil {
 			err = ar.Error()
@@ -194,14 +194,14 @@ func WithArchiveBinaryWriter(writer io.Writer, scope func(ar Archive) error, fla
 	})
 }
 
-func NewArchiveBinaryWriter(writer io.Writer, flags ...ArchiveFlag) ArchiveBinaryWriter {
+func NewArchiveBinaryWriter(writer io.Writer, flags ArchiveFlags) ArchiveBinaryWriter {
 	str, hasStringWriter := writer.(io.StringWriter)
 	return ArchiveBinaryWriter{
 		writer:          writer,
 		str:             str,
 		hasStringWriter: hasStringWriter,
 		stringToIndex:   make(map[string]int32),
-		basicArchive:    newBasicArchive(flags...),
+		basicArchive:    newBasicArchive(flags),
 	}
 }
 

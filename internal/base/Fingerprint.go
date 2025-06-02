@@ -96,7 +96,7 @@ func SerializeAnyFingerprint(any func(ar Archive) error, seed Fingerprint) (resu
 		return
 	}
 
-	ar := NewArchiveBinaryWriter(digester, AR_DETERMINISM)
+	ar := NewArchiveBinaryWriter(digester, AR_FLAGS_DETERMINISM)
 	defer ar.Close()
 
 	if err = any(&ar); err != nil {

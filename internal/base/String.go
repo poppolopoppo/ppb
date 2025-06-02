@@ -158,7 +158,7 @@ func (x FourCC) String() string {
 }
 func (x *FourCC) Serialize(ar Archive) {
 	var raw [4]byte
-	if ar.Flags().IsLoading() {
+	if ar.Flags().Has(AR_LOADING) {
 		ar.Byte(&raw[0])
 		ar.Byte(&raw[1])
 		ar.Byte(&raw[2])

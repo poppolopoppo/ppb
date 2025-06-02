@@ -25,7 +25,7 @@ func (x ProcessInfo) String() string {
 	return fmt.Sprintf("%v-%v-%v", x.Path, x.Version, x.Checksum.ShortString())
 }
 
-var GetProcessInfo = base.Memoize[*ProcessInfo](func() *ProcessInfo {
+var GetProcessInfo = base.Memoize(func() *ProcessInfo {
 	pi := getExecutableInfo()
 	base.LogTrace(LogCommand, "process info: %q v%v [%v] %v", pi.Path, pi.Version, pi.Checksum, pi.Timestamp)
 	return &pi

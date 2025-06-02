@@ -74,9 +74,9 @@ func (x *EnumSet[T, E]) Serialize(ar Archive) {
 	ar.Int32((*int32)(x))
 }
 
-func (x *EnumSet[T, E]) Has(it T) bool {
+func (x EnumSet[T, E]) Has(it T) bool {
 	mask := (int32(1) << int32(it))
-	return (int32(*x) & mask) == mask
+	return (int32(x) & mask) == mask
 }
 func (x EnumSet[T, E]) Intersect(other EnumSet[T, E]) EnumSet[T, E] {
 	return EnumSet[T, E](int32(x) & int32(other))
@@ -134,6 +134,10 @@ func (x *EnumSet[T, E]) RemoveAll(other EnumSet[T, E]) *EnumSet[T, E] {
 }
 func (x *EnumSet[T, E]) Remove(list ...T) *EnumSet[T, E] {
 	x.RemoveAll(NewEnumSet[T, E](list...))
+	return x
+}
+func (x EnumSet[T, E]) Concat(list ...T) EnumSet[T, E] {
+	x.Add(list...)
 	return x
 }
 func (x EnumSet[T, E]) Equals(other EnumSet[T, E]) bool {

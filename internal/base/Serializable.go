@@ -33,6 +33,14 @@ func GetArchiveFlags() []ArchiveFlag {
 	}
 }
 
+type ArchiveFlags = EnumSet[ArchiveFlag, *ArchiveFlag]
+
+const (
+	AR_FLAGS_NONE        = ArchiveFlags(0)
+	AR_FLAGS_DETERMINISM = ArchiveFlags(1 << AR_DETERMINISM)
+	AR_FLAGS_TOLERANT    = ArchiveFlags(1 << AR_TOLERANT)
+)
+
 func (x ArchiveFlag) Ord() int32        { return int32(x) }
 func (x *ArchiveFlag) FromOrd(in int32) { *x = ArchiveFlag(in) }
 func (x *ArchiveFlag) Set(in string) (err error) {
@@ -80,20 +88,6 @@ func (x ArchiveFlag) AutoComplete(in AutoComplete) {
 	for _, it := range GetArchiveFlags() {
 		in.Add(it.String(), it.Description())
 	}
-}
-
-type ArchiveFlags struct {
-	EnumSet[ArchiveFlag, *ArchiveFlag]
-}
-
-func (fl ArchiveFlags) IsLoading() bool {
-	return fl.Has(AR_LOADING)
-}
-func (fl ArchiveFlags) IsDeterministic() bool {
-	return fl.Has(AR_DETERMINISM)
-}
-func (fl ArchiveFlags) IsTolerant() bool {
-	return fl.Has(AR_TOLERANT)
 }
 
 /***************************************
@@ -292,7 +286,7 @@ func SerializeMany[T any](ar Archive, serialize func(*T), slice *[]T) {
 		return fmt.Errorf("serializable: sanity check failed on slice length (%d > 32000)", size)
 	})
 
-	if ar.Flags().IsLoading() {
+	if ar.Flags().Has(AR_LOADING) {
 		*slice = make([]T, size)
 	}
 
@@ -338,10 +332,10 @@ func SerializeMap[K OrderedComparable[K], V any,
 		*V
 		Serializable
 	}](ar Archive, assoc *map[K]V) {
-	if ar.Flags().IsDeterministic() {
+	if ar.Flags().Has(AR_DETERMINISM) {
 		// sort keys to serialize as a slice with deterministic order, since maps are randomized
 		var tmp []SerializablePair[K, V, SK, SV]
-		if ar.Flags().IsLoading() {
+		if ar.Flags().Has(AR_LOADING) {
 			SerializeSlice(ar, &tmp)
 
 			*assoc = make(map[K]V, len(tmp))
@@ -371,7 +365,7 @@ func SerializeMap[K OrderedComparable[K], V any,
 			return fmt.Errorf("serializable: sanity check failed on map length (%d > 32000)", size)
 		})
 
-		if ar.Flags().IsLoading() {
+		if ar.Flags().Has(AR_LOADING) {
 			*assoc = make(map[K]V, size)
 			var key K
 			var value V
@@ -390,7 +384,7 @@ func SerializeMap[K OrderedComparable[K], V any,
 }
 
 func SerializeExternal[T Serializable](ar Archive, external *T) {
-	if ar.Flags().IsLoading() {
+	if ar.Flags().Has(AR_LOADING) {
 		var guid, null serializableGuid
 		if ar.Raw(guid[:]); guid != null {
 			*external = resolveSerializable(ar.Factory(), guid).(T)
@@ -414,7 +408,7 @@ func SerializeOptional[T any, E interface {
 	*T
 	Serializable
 }](ar Archive, optional *Optional[T]) {
-	if ar.Flags().IsLoading() {
+	if ar.Flags().Has(AR_LOADING) {
 		var valid bool
 		ar.Bool(&valid)
 		if valid {
@@ -433,7 +427,7 @@ func SerializeOptional[T any, E interface {
 
 func SerializeCompactSigned[Signed constraints.Signed](ar Archive, index *Signed) {
 	var b byte
-	if ar.Flags().IsLoading() {
+	if ar.Flags().Has(AR_LOADING) {
 		ar.Byte(&b)
 		sign := b & 0x80 // sign bit
 		r := Signed(b & 0x3f)
@@ -474,7 +468,7 @@ func SerializeCompactSigned[Signed constraints.Signed](ar Archive, index *Signed
 }
 func SerializeCompactUnsigned[Unsigned constraints.Unsigned](ar Archive, index *Unsigned) {
 	var b byte
-	if ar.Flags().IsLoading() {
+	if ar.Flags().Has(AR_LOADING) {
 		ar.Byte(&b)
 		shift := 7
 		r := Unsigned(b & 0x7f)
@@ -512,14 +506,12 @@ type basicArchive struct {
 	err     error
 }
 
-func newBasicArchive(flags ...ArchiveFlag) basicArchive {
+func newBasicArchive(flags ArchiveFlags) basicArchive {
 	ar := basicArchive{
 		factory: GetGlobalSerializableFactory(),
 		bytes:   TransientPage4KiB.Allocate(),
 		err:     nil,
-		flags: ArchiveFlags{
-			NewEnumSet(flags...),
-		},
+		flags:   flags,
 	}
 	return ar
 }
@@ -544,7 +536,7 @@ func (x *basicArchive) OnError(err error) {
 	x.err = err
 	if x.onError != nil {
 		x.onError(err)
-	} else if x.flags.IsTolerant() {
+	} else if x.flags.Has(AR_TOLERANT) {
 		LogError(LogSerialize, "%v", err)
 	} else {
 		LogPanic(LogSerialize, "%v", err)

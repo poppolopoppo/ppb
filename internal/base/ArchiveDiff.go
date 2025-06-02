@@ -32,7 +32,7 @@ func SerializableDiff(a, b Serializable) error {
 
 func NewArchiveDiff() ArchiveDiff {
 	return ArchiveDiff{
-		basicArchive: newBasicArchive(),
+		basicArchive: newBasicArchive(AR_FLAGS_NONE),
 		buffer:       TransientBuffer.Allocate(),
 		verbose:      IsLogLevelActive(LOG_TRACE),
 	}
@@ -61,7 +61,7 @@ func (x *ArchiveDiff) Diff(a, b Serializable) error {
 		if err := WithArchiveBinaryWriter(x.buffer, func(ar Archive) error {
 			ar.Serializable(a)
 			return nil
-		}, AR_DETERMINISM); err != nil {
+		}, AR_FLAGS_DETERMINISM); err != nil {
 			return err
 		}
 
@@ -75,7 +75,7 @@ func (x *ArchiveDiff) Diff(a, b Serializable) error {
 			x.Serializable(b)
 			x.compare = nil
 			return nil
-		}, AR_DETERMINISM)
+		}, AR_FLAGS_DETERMINISM)
 	})
 }
 

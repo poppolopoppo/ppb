@@ -247,7 +247,7 @@ func (g *buildGraph) Serialize(ar base.Archive) {
 		*node = new(buildNode)
 		ar.Serializable(*node)
 	}
-	if !ar.Flags().IsLoading() {
+	if !ar.Flags().Has(base.AR_LOADING) {
 		serialize = func(node **buildNode) {
 			ar.Serializable(*node)
 		}
@@ -257,7 +257,7 @@ func (g *buildGraph) Serialize(ar base.Archive) {
 		})
 	}
 	base.SerializeMany(ar, serialize, &pinned)
-	if ar.Flags().IsLoading() && ar.Error() == nil {
+	if ar.Flags().Has(base.AR_LOADING) && ar.Error() == nil {
 		g.nodes.Clear()
 		g.dirty.Store(false)
 
@@ -267,13 +267,17 @@ func (g *buildGraph) Serialize(ar base.Archive) {
 	}
 }
 func (g *buildGraph) Save(dst io.Writer) (err error) {
-	if err = base.CompressedArchiveFileWrite(dst, g.Serialize, base.TransientPage64KiB, base.TASKPRIORITY_HIGH); err == nil {
+	if err = base.CompressedArchiveFileWrite(dst, g.Serialize, base.TransientPage64KiB, base.TASKPRIORITY_HIGH, base.AR_FLAGS_NONE); err == nil {
 		g.dirty.Store(false)
 	}
 	return
 }
 func (g *buildGraph) Load(src io.Reader) error {
-	file, err := base.CompressedArchiveFileRead(src, g.Serialize, base.TransientPage64KiB, base.TASKPRIORITY_HIGH)
+	archiveFlags := base.AR_FLAGS_NONE
+	if g.flags.Force.Get() || g.flags.Purge.Get() {
+		archiveFlags = base.AR_FLAGS_TOLERANT
+	}
+	file, err := base.CompressedArchiveFileRead(src, g.Serialize, base.TransientPage64KiB, base.TASKPRIORITY_HIGH, archiveFlags)
 	base.LogVeryVerbose(LogBuildGraph, "archive version = %v tags = %v", file.Version, file.Tags)
 	return err
 }
