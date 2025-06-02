@@ -382,6 +382,11 @@ func (x *LlvmProductInstall) Build(bc BuildContext) error {
 		if outp, err := c.Output(); err == nil {
 			x.ClangPlusPlus = MakeFilename(strings.TrimSpace(base.UnsafeStringFromBytes(outp)))
 		} else {
+			errMsg := err.Error()
+			if ee, ok := err.(*exec.ExitError); ok {
+				errMsg = base.UnsafeStringFromBytes(ee.Stderr)
+			}
+			base.LogError(LogLinux, "llvm: failed to find which clang++: %s", errMsg)
 			return err
 		}
 
@@ -389,6 +394,11 @@ func (x *LlvmProductInstall) Build(bc BuildContext) error {
 		if outp, err := c.Output(); err == nil {
 			x.Clang = MakeFilename(strings.TrimSpace(base.UnsafeStringFromBytes(outp)))
 		} else {
+			errMsg := err.Error()
+			if ee, ok := err.(*exec.ExitError); ok {
+				errMsg = base.UnsafeStringFromBytes(ee.Stderr)
+			}
+			base.LogError(LogLinux, "llvm: failed to find clang++ realpath: %s", errMsg)
 			return err
 		}
 
@@ -415,6 +425,11 @@ func (x *LlvmProductInstall) Build(bc BuildContext) error {
 				return err
 			}
 		} else {
+			errMsg := err.Error()
+			if ee, ok := err.(*exec.ExitError); ok {
+				errMsg = base.UnsafeStringFromBytes(ee.Stderr)
+			}
+			base.LogError(LogLinux, "llvm: failed to find clang++ version: %s", errMsg)
 			return err
 		}
 
