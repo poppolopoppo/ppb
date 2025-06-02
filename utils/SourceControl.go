@@ -18,6 +18,7 @@ import (
 var LogSourceControl = base.NewLogCategory("SourceControl")
 
 type SourceControlProvider interface {
+	GetSourceControlName() string
 	IsInRepository(Filename) bool
 	GetRepositoryStatus(*SourceControlRepositoryStatus) error
 	GetFileStatus(*SourceControlFileStatus) error
@@ -34,11 +35,26 @@ type SourceControlRepositoryStatus struct {
 
 var GetSourceControlProvider = base.Memoize(func() SourceControlProvider {
 	if git, err := NewGitSourceControl(UFS.Root); err == nil {
-		base.LogVerbose(LogSourceControl, "found Git source control in %q", git.Repository)
+		base.LogVerbose(LogSourceControl, "found Git v%s source control in %q", git.Version, git.Repository)
 		return git
 	}
 	return &DummySourceControl{}
 })
+
+/***************************************
+ * Source Control Error
+ ***************************************/
+
+type SourceControlError struct {
+	Provider   SourceControlProvider
+	Repository Directory
+	Command    string
+	InnerError error
+}
+
+func (x *SourceControlError) Error() string {
+	return fmt.Sprintf("%s command %q returned %v in repository: %v", x.Provider.GetSourceControlName(), x.Command, x.InnerError, x.Repository)
+}
 
 /***************************************
  * Source Control State
@@ -223,6 +239,9 @@ func BuildSourceControlFolderStatus(path Directory) BuildFactoryTyped[*SourceCon
 
 type DummySourceControl struct{}
 
+func (x DummySourceControl) GetSourceControlName() string {
+	return "Dummy"
+}
 func (x DummySourceControl) IsInRepository(Filename) bool {
 	return false
 }
@@ -252,6 +271,7 @@ func (x DummySourceControl) GetFolderStatus(folder *SourceControlFolderStatus) e
 type GitSourceControl struct {
 	Executable string
 	Repository Directory
+	Version    string
 
 	status struct {
 		once sync.Once
@@ -260,6 +280,10 @@ type GitSourceControl struct {
 	}
 }
 
+const (
+	GITVER_NO_LAZY_FETCH = "2.48"
+)
+
 func NewGitSourceControl(repository Directory) (*GitSourceControl, error) {
 	if gitDir := repository.Folder(".git"); !gitDir.Exists() {
 		return nil, fmt.Errorf("invalid git repository %q", gitDir)
@@ -267,24 +291,47 @@ func NewGitSourceControl(repository Directory) (*GitSourceControl, error) {
 
 	executable, err := exec.LookPath("git")
 	if err != nil {
+		base.LogWarning(LogSourceControl, "can't locate Git executable in PATH, but detected a local repository in: %v", repository)
 		return nil, err
 	}
 
-	return &GitSourceControl{
+	git := GitSourceControl{
 		Executable: executable,
 		Repository: repository,
-	}, nil
+	}
+	if outp, err := git.Command("version"); err == nil {
+		var (
+			s_git     string
+			s_version string
+			d_version string
+		)
+		if _, err = fmt.Sscanln(base.UnsafeStringFromBytes(outp), &s_git, &s_version, &d_version); err == nil && s_git == "git" && s_version == "version" && len(d_version) > 0 {
+			git.Version = d_version
+			return &git, nil
+		} else {
+			return nil, fmt.Errorf("invalid Git version: %s", base.UnsafeStringFromBytes(outp))
+		}
+	} else {
+		return nil, err
+	}
+}
+func (git *GitSourceControl) GetSourceControlName() string {
+	return "Git"
 }
 func (git *GitSourceControl) IsInRepository(f Filename) bool {
 	return f.IsIn(git.Repository)
 }
 func (git *GitSourceControl) Command(name string, args ...string) ([]byte, error) {
-	args = append([]string{
+	prefixArgs := []string{
 		"--no-optional-locks", // do not lock Git repository (faster and allow concurrent processes)
-		"--no-lazy-fetch",     // do not fetch missing objects lazily from the remote (we never modify the repo from here)
 		"--no-pager",          // do not redirect Git output to a pager (faster!)
-		name}, args...)
-	defer base.LogBenchmark(LogSourceControl, "run git command %v", base.MakeStringer(func() string {
+	}
+	if git.Version >= GITVER_NO_LAZY_FETCH {
+		prefixArgs = append(prefixArgs, "--no-lazy-fetch") // do not fetch missing objects lazily from the remote (we never modify the repo from here)
+	}
+	args = append(append(prefixArgs, name), args...)
+
+	defer base.LogBenchmark(LogSourceControl, "run command: %s %v", git.Executable, base.MakeStringer(func() string {
 		return strings.Join(args, " ")
 	})).Close()
 
@@ -293,11 +340,22 @@ func (git *GitSourceControl) Command(name string, args ...string) ([]byte, error
 	proc.Dir = git.Repository.String()
 
 	output, err := proc.Output()
-	if err != nil {
-		base.LogError(LogSourceControl, "git command %v returned %v: %v", strings.Join(args, " "), err, output)
+	if err == nil {
+		return output, nil
 	}
 
-	return output, err
+	errMsg := base.UnsafeStringFromBytes(output)
+	if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 {
+		errMsg = base.UnsafeStringFromBytes(ee.Stderr)
+	}
+	base.LogError(LogSourceControl, "git command %q returned %v: %v", name, err, errMsg)
+
+	return nil, &SourceControlError{
+		Provider:   git,
+		Repository: git.Repository,
+		Command:    name,
+		InnerError: err,
+	}
 }
 func getGitRepositoryStatus(git *GitSourceControl) (repo SourceControlRepositoryStatus, err error) {
 	repo.Files = make(map[Filename]SourceControlState)
