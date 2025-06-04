@@ -691,7 +691,7 @@ func (g *buildGraphWritePort) Build(it BuildAliasable, options ...BuildOptionFun
 		bo := NewBuildOptions(options...)
 		return node, g.launchBuild(node, &bo)
 	} else {
-		return nil, base.MakeFutureError[BuildResult](fmt.Errorf("build: unknown node %q", a))
+		return nil, base.MakeFutureError[BuildResult](err)
 	}
 }
 
