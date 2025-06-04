@@ -2,6 +2,7 @@ package base
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -125,35 +126,60 @@ type Serializable interface {
 }
 
 /***************************************
+ * Serializable Guid
+ ***************************************/
+
+var ErrInvalidGuidLen = errors.New("Invalid GUID length")
+
+type SerializableGuid [16]byte
+
+func (x SerializableGuid) String() string {
+	return hex.EncodeToString(x[:])
+}
+func (x *SerializableGuid) Serialize(ar Archive) {
+	ar.Raw(x[:])
+}
+func (x *SerializableGuid) Set(in string) error {
+	raw, err := hex.DecodeString(in)
+	if err == nil && len(raw) != len(*x) {
+		err = ErrInvalidGuidLen
+	}
+	if err == nil {
+		copy(x[:], raw)
+	}
+	return err
+}
+func (x SerializableGuid) MarshalText() ([]byte, error) {
+	return UnsafeBytesFromString(x.String()), nil
+}
+func (x *SerializableGuid) UnmarshalText(data []byte) error {
+	return x.Set(UnsafeStringFromBytes(data))
+}
+
+/***************************************
  * Serializable Factory
  ***************************************/
 
 type SerializableFactory interface {
 	RegisterName(typeptr uintptr, name string, factory func() Serializable)
-	CreateNew(guid serializableGuid) Serializable
-	ResolveTypename(typeptr uintptr) serializableGuid
-}
-
-type serializableGuid [16]byte
-
-func (x serializableGuid) String() string {
-	return hex.EncodeToString(x[:])
+	CreateNew(guid SerializableGuid) Serializable
+	ResolveTypename(typeptr uintptr) SerializableGuid
 }
 
 type serializableType struct {
 	Name    string
-	Guid    serializableGuid
+	Guid    SerializableGuid
 	Factory func() Serializable
 }
 
 type serializableFactory struct {
 	typeptrToType map[uintptr]serializableType
-	guidToType    map[serializableGuid]serializableType
+	guidToType    map[SerializableGuid]serializableType
 }
 
 var globalSerializableFactory = serializableFactory{
 	typeptrToType: make(map[uintptr]serializableType, 128),
-	guidToType:    make(map[serializableGuid]serializableType, 128),
+	guidToType:    make(map[SerializableGuid]serializableType, 128),
 }
 
 func GetGlobalSerializableFactory() SerializableFactory {
@@ -181,19 +207,19 @@ func (x *serializableFactory) RegisterName(typeptr uintptr, name string, factory
 	x.typeptrToType[typeptr] = typ
 	x.guidToType[typ.Guid] = typ
 }
-func (x *serializableFactory) CreateNew(guid serializableGuid) Serializable {
+func (x *serializableFactory) CreateNew(guid SerializableGuid) Serializable {
 	if it, ok := x.guidToType[guid]; ok {
 		return it.Factory()
 	}
 	LogPanic(LogSerialize, "could not resolve concrete type from %q", guid)
 	return nil
 }
-func (x *serializableFactory) ResolveTypename(typeptr uintptr) serializableGuid {
+func (x *serializableFactory) ResolveTypename(typeptr uintptr) SerializableGuid {
 	if it, ok := x.typeptrToType[typeptr]; ok {
 		return it.Guid
 	}
 	LogPanic(LogSerialize, "could not resolve type name from %X", typeptr)
-	return serializableGuid{}
+	return SerializableGuid{}
 }
 
 func reflectTypename(input reflect.Type) string {
@@ -243,13 +269,13 @@ func (x *serializableBatchNew[T]) Allocate() *T {
 	return p
 }
 
-func reflectSerializable[T Serializable](factory SerializableFactory, value T) serializableGuid {
+func reflectSerializable[T Serializable](factory SerializableFactory, value T) SerializableGuid {
 	emptyPtr := getEmptyInterface(value)
 	AssertNotIn(emptyPtr.typ, nil)
 
 	return factory.ResolveTypename(uintptr(emptyPtr.typ))
 }
-func resolveSerializable(factory SerializableFactory, guid serializableGuid) Serializable {
+func resolveSerializable(factory SerializableFactory, guid SerializableGuid) Serializable {
 	return factory.CreateNew(guid)
 }
 
@@ -385,7 +411,7 @@ func SerializeMap[K OrderedComparable[K], V any,
 
 func SerializeExternal[T Serializable](ar Archive, external *T) {
 	if ar.Flags().Has(AR_LOADING) {
-		var guid, null serializableGuid
+		var guid, null SerializableGuid
 		if ar.Raw(guid[:]); guid != null {
 			*external = resolveSerializable(ar.Factory(), guid).(T)
 		} else {
@@ -393,7 +419,7 @@ func SerializeExternal[T Serializable](ar Archive, external *T) {
 		}
 	} else {
 		if IsNil(*external) {
-			var null serializableGuid
+			var null SerializableGuid
 			ar.Raw(null[:])
 			return
 		}
