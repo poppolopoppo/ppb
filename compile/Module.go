@@ -449,14 +449,14 @@ func NeedAllBuildModules(bc BuildContext) (modules []Module, err error) {
 	return NeedBuildModules(bc, moduleAliases...)
 }
 
-func NeedAllModuleAliases(bc BuildContext) (moduleAliases []ModuleAlias, err error) {
+func NeedAllModuleAliases(bc BuildContext) (moduleAliases ModuleAliases, err error) {
 	rootModel, err := BuildRootNamespaceModel().Need(bc)
 	if err != nil {
 		return
 	}
 
 	err = ForeachNamespaceModuleAlias(bc, rootModel.GetNamespaceAlias(), func(ma ModuleAlias) error {
-		moduleAliases = append(moduleAliases, ma)
+		moduleAliases.Append(ma)
 		return nil
 	})
 	return
