@@ -52,7 +52,7 @@ func (x *NamespaceAlias) UnmarshalText(data []byte) error {
 }
 func (x NamespaceAlias) AutoComplete(in base.AutoComplete) {
 	if bg, ok := in.GetUserParam().(utils.BuildGraphReadPort); ok {
-		utils.ForeachBuildable[Namespace](bg, func(ba utils.BuildAlias, n Namespace) error {
+		utils.ForeachBuildable(bg, func(ba utils.BuildAlias, n Namespace) error {
 			it := n.GetNamespace().NamespaceAlias
 			in.Add(it.String(), n.GetNamespace().NamespaceDir.String())
 			return nil
