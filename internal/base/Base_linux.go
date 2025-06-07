@@ -35,7 +35,8 @@ func futimens_(fd int, times *[2]unix.Timespec, flags int) (err error) {
 }
 
 func SetMTime(file *os.File, mtime time.Time) error {
-	tspec, err := unix.TimeToTimespec(mtime)
+	local_mtime := mtime.Local()
+	tspec, err := unix.TimeToTimespec(local_mtime)
 	if err != nil {
 		return err
 	}
@@ -47,8 +48,9 @@ func SetMTime(file *os.File, mtime time.Time) error {
 		Assert(func() bool {
 			var info os.FileInfo
 			if info, err = file.Stat(); err == nil {
-				if info.ModTime() != mtime {
-					LogPanic(LogBase, "SetMTime: timestamp mismatch for %q\n\tfound:\t\t%v\n\texpected:\t\t%v", file.Name(), info.ModTime(), mtime)
+				osModTime := info.ModTime()
+				if osModTime != local_mtime {
+					LogPanic(LogBase, "SetMTime: timestamp mismatch for %q\n\tfound:\t\t%v\n\texpected:\t\t%v", file.Name(), osModTime, mtime)
 				}
 			}
 			return true
