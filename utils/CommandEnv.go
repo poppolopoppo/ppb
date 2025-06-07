@@ -276,25 +276,29 @@ func InitCommandEnv(prefix string, args []string, startedAt time.Time) (*Command
 	// creates a 'listener' on a new goroutine which will notify the
 	// program if it receives an interrupt from the OS. We then handle this by calling
 	// our clean up procedure and exiting the program.
-	go func() {
-		const maxBeforePanic = 3
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, os.Interrupt)
-		for i := 0; i < maxBeforePanic; i++ {
-			<-c
-
-			err := fmt.Errorf("Ctrl+C pressed in Terminal, aborting (%d/%d)", i+1, maxBeforePanic)
-			// intercepting the event allows to die gracefully by waiting running jobs
-			base.LogWarning(LogUtils, "\r- %v", err)
-			// child processes also received the signal, and we rely on them dying to quit the program instead of calling os.Exit(0) here
-			CommandEnv.Abort(err)
-		}
-
-		CommandPanicF("Ctrl+C pressed %d times in Terminal, panic", maxBeforePanic)
-	}()
+	go CommandEnv.interuptHandler()
 
 	return CommandEnv, nil
 }
+
+func (env *CommandEnvT) interuptHandler() {
+	const maxBeforePanic = 3
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+
+	for i := 0; i < maxBeforePanic; i++ {
+		<-c
+
+		err := fmt.Errorf("Ctrl+C pressed in Terminal, aborting (%d/%d)", i+1, maxBeforePanic)
+		// intercepting the event allows to die gracefully by waiting running jobs
+		base.LogWarning(LogUtils, "\r- %v", err)
+		// child processes also received the signal, and we rely on them dying to quit the program instead of calling os.Exit(0) here
+		env.Abort(err)
+	}
+
+	CommandPanicF("Ctrl+C pressed %d times in Terminal, panic", maxBeforePanic)
+}
+
 func (env *CommandEnvT) Prefix() string             { return env.prefix }
 func (env *CommandEnvT) BuildGraph() BuildGraph     { return env.buildGraph.Get(env) }
 func (env *CommandEnvT) Persistent() PersistentData { return env.persistent }
@@ -406,5 +410,5 @@ func (env *CommandEnvT) saveConfig() error {
 	benchmark := base.LogBenchmark(LogCommand, "saving config to '%v'...", env.configPath)
 	defer benchmark.Close()
 
-	return UFS.CreateBuffered(env.configPath, env.persistent.Serialize, base.TransientPage4KiB)
+	return UFS.Create(env.configPath, env.persistent.Serialize)
 }
