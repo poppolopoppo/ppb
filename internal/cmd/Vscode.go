@@ -196,12 +196,12 @@ func (vsc *VscodeBuilder) c_cpp_properties(bc BuildContext, moduleAliases []comp
 		return err
 	}
 
-	return UFS.CreateBuffered(outputFile, func(w io.Writer) error {
+	return UFS.Create(outputFile, func(w io.Writer) error {
 		return base.JsonSerialize(base.JsonMap{
 			"version":        4,
 			"configurations": configurations,
 		}, w)
-	}, base.TransientPage4KiB)
+	})
 }
 func (vsc *VscodeBuilder) tasks(moduleAliases compile.ModuleAliases, outputFile Filename) error {
 	var problemMatcher string
@@ -239,12 +239,12 @@ func (vsc *VscodeBuilder) tasks(moduleAliases compile.ModuleAliases, outputFile 
 		}
 	}, moduleAliases...)
 
-	return UFS.CreateBuffered(outputFile, func(w io.Writer) error {
+	return UFS.Create(outputFile, func(w io.Writer) error {
 		return base.JsonSerialize(base.JsonMap{
 			"version": "2.0.0",
 			"tasks":   tasks,
 		}, w)
-	}, base.TransientPage4KiB)
+	})
 }
 func (vsc *VscodeBuilder) launch_configs(programAliases compile.ModuleAliases, compiler compile.Compiler, outputFile Filename) error {
 	var debuggerType string
@@ -357,7 +357,7 @@ func (vsc *VscodeBuilder) launch_configs(programAliases compile.ModuleAliases, c
 		},
 	}
 
-	return UFS.CreateBuffered(outputFile, func(w io.Writer) error {
+	return UFS.Create(outputFile, func(w io.Writer) error {
 		return base.JsonSerialize(base.JsonMap{
 			"version":        "0.2.0",
 			"configurations": configurations,

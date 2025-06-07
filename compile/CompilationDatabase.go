@@ -148,9 +148,9 @@ func (x *CompilationDatabaseBuilder) Build(bc utils.BuildContext) error {
 		}
 	}
 
-	err = utils.UFS.CreateBuffered(x.OutputFile, func(w io.Writer) error {
+	err = utils.UFS.Create(x.OutputFile, func(w io.Writer) error {
 		return base.JsonSerialize(database, w, base.OptionJsonPrettyPrint(true))
-	}, base.TransientPage64KiB)
+	})
 	if err != nil {
 		return err
 	}
