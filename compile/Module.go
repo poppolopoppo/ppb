@@ -1,6 +1,7 @@
 package compile
 
 import (
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -34,6 +35,44 @@ func RegisterArchetype(archtype string, fn ModuleArchetype) ModuleArchetype {
 	archtype = strings.ToUpper(archtype)
 	AllArchetypes.Add(archtype, fn)
 	return fn
+}
+
+var ErrUnknownModuleArchtype = errors.New("unknown module archetype")
+
+type ModuleArchetypeAliases = base.SetT[ModuleArchetypeAlias]
+
+type ModuleArchetypeAlias struct {
+	ArchetypeName string
+}
+
+func (x ModuleArchetypeAlias) String() string {
+	return x.ArchetypeName
+}
+func (x *ModuleArchetypeAlias) Serialize(ar base.Archive) {
+	ar.String(&x.ArchetypeName)
+}
+func (x ModuleArchetypeAlias) Compare(o ModuleArchetypeAlias) int {
+	return strings.Compare(x.ArchetypeName, o.ArchetypeName)
+}
+func (x ModuleArchetypeAlias) AutoComplete(in base.AutoComplete) {
+	AllArchetypes.Range(func(s string, ma ModuleArchetype) error {
+		in.Add(s, "")
+		return nil
+	})
+}
+func (x *ModuleArchetypeAlias) Set(in string) (err error) {
+	archtype := strings.ToUpper(in)
+	if _, ok := AllArchetypes.Get(archtype); ok {
+		x.ArchetypeName = archtype
+		return nil
+	}
+	return ErrUnknownModuleArchtype
+}
+func (x *ModuleArchetypeAlias) MarshalText() ([]byte, error) {
+	return base.UnsafeBytesFromString(x.String()), nil
+}
+func (x *ModuleArchetypeAlias) UnmarshalText(data []byte) error {
+	return x.Set(base.UnsafeStringFromBytes(data))
 }
 
 /***************************************
