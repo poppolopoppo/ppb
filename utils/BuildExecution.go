@@ -554,6 +554,22 @@ func (x *buildExecuteContext) OutputFactory(factory BuildFactory, opts ...BuildO
 		OptionBuildForce)
 }
 
+// Need to override buildGraphReadPort.Range() to avoid deadlocking on the current node
+func (g *buildExecuteContext) Range(each func(BuildAlias, BuildNode) error) error {
+	return g.nodes.Range(func(key BuildAlias, node *buildNode) error {
+		if node != g.node {
+			return each(key, node)
+		} else {
+			// If iterating on current node being built, yield a dummy copy with an unlocked mutex
+			dummy := buildNode{
+				BuildAlias: node.BuildAlias,
+				Buildable:  node.Buildable,
+			}
+			return each(key, &dummy)
+		}
+	})
+}
+
 /***************************************
  * Build Graph Context
  ***************************************/
