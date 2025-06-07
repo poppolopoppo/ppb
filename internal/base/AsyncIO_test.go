@@ -7,16 +7,32 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/exp/rand"
+	rand "math/rand/v2"
 )
 
-func generateRandomData(t *testing.T, sz int) (result []byte) {
-	result = make([]byte, sz)
-	_, err := rand.New(rand.NewSource(42)).Read(result)
-	if err != nil {
-		t.Error(err)
+func generateRandomData(_ *testing.T, sz int) []byte {
+	result := make([]byte, sz)
+	rng := rand.NewPCG(42, 0xdeadbeef) // Use a fixed seed for reproducibility
+
+	i := 0
+	for ; i+8 <= sz; i += 8 {
+		val := rng.Uint64()
+		result[i+0] = byte(val)
+		result[i+1] = byte(val >> 8)
+		result[i+2] = byte(val >> 16)
+		result[i+3] = byte(val >> 24)
+		result[i+4] = byte(val >> 32)
+		result[i+5] = byte(val >> 40)
+		result[i+6] = byte(val >> 48)
+		result[i+7] = byte(val >> 56)
 	}
-	return nil
+	if i < sz {
+		val := rng.Uint64()
+		for j := 0; i < sz; i, j = i+1, j+1 {
+			result[i] = byte(val >> (8 * j))
+		}
+	}
+	return result
 }
 
 func TestAsyncReaderEarlyClose(t *testing.T) {
