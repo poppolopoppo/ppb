@@ -99,7 +99,10 @@ func GetOptionTypes() []OptionType {
 		OPT_HIGH_PRIORITY,
 	}
 }
-func (x OptionType) Ord() int32           { return int32(x) }
+func (x OptionType) Ord() int32 { return int32(x) }
+func (x OptionType) Mask() int32 {
+	return base.EnumBitMask(GetOptionTypes()...)
+}
 func (x *OptionType) FromOrd(value int32) { *x = OptionType(value) }
 func (x OptionType) String() string {
 	switch x {

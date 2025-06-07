@@ -13,7 +13,7 @@ import (
 
 type EnumFlag interface {
 	Ord() int32
-	comparable
+	Mask() int32
 	fmt.Stringer
 	AutoCompletable
 }
@@ -24,27 +24,39 @@ type EnumUnderlyingType interface {
 }
 
 type EnumValue interface {
+	comparable
 	EnumUnderlyingType
 	EnumFlag
+}
+
+func EnumBitMask[T EnumValue](values ...T) (mask int32) {
+	for _, it := range values {
+		mask |= int32(1) << int32(it)
+	}
+	return
 }
 
 /***************************************
  * Enum Sets
  ***************************************/
 
-type EnumSettable interface {
+type EnumGettable interface {
 	Ord() int32
-	FromOrd(v int32)
 	IsInheritable() bool
 	Empty() bool
 	Len() int
-	Clear()
 	Test(value string) bool
-	Select(value string, enabled bool) error
 	fmt.Stringer
-	flag.Value
 	AutoCompletable
+}
+
+type EnumSettable interface {
+	FromOrd(v int32)
+	Clear()
+	Select(value string, enabled bool) error
+	flag.Value
 	Serializable
+	EnumGettable
 }
 
 type EnumSet[T EnumValue, E interface {
@@ -56,11 +68,7 @@ func NewEnumSet[T EnumValue, E interface {
 	*T
 	flag.Value
 }](list ...T) EnumSet[T, E] {
-	var result int32
-	for _, it := range list {
-		result |= (int32(1) << int32(it))
-	}
-	return EnumSet[T, E](result)
+	return EnumSet[T, E](EnumBitMask(list...))
 }
 
 func (x EnumSet[T, E]) Ord() int32          { return int32(x) }
@@ -207,5 +215,10 @@ func (x *EnumSet[T, E]) UnmarshalText(data []byte) error {
 
 func (x EnumSet[T, E]) AutoComplete(in AutoComplete) {
 	var defaultValue T
-	defaultValue.AutoComplete(in)
+	mask := defaultValue.Mask()
+	for i := int32(1); i <= mask; i++ {
+		var set EnumSet[T, E]
+		set.FromOrd(i)
+		in.Add(set.String(), "")
+	}
 }

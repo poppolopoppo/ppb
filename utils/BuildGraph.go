@@ -64,9 +64,15 @@ type BuildNodeEvent struct {
 type BuildGraphPortFlags byte
 
 const (
-	BUILDGRAPH_NONE  BuildGraphPortFlags = iota
-	BUILDGRAPH_QUIET                     // do not print a summary when enabled
+	BUILDGRAPH_QUIET BuildGraphPortFlags = iota // do not print a summary when enabled
+
 )
+
+func GetBuildPortFlags() []BuildGraphPortFlags {
+	return []BuildGraphPortFlags{
+		BUILDGRAPH_QUIET,
+	}
+}
 
 type BuildGraphReadPort interface {
 	base.Closable
@@ -846,12 +852,13 @@ func (x BuildStatus) WasUpdated() bool {
  * Build Graph Read/Write Port Flags
  ***************************************/
 
-func (x BuildGraphPortFlags) Ord() int32       { return int32(byte(x)) }
+func (x BuildGraphPortFlags) Ord() int32 { return int32(byte(x)) }
+func (x BuildGraphPortFlags) Mask() int32 {
+	return base.EnumBitMask(GetBuildPortFlags()...)
+}
 func (x *BuildGraphPortFlags) FromOrd(v int32) { *x = BuildGraphPortFlags(v) }
 func (x BuildGraphPortFlags) String() string {
 	switch x {
-	case BUILDGRAPH_NONE:
-		return "NONE"
 	case BUILDGRAPH_QUIET:
 		return "QUIET"
 	}
@@ -860,8 +867,6 @@ func (x BuildGraphPortFlags) String() string {
 }
 func (x *BuildGraphPortFlags) Set(in string) error {
 	switch strings.ToUpper(in) {
-	case BUILDGRAPH_NONE.String():
-		*x = BUILDGRAPH_NONE
 	case BUILDGRAPH_QUIET.String():
 		*x = BUILDGRAPH_QUIET
 	default:
@@ -871,8 +876,6 @@ func (x *BuildGraphPortFlags) Set(in string) error {
 }
 func (x BuildGraphPortFlags) Description() string {
 	switch x {
-	case BUILDGRAPH_NONE:
-		return "no build flags"
 	case BUILDGRAPH_QUIET:
 		return "won't print summary when build finished"
 	}
@@ -880,6 +883,5 @@ func (x BuildGraphPortFlags) Description() string {
 	return ""
 }
 func (x BuildGraphPortFlags) AutoComplete(in base.AutoComplete) {
-	in.Add(BUILDGRAPH_NONE.String(), BUILDGRAPH_NONE.Description())
 	in.Add(BUILDGRAPH_QUIET.String(), BUILDGRAPH_QUIET.Description())
 }

@@ -134,7 +134,10 @@ func GetCompilerFeatures() []CompilerFeature {
 		COMPILER_ALLOW_EDITANDCONTINUE,
 	}
 }
-func (x CompilerFeature) Ord() int32       { return int32(x) }
+func (x CompilerFeature) Ord() int32 { return int32(x) }
+func (x CompilerFeature) Mask() int32 {
+	return base.EnumBitMask(GetCompilerFeatures()...)
+}
 func (x *CompilerFeature) FromOrd(v int32) { *x = CompilerFeature(v) }
 func (x CompilerFeature) Description() string {
 	switch x {
@@ -563,8 +566,7 @@ type InstructionSet byte
 type InstructionSets = base.EnumSet[InstructionSet, *InstructionSet]
 
 const (
-	INSTRUCTIONSET_INHERIT InstructionSet = iota
-	INSTRUCTIONSET_AES
+	INSTRUCTIONSET_AES InstructionSet = iota
 	INSTRUCTIONSET_AVX
 	INSTRUCTIONSET_AVX2
 	INSTRUCTIONSET_AVX512
@@ -575,9 +577,8 @@ const (
 	INSTRUCTIONSET_SSE4_a
 )
 
-func AllInstructionSets() []InstructionSet {
+func GetInstructionSets() []InstructionSet {
 	return []InstructionSet{
-		INSTRUCTIONSET_INHERIT,
 		INSTRUCTIONSET_AES,
 		INSTRUCTIONSET_AVX,
 		INSTRUCTIONSET_AVX2,
@@ -592,16 +593,14 @@ func AllInstructionSets() []InstructionSet {
 func (x InstructionSet) Ord() int32 {
 	return (int32)(x)
 }
+func (x InstructionSet) Mask() int32 {
+	return base.EnumBitMask(GetInstructionSets()...)
+}
 func (x *InstructionSet) FromOrd(i int32) {
 	*(*byte)(x) = byte(i)
 }
-func (x InstructionSet) IsInheritable() bool {
-	return x == INSTRUCTIONSET_INHERIT
-}
 func (x InstructionSet) Description() string {
 	switch x {
-	case INSTRUCTIONSET_INHERIT:
-		return "inherit from parent's value"
 	case INSTRUCTIONSET_AES:
 		return "Advanced Encryption Standard"
 	case INSTRUCTIONSET_AVX:
@@ -627,8 +626,6 @@ func (x InstructionSet) Description() string {
 }
 func (x InstructionSet) String() string {
 	switch x {
-	case INSTRUCTIONSET_INHERIT:
-		return "INHERIT"
 	case INSTRUCTIONSET_AES:
 		return "AES"
 	case INSTRUCTIONSET_AVX:
@@ -654,8 +651,6 @@ func (x InstructionSet) String() string {
 }
 func (x *InstructionSet) Set(in string) (err error) {
 	switch strings.ToUpper(in) {
-	case INSTRUCTIONSET_INHERIT.String():
-		*x = INSTRUCTIONSET_INHERIT
 	case INSTRUCTIONSET_AES.String():
 		*x = INSTRUCTIONSET_AES
 	case INSTRUCTIONSET_AVX.String():
@@ -689,7 +684,7 @@ func (x *InstructionSet) UnmarshalText(data []byte) error {
 	return x.Set(base.UnsafeStringFromBytes(data))
 }
 func (x InstructionSet) AutoComplete(in base.AutoComplete) {
-	for _, it := range AllInstructionSets() {
+	for _, it := range GetInstructionSets() {
 		in.Add(it.String(), it.Description())
 	}
 }
@@ -992,6 +987,9 @@ func GetPayloadTypes() []PayloadType {
 }
 func (x PayloadType) Ord() int32 {
 	return (int32)(x)
+}
+func (x PayloadType) Mask() int32 {
+	return base.EnumBitMask(GetPayloadTypes()...)
 }
 func (x *PayloadType) FromOrd(i int32) {
 	*(*byte)(x) = byte(i)
@@ -1562,7 +1560,10 @@ func GetTagTypes() []TagType {
 		TAG_FASTDEBUG,
 	}
 }
-func (x TagType) Ord() int32           { return int32(x) }
+func (x TagType) Ord() int32 { return int32(x) }
+func (x TagType) Mask() int32 {
+	return base.EnumBitMask(GetTagTypes()...)
+}
 func (x *TagType) FromOrd(value int32) { *x = TagType(value) }
 func (x TagType) Description() string {
 	switch x {
@@ -1748,7 +1749,10 @@ func GetVisibilityTypes() []VisibilityType {
 		RUNTIME,
 	}
 }
-func (x VisibilityType) Ord() int32       { return int32(x) }
+func (x VisibilityType) Ord() int32 { return int32(x) }
+func (x VisibilityType) Mask() int32 {
+	return base.EnumBitMask(GetVisibilityTypes()...)
+}
 func (x *VisibilityType) FromOrd(v int32) { *(*byte)(x) = byte(v) }
 func (x VisibilityType) Description() string {
 	switch x {

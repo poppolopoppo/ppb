@@ -42,7 +42,10 @@ const (
 	AR_FLAGS_TOLERANT    = ArchiveFlags(1 << AR_TOLERANT)
 )
 
-func (x ArchiveFlag) Ord() int32        { return int32(x) }
+func (x ArchiveFlag) Ord() int32 { return int32(x) }
+func (x ArchiveFlag) Mask() int32 {
+	return EnumBitMask(GetArchiveFlags()...)
+}
 func (x *ArchiveFlag) FromOrd(in int32) { *x = ArchiveFlag(in) }
 func (x *ArchiveFlag) Set(in string) (err error) {
 	switch in {
@@ -163,7 +166,7 @@ func (x *SerializableGuid) UnmarshalText(data []byte) error {
 type SerializableFactory interface {
 	RegisterName(typeptr uintptr, name string, factory func() Serializable)
 	CreateNew(guid SerializableGuid) Serializable
-	ResolveTypename(typeptr uintptr) SerializableGuid
+	ResolveTypeGuid(typeptr uintptr) SerializableGuid
 }
 
 type serializableType struct {
@@ -214,11 +217,11 @@ func (x *serializableFactory) CreateNew(guid SerializableGuid) Serializable {
 	LogPanic(LogSerialize, "could not resolve concrete type from %q", guid)
 	return nil
 }
-func (x *serializableFactory) ResolveTypename(typeptr uintptr) SerializableGuid {
+func (x *serializableFactory) ResolveTypeGuid(typeptr uintptr) SerializableGuid {
 	if it, ok := x.typeptrToType[typeptr]; ok {
 		return it.Guid
 	}
-	LogPanic(LogSerialize, "could not resolve type name from %X", typeptr)
+	LogPanic(LogSerialize, "could not resolve type guid from %X", typeptr)
 	return SerializableGuid{}
 }
 
@@ -273,7 +276,7 @@ func reflectSerializable[T Serializable](factory SerializableFactory, value T) S
 	emptyPtr := getEmptyInterface(value)
 	AssertNotIn(emptyPtr.typ, nil)
 
-	return factory.ResolveTypename(uintptr(emptyPtr.typ))
+	return factory.ResolveTypeGuid(uintptr(emptyPtr.typ))
 }
 func resolveSerializable(factory SerializableFactory, guid SerializableGuid) Serializable {
 	return factory.CreateNew(guid)

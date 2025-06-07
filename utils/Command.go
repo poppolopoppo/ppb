@@ -241,7 +241,10 @@ func GetCommandArgumentFlags() []CommandArgumentFlag {
 	}
 }
 
-func (x CommandArgumentFlag) Ord() int32         { return int32(x) }
+func (x CommandArgumentFlag) Ord() int32 { return int32(x) }
+func (x CommandArgumentFlag) Mask() int32 {
+	return base.EnumBitMask(GetCommandArgumentFlags()...)
+}
 func (x *CommandArgumentFlag) FromOrd(ord int32) { *x = CommandArgumentFlag(ord) }
 func (x CommandArgumentFlag) String() string {
 	switch x {
