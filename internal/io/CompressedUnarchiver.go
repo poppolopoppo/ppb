@@ -121,13 +121,15 @@ func (x *CompressedUnarchiver) Build(bc utils.BuildContext) error {
 			}
 
 			return utils.UFS.CreateFile(destination, func(dst *os.File) error {
+				// extract file contents
+				if err := base.CopyWithProgress(src.Name(), src.Size(), dst, src); err != nil {
+					return err
+				}
 				// replicate modification time stored in archive
 				if err := base.SetMTime(dst, archiveMtime); err != nil {
 					return err
-				} else {
-					// finally extract and copy file contents
-					return base.CopyWithProgress(src.Name(), src.Size(), dst, src)
 				}
+				return nil
 			})
 		}
 
@@ -135,6 +137,7 @@ func (x *CompressedUnarchiver) Build(bc utils.BuildContext) error {
 	}); err != nil {
 		return err
 	}
+
 	base.AssertErr(func() error {
 		if len(x.ExtractedFiles) > 0 {
 			return nil
