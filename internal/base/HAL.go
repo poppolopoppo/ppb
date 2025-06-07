@@ -48,6 +48,12 @@ func (id *HostId) Serialize(ar Archive) {
 	ar.String((*string)(id))
 }
 
+func (x HostId) AutoComplete(in AutoComplete) {
+	for _, hostId := range GetHostIds() {
+		in.Add(hostId.String(), "")
+	}
+}
+
 /***************************************
  * Host Platform
  ***************************************/
