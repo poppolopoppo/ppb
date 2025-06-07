@@ -3,6 +3,8 @@ package base
 import (
 	"fmt"
 	"reflect"
+	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -52,12 +54,37 @@ func (r result[S]) String() string {
  * Sync Future (for debug)
  ***************************************/
 
+type debugCallstack struct {
+	pcs [10]uintptr
+	len int
+}
+
+func (x *debugCallstack) capture() {
+	x.len = runtime.Callers(3, x.pcs[:])
+}
+
+func (x *debugCallstack) String() string {
+	sb := strings.Builder{}
+	frame := runtime.CallersFrames(x.pcs[:x.len])
+	for {
+		frame, more := frame.Next()
+		fmt.Fprintf(&sb, "%s\n\t%s:%d\n", frame.Function, frame.File, frame.Line)
+		if !more {
+			break
+		}
+	}
+	return sb.String()
+}
+
 //lint:ignore U1000 ignore unused function
 type sync_future[T any] struct {
 	await   func() (T, error)
 	result  *result[T]
 	debug   []fmt.Stringer
 	barrier sync.Mutex
+
+	make_callstack debugCallstack
+	join_callstack debugCallstack
 }
 
 //lint:ignore U1000 ignore unused function
@@ -68,11 +95,13 @@ func make_sync_future[T any](f func() (T, error), debug ...fmt.Stringer) Future[
 		}
 		return fmt.Errorf("invalid future!\n%s", MakeStringerSet(debug...).Join("\n"))
 	})
-	return &sync_future[T]{
+	future := &sync_future[T]{
 		await:  f,
 		result: nil,
 		debug:  debug,
 	}
+	future.make_callstack.capture()
+	return future
 }
 
 //lint:ignore U1000 ignore unused function
@@ -91,8 +120,9 @@ func (future *sync_future[T]) Join() Result[T] {
 			if await != nil {
 				return nil
 			}
-			return fmt.Errorf("future reentrancy: await=%p!\n%s", await, MakeStringerSet(future.debug...).Join("\n"))
+			return fmt.Errorf("future reentrancy: await=%p!\n%s\n-> created by:\n%s\n<- joined by:\n%s", await, MakeStringerSet(future.debug...).Join("\n"), &future.make_callstack, &future.join_callstack)
 		})
+		future.join_callstack.capture()
 		future.await = nil
 		value, err := await()
 		future.result = &result[T]{
