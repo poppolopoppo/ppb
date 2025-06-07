@@ -30,10 +30,10 @@ func GetRootNamespaceName() string {
 const NAMESPACEMODEL_EXT = "-namespace.json"
 
 type NamespaceModel struct {
-	Children base.StringSet
-	Modules  base.StringSet
+	Children base.StringSet `json:",omitempty" jsonschema:"description=Children of this namespace, which are other namespaces"`
+	Modules  base.StringSet `json:",omitempty" jsonschema:"description=Modules of this namespace, which are defined in individual files"`
 
-	RootNamespace bool
+	RootNamespace bool `json:"-"`
 
 	ExtensionModel
 }
@@ -142,24 +142,24 @@ func (x *NamespaceModel) Prepend(o *NamespaceModel) {
 const MODULEMODEL_EXT = "-module.json"
 
 type ModuleModel struct {
-	ModuleType ModuleType
+	ModuleType ModuleType `json:",omitempty" jsonschema:"description=Type of module, such as library, executable, etc."`
 
-	SourceDirs    base.StringSet
-	SourceGlobs   base.StringSet
-	ExcludedGlobs base.StringSet
-	SourceFiles   base.StringSet
-	ExcludedFiles base.StringSet
-	ForceIncludes base.StringSet
-	IsolatedFiles base.StringSet
-	ExtraFiles    base.StringSet
-	ExtraDirs     base.StringSet
+	SourceDirs    base.StringSet `json:",omitempty" jsonschema:"description=Directories to search for source files, relative to the module directory"`
+	SourceGlobs   base.StringSet `json:",omitempty" jsonschema:"description=Glob patterns to match source files, relative to the module directory"`
+	ExcludedGlobs base.StringSet `json:",omitempty" jsonschema:"description=Glob patterns to exclude from source file matching, relative to the module directory"`
+	SourceFiles   base.StringSet `json:",omitempty" jsonschema:"description=List of source files, relative to the module directory"`
+	ExcludedFiles base.StringSet `json:",omitempty" jsonschema:"description=List of files to exclude from the module, relative to the module directory"`
+	ForceIncludes base.StringSet `json:",omitempty" jsonschema:"description=List of files to include in the module, even if excluded"`
+	IsolatedFiles base.StringSet `json:",omitempty" jsonschema:"description=List of files that are isolated from the module unity build, relative to the module directory"`
+	ExtraFiles    base.StringSet `json:",omitempty" jsonschema:"description=List of extra files to include in the module, in addition to the source files, relative to the module directory"`
+	ExtraDirs     base.StringSet `json:",omitempty" jsonschema:"description=List of extra directories to include in the module, in addition to the source directories, relative to the module directory"`
 
-	PrecompiledHeader utils.StringVar
-	PrecompiledSource utils.StringVar
+	PrecompiledHeader utils.StringVar `json:",omitempty" jsonschema:"description=Precompiled header file for the module, relative to the module directory"`
+	PrecompiledSource utils.StringVar `json:",omitempty" jsonschema:"description=Precompiled source file for the module, relative to the module directory"`
 
-	PrivateDependencies ModuleAliases
-	PublicDependencies  ModuleAliases
-	RuntimeDependencies ModuleAliases
+	PrivateDependencies ModuleAliases `json:",omitempty" jsonschema:"description=List of private dependencies for the module, which are not exposed to other modules"`
+	PublicDependencies  ModuleAliases `json:",omitempty" jsonschema:"description=List of public dependencies for the module, which are exposed to other modules"`
+	RuntimeDependencies ModuleAliases `json:",omitempty" jsonschema:"description=List of runtime dependencies for the module, which are required at runtime"`
 
 	CppRules
 	ExtensionModel
@@ -370,10 +370,10 @@ type ExtensionModel struct {
 	Source    utils.Filename `json:"-"`
 	Namespace string         `json:"-"`
 
-	Archetypes       base.StringSet
-	AllowedPlatforms base.SetT[PlatformAlias]
-	HAL              map[base.HostId]ModuleModel
-	TAG              map[TagFlags]ModuleModel
+	Archetypes       ModuleArchetypeAliases      `json:",omitempty" jsonschema:"description=Archetypes of this module, which are applied to the module rules"`
+	AllowedPlatforms base.SetT[PlatformAlias]    `json:",omitempty" jsonschema:"description=List of allowed platforms for this module, which are applied to the module rules"`
+	HAL              map[base.HostId]ModuleModel `json:",omitempty" jsonschema:"description=Platform-specific module extensions, which are applied to the module rules"`
+	TAG              map[TagFlags]ModuleModel    `json:",omitempty" jsonschema:"description=Tag-specific module extensions, which are applied to the module rules"`
 
 	Facet
 }
@@ -460,7 +460,7 @@ func (x *ExtensionModel) Serialize(ar base.Archive) {
 	ar.String(&x.Name)
 	ar.Serializable(&x.Source)
 	ar.String(&x.Namespace)
-	ar.Serializable(&x.Archetypes)
+	base.SerializeSlice(ar, x.Archetypes.Ref())
 	base.SerializeSlice(ar, x.AllowedPlatforms.Ref())
 	base.SerializeMap(ar, &x.HAL)
 	base.SerializeMap(ar, &x.TAG)
@@ -470,7 +470,7 @@ func (x *ExtensionModel) DeepCopy(src *ExtensionModel) {
 	x.Name = src.Name
 	x.Source = src.Source
 	x.Namespace = src.Namespace
-	x.Archetypes = base.NewStringSet(src.Archetypes...)
+	x.Archetypes = base.NewSet(src.Archetypes.Slice()...)
 	x.AllowedPlatforms = base.NewSet(src.AllowedPlatforms.Slice()...)
 	x.HAL = base.CopyMap(src.HAL)
 	x.TAG = base.CopyMap(src.TAG)
@@ -488,9 +488,8 @@ func (src *ExtensionModel) hasAllowedPlatforms(name fmt.Stringer) bool {
 	return true
 }
 func (src *ExtensionModel) applyArchetypes(rules *ModuleRules, name ModuleAlias) error {
-	return src.Archetypes.Range(func(id string) error {
-		id = strings.ToUpper(id)
-		if decorator, ok := AllArchetypes.Get(id); ok {
+	return src.Archetypes.Range(func(id ModuleArchetypeAlias) error {
+		if decorator, ok := AllArchetypes.Get(id.String()); ok {
 			base.LogTrace(LogModel, "%v: inherit module archtype <%v>", name, id)
 			if err := decorator(rules); err != nil {
 				return err

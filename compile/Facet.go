@@ -28,27 +28,27 @@ type VariableDefinitions []VariableDefinition
  ***************************************/
 
 type Facet struct {
-	Defines base.StringSet
+	Defines base.StringSet `json:",omitempty" jsonschema:"description=Defines for the facet"`
 
-	ForceIncludes      utils.FileSet
-	IncludePaths       utils.DirSet
-	ExternIncludePaths utils.DirSet
-	SystemIncludePaths utils.DirSet
+	ForceIncludes      utils.FileSet `json:",omitempty" jsonschema:"description=Force include paths for the facet"`
+	IncludePaths       utils.DirSet  `json:",omitempty" jsonschema:"description=Include paths for the facet"`
+	ExternIncludePaths utils.DirSet  `json:",omitempty" jsonschema:"description=External include paths for the facet"`
+	SystemIncludePaths utils.DirSet  `json:",omitempty" jsonschema:"description=System include paths for the facet"`
 
-	AnalysisOptions          base.StringSet
-	PreprocessorOptions      base.StringSet
-	CompilerOptions          base.StringSet
-	HeaderUnitOptions        base.StringSet
-	PrecompiledHeaderOptions base.StringSet
+	AnalysisOptions          base.StringSet `json:",omitempty" jsonschema:"description=Analysis options for the facet"`
+	PreprocessorOptions      base.StringSet `json:",omitempty" jsonschema:"description=Preprocessor options for the facet"`
+	CompilerOptions          base.StringSet `json:",omitempty" jsonschema:"description=Compiler options for the facet"`
+	HeaderUnitOptions        base.StringSet `json:",omitempty" jsonschema:"description=Header unit options for the facet"`
+	PrecompiledHeaderOptions base.StringSet `json:",omitempty" jsonschema:"description=Precompiled header options for the facet"`
 
-	Libraries    base.StringSet
-	LibraryPaths utils.DirSet
+	Libraries    base.StringSet `json:",omitempty" jsonschema:"description=Libraries for the facet"`
+	LibraryPaths utils.DirSet   `json:",omitempty" jsonschema:"description=Library paths for the facet"`
 
-	LibrarianOptions base.StringSet
-	LinkerOptions    base.StringSet
+	LibrarianOptions base.StringSet `json:",omitempty" jsonschema:"description=Librarian options for the facet"`
+	LinkerOptions    base.StringSet `json:",omitempty" jsonschema:"description=Linker options for the facet"`
 
-	Tags    TagFlags
-	Exports VariableDefinitions
+	Tags    TagFlags            `json:",omitempty" jsonschema:"description=Tags for the facet"`
+	Exports VariableDefinitions `json:",omitempty" jsonschema:"description=Exports for the facet"`
 }
 
 func (facet *Facet) GetFacet() *Facet {

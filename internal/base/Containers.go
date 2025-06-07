@@ -197,10 +197,13 @@ func (set SetT[T]) At(i int) T {
 func (set SetT[T]) Swap(i, j int) {
 	set[i], set[j] = set[j], set[i]
 }
-func (set SetT[T]) Range(each func(T)) {
+func (set SetT[T]) Range(each func(T) error) error {
 	for _, x := range set {
-		each(x)
+		if err := each(x); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 func (set *SetT[T]) Ref() *[]T {
 	return (*[]T)(set)

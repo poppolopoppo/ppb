@@ -6,41 +6,41 @@ import (
 )
 
 type CppWarnings struct {
-	Default        WarningLevel
-	Deprecation    WarningLevel
-	Pedantic       WarningLevel
-	ShadowVariable WarningLevel
-	UndefinedMacro WarningLevel
-	UnsafeTypeCast WarningLevel
+	Default        WarningLevel `json:",omitempty" jsonschema:"description=Default default warning level for compiler"`
+	Deprecation    WarningLevel `json:",omitempty" jsonschema:"description=Warning level for deprecated features"`
+	Pedantic       WarningLevel `json:",omitempty" jsonschema:"description=Warning level for pedantic checks"`
+	ShadowVariable WarningLevel `json:",omitempty" jsonschema:"description=Warning level for shadowed variables"`
+	UndefinedMacro WarningLevel `json:",omitempty" jsonschema:"description=Warning level for undefined macros"`
+	UnsafeTypeCast WarningLevel `json:",omitempty" jsonschema:"description=Warning level for unsafe type casts"`
 }
 
 type CppRules struct {
-	SizePerUnity base.SizeInBytes
-	Instructions InstructionSets
+	SizePerUnity base.SizeInBytes `json:",omitempty" jsonschema:"description=Size of each unity file, used for adaptive unity builds"`
+	Instructions InstructionSets  `json:",omitempty" jsonschema:"description=Instruction sets to use for the build, e.g. AVX2, AVX512"`
 
-	Warnings CppWarnings
+	Warnings CppWarnings `json:",omitempty" jsonschema:"description=Warning levels for the compiler, can be set to OFF, DEFAULT, or HIGH"`
 
-	CppStd     CppStdType
-	CppRtti    CppRttiType
-	DebugInfo  DebugInfoType
-	Exceptions ExceptionType
-	Link       LinkType
-	Optimize   OptimizationLevel
-	PCH        PrecompiledHeaderType
-	RuntimeLib RuntimeLibType
-	Sanitizer  SanitizerType
-	Unity      UnityType
+	CppStd     CppStdType            `json:",omitempty" jsonschema:"description=The C++ standard to use for the build, e.g. C++11, C++14, C++17, C++20"`
+	CppRtti    CppRttiType           `json:",omitempty" jsonschema:"description=Whether to enable RTTI (Run-Time Type Information) in the build"`
+	DebugInfo  DebugInfoType         `json:",omitempty" jsonschema:"description=Debug information level for the build, can be set to OFF, DEFAULT, or FULL"`
+	Exceptions ExceptionType         `json:",omitempty" jsonschema:"description=Whether to enable C++ exceptions in the build"`
+	Link       LinkType              `json:",omitempty" jsonschema:"description=Linking options for the build"`
+	Optimize   OptimizationLevel     `json:",omitempty" jsonschema:"description=Optimization level for the build"`
+	PCH        PrecompiledHeaderType `json:",omitempty" jsonschema:"description=Precompiled header options for the build"`
+	RuntimeLib RuntimeLibType        `json:",omitempty" jsonschema:"description=Runtime library options for the build"`
+	Sanitizer  SanitizerType         `json:",omitempty" jsonschema:"description=Sanitizer options for the build"`
+	Unity      UnityType             `json:",omitempty" jsonschema:"description=Unity build options for the build"`
 
-	AdaptiveUnity utils.BoolVar
-	Benchmark     utils.BoolVar
-	Deterministic utils.BoolVar
-	DebugFastLink utils.BoolVar
-	Incremental   utils.BoolVar
-	LTO           utils.BoolVar
-	RuntimeChecks utils.BoolVar
+	AdaptiveUnity utils.BoolVar `json:",omitempty" jsonschema:"description=Enable adaptive unity builds"`
+	Benchmark     utils.BoolVar `json:",omitempty" jsonschema:"description=Enable benchmarking"`
+	Deterministic utils.BoolVar `json:",omitempty" jsonschema:"description=Enable deterministic builds"`
+	DebugFastLink utils.BoolVar `json:",omitempty" jsonschema:"description=Enable fast linking for debugging"`
+	Incremental   utils.BoolVar `json:",omitempty" jsonschema:"description=Enable incremental builds"`
+	LTO           utils.BoolVar `json:",omitempty" jsonschema:"description=Enable link-time optimization"`
+	RuntimeChecks utils.BoolVar `json:",omitempty" jsonschema:"description=Enable runtime checks"`
 
-	CompilerVerbose utils.BoolVar
-	LinkerVerbose   utils.BoolVar
+	CompilerVerbose utils.BoolVar `json:",omitempty" jsonschema:"description=Enable verbose compiler output"`
+	LinkerVerbose   utils.BoolVar `json:",omitempty" jsonschema:"description=Enable verbose linker output"`
 }
 
 type Cpp interface {

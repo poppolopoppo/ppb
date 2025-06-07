@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -91,12 +92,18 @@ func (vsc *VscodeBuilder) Build(bc BuildContext) error {
 		base.RemoveUnless(func(m compile.Module) bool { return m.GetModule().ModuleType == compile.MODULE_PROGRAM }, modules...)...)
 
 	launch_json := vsc.OutputDir.File("launch.json")
-	base.LogTrace(LogCommand, "generating vscode launch configuratiosn in '%v'", launch_json)
+	base.LogTrace(LogCommand, "generating vscode launch configurations in '%v'", launch_json)
 	if err := vsc.launch_configs(progamAliases, compiler, launch_json); err != nil {
 		return err
 	}
 
-	return bc.OutputFile(c_cpp_properties_json, tasks_json, launch_json)
+	settings_json := vsc.OutputDir.File("settings.json")
+	base.LogTrace(LogCommand, "generating vscode workspace settings in '%v'", settings_json)
+	if err := vsc.settings(bc, settings_json); err != nil {
+		return err
+	}
+
+	return bc.OutputFile(c_cpp_properties_json, tasks_json, launch_json, settings_json)
 }
 
 func sanitizeEnvironmentDefines(defines base.StringSet) (base.StringSet, error) {
@@ -363,5 +370,41 @@ func (vsc *VscodeBuilder) launch_configs(programAliases compile.ModuleAliases, c
 			"configurations": configurations,
 			"inputs":         inputs,
 		}, w)
-	}, base.TransientPage4KiB)
+	})
+}
+
+func (vsc *VscodeBuilder) settings(readPort BuildGraphReadPort, outputFile Filename) error {
+	// Create JSON validation schemas and bind them for all *-[module|namespace].json in workspace settings
+	schemas_dir := outputFile.Dirname.Folder("schemas")
+
+	schema_namespace := schemas_dir.File("namespace.schema.json")
+	if err := UFS.Create(schema_namespace, func(w io.Writer) error {
+		return base.JsonSchemaFromType(reflect.TypeFor[compile.NamespaceModel](), readPort, w, base.OptionJsonPrettyPrint(true))
+	}); err != nil {
+		return err
+	}
+
+	schema_module := schemas_dir.File("module.schema.json")
+	if err := UFS.Create(schema_module, func(w io.Writer) error {
+		return base.JsonSchemaFromType(reflect.TypeFor[compile.ModuleModel](), readPort, w, base.OptionJsonPrettyPrint(true))
+	}); err != nil {
+		return err
+	}
+
+	settings := base.JsonMap{
+		"json.schemas": []base.JsonMap{
+			{
+				"fileMatch": []string{"**/*" + compile.NAMESPACEMODEL_EXT},
+				"url":       schema_namespace.Relative(UFS.Root),
+			},
+			{
+				"fileMatch": []string{"**/*" + compile.MODULEMODEL_EXT},
+				"url":       schema_module.Relative(UFS.Root),
+			},
+		},
+	}
+
+	return UFS.Create(outputFile, func(w io.Writer) error {
+		return base.JsonSerialize(settings, w)
+	})
 }
