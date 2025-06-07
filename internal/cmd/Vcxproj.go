@@ -192,7 +192,7 @@ func (x *SlnSolutionBuilder) createBuildConfigProject(bc BuildContext, solutionF
 		UFS.Extras.Folder("Debug").File("PPE.natvis"),
 		UFS.Extras.Folder("Debug").File("PPE.natstepfilter"),
 	)
-	buildProject.Files = base.RemoveUnless[Filename](func(f Filename) bool {
+	buildProject.Files = base.RemoveUnless(func(f Filename) bool {
 		return f.Exists()
 	}, buildProject.Files...)
 

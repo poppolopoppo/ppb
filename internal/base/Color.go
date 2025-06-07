@@ -199,8 +199,6 @@ func delinearizeColor(c float64) float64 {
 	}
 }
 
-// A nudge to make truncation round to nearest number instead of flooring
-
 func (x Color3b) ToHTML(alpha uint8) string {
 	return fmt.Sprintf("#%02x%02x%02x%02x", x.R, x.G, x.B, alpha)
 }

@@ -419,7 +419,7 @@ func (unit *Unit) Build(bc BuildContext) error {
 		Unit:        unit,
 	})
 
-	_, err = bc.OutputFactory(WrapBuildFactory[*TargetActions](func(bi BuildInitializer) (*TargetActions, error) {
+	_, err = bc.OutputFactory(WrapBuildFactory(func(bi BuildInitializer) (*TargetActions, error) {
 		return &TargetActions{
 			TargetAlias: unit.TargetAlias,
 		}, bi.DependsOn(staticDeps...)

@@ -115,7 +115,7 @@ type async_future[T any] struct {
 
 // each future owns its channel to allow better ParallelJoin_Async
 func MakeAsyncFuture[T any](f func() (T, error)) Future[T] {
-	return make_async_future[T](f)
+	return make_async_future(f)
 }
 func MakeGlobalWorkerFuture[T any](f func(ThreadContext) (T, error), priority TaskPriority, debugId ThreadPoolDebugId) Future[T] {
 	return MakeWorkerFuture(GetGlobalThreadPool(), f, priority, debugId)
@@ -207,7 +207,7 @@ func (x map_future[OUT, IN]) Join() Result[OUT] {
  ***************************************/
 
 // one closed channel shared along all future literals
-var future_literal_done = Memoize[chan struct{}](func() chan struct{} {
+var future_literal_done = Memoize(func() chan struct{} {
 	done := make(chan struct{})
 	close(done)
 	return done

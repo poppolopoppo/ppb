@@ -129,7 +129,7 @@ type Serializable interface {
  * Serializable Guid
  ***************************************/
 
-var ErrInvalidGuidLen = errors.New("Invalid GUID length")
+var ErrInvalidGuidLen = errors.New("invalid GUID length")
 
 type SerializableGuid [16]byte
 
