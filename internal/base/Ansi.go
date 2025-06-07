@@ -71,6 +71,11 @@ const (
 	ANSI_BG1_CYAN    AnsiCode = "\033[46;1m"
 	ANSI_BG1_WHITE   AnsiCode = "\033[47;1m"
 
+	ANSI_HIDE_CURSOR    AnsiCode = "\033[?25l"
+	ANSI_SHOW_CURSOR    AnsiCode = "\033[?25h"
+	ANSI_SAVE_CURSOR    AnsiCode = "\033[s"
+	ANSI_RESTORE_CURSOR AnsiCode = "\033[u"
+
 	ANSI_ERASE_END_LINE           AnsiCode = "\033[K"
 	ANSI_ERASE_START_LINE         AnsiCode = "\033[1K"
 	ANSI_ERASE_ALL_LINE           AnsiCode = "\033[2K"

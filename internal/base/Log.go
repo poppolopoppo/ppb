@@ -26,6 +26,8 @@ var LogGlobal = NewLogCategory("Global")
 
 var gLogger Logger = NewLogger(DEBUG_ENABLED)
 
+const LOGGER_REFRESH_PERIOD = 80 * time.Millisecond
+
 func GetLogger() Logger { return gLogger }
 func SetLogger(logger Logger) (previous Logger) {
 	previous = gLogger
@@ -96,6 +98,7 @@ func LogPanic(category *LogCategory, msg string, args ...interface{}) {
 }
 func LogPanicErr(category *LogCategory, err error) {
 	LogError(category, "panic: caught error %v", err)
+	FlushLog()
 	Panic(err)
 }
 func LogPanicIfFailed(category *LogCategory, err error) {
@@ -709,7 +712,7 @@ func newDeferredLogger(logger Logger) *deferredLogger {
 							runTask(task.Func)
 						case task := <-low:
 							runTask(task.Func)
-						case <-time.After(50 * time.Millisecond):
+						case <-time.After(LOGGER_REFRESH_PERIOD):
 							logger.Refresh()
 						}
 					}
@@ -1064,6 +1067,8 @@ type interactiveLogger struct {
 	messages SetT[*interactiveLogPin]
 	inflight int
 
+	lastRefresh time.Time
+
 	recycler  Recycler[*interactiveLogPin]
 	transient bytes.Buffer
 	*basicLogger
@@ -1170,6 +1175,13 @@ func (x *interactiveLogger) Write(buf []byte) (n int, err error) {
 }
 
 func (x *interactiveLogger) refreshMessages(inner func()) {
+	now := time.Now()
+	if now.Sub(x.lastRefresh) < LOGGER_REFRESH_PERIOD {
+		inner()
+		return
+	}
+	x.lastRefresh = now
+
 	defer x.transient.Reset()
 	prepareDetachMessages(&x.transient, x.inflight)
 	if inner != nil {
@@ -1177,10 +1189,12 @@ func (x *interactiveLogger) refreshMessages(inner func()) {
 	}
 	x.inflight = prepareAttachMessages(&x.transient, x.messages...)
 	interactiveLoggerOutput.Write(x.transient.Bytes())
+	FlushWriterIFP(interactiveLoggerOutput)
 }
 func (x *interactiveLogger) hasInflightMessages() bool {
 	return x.inflight > 0
 }
+
 func prepareAttachMessages(buf LogWriter, messages ...*interactiveLogPin) (inflight int) {
 	sort.SliceStable(messages, func(i, j int) bool {
 		a := messages[i]
@@ -1193,6 +1207,7 @@ func prepareAttachMessages(buf LogWriter, messages ...*interactiveLogPin) (infli
 	})
 
 	inflight = 1 + len(messages)
+	buf.WriteString(ANSI_HIDE_CURSOR.Always())
 	fmt.Fprintln(buf, "\r")
 
 	for i := range messages {
@@ -1209,14 +1224,18 @@ func prepareAttachMessages(buf LogWriter, messages ...*interactiveLogPin) (infli
 		}
 		fmt.Fprintln(buf, ANSI_RESET.Always())
 	}
+
+	buf.WriteString(ANSI_SHOW_CURSOR.Always())
 	return
 }
 func prepareDetachMessages(buf LogWriter, inflight int) {
 	if inflight > 0 {
 		fmt.Fprint(buf,
+			ANSI_HIDE_CURSOR.Always(),
 			ANSI_ERASE_ALL_LINE.Always(),
 			"\033[", inflight, "F", // move cursor up # lines
-			ANSI_ERASE_SCREEN_FROM_CURSOR.Always())
+			ANSI_ERASE_SCREEN_FROM_CURSOR.Always(),
+			ANSI_SHOW_CURSOR.Always())
 	}
 }
 
