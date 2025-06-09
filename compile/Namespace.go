@@ -135,16 +135,12 @@ func FindBuildNamespace(bg utils.BuildGraphReadPort, namespace NamespaceAlias) (
 }
 
 func NeedAllBuildNamespaceAliases(bc utils.BuildContext) (namespaceAliases []NamespaceAlias, err error) {
-	rootModel, err := BuildRootNamespaceModel().Need(bc)
-	if err != nil {
-		return []NamespaceAlias{}, err
+	importer, err := BuildModelImporter(utils.UFS.Source).Need(bc)
+	if err == nil {
+		return importer.Namespaces, nil
+	} else {
+		return NamespaceAliases{}, err
 	}
-
-	err = ForeachNamespaceChildrenAlias(bc, rootModel.GetNamespaceAlias(), func(na NamespaceAlias) error {
-		namespaceAliases = append(namespaceAliases, na)
-		return nil
-	})
-	return
 }
 
 func ForeachNamespaceChildrenAlias(bc utils.BuildContext, namespaceAlias NamespaceAlias, each func(NamespaceAlias) error) error {

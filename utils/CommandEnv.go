@@ -215,7 +215,6 @@ type CommandEnvT struct {
 	prefix     string
 	buildGraph GlobalBuildGraph
 	persistent *persistentData
-	rootFile   Filename
 	startedAt  time.Time
 
 	configPath   Filename
@@ -261,11 +260,9 @@ func InitCommandEnv(prefix string, args []string, startedAt time.Time) (*Command
 	// use UFS.Output only after having parsed -OutputDir/RootDir= flags
 	CommandEnv.configPath = UFS.Output.File(fmt.Sprint(".", prefix, "-config.json"))
 	CommandEnv.databasePath = UFS.Output.File(fmt.Sprint(".", prefix, "-cache.db"))
-	CommandEnv.rootFile = UFS.Source.File(prefix + "-namespace.json")
 
 	base.LogVerbose(LogCommand, "will load config from %q", CommandEnv.configPath)
 	base.LogVerbose(LogCommand, "will load database from %q", CommandEnv.databasePath)
-	base.LogVerbose(LogCommand, "will load modules from %q", CommandEnv.rootFile)
 
 	if GetCommandFlags().Summary.Get() {
 		CommandEnv.onExit.Add(func(*CommandEnvT) error {
@@ -304,14 +301,8 @@ func (env *CommandEnvT) BuildGraph() BuildGraph     { return env.buildGraph.Get(
 func (env *CommandEnvT) Persistent() PersistentData { return env.persistent }
 func (env *CommandEnvT) ConfigPath() Filename       { return env.configPath }
 func (env *CommandEnvT) DatabasePath() Filename     { return env.databasePath }
-func (env *CommandEnvT) RootFile() Filename         { return env.rootFile }
 func (env *CommandEnvT) StartedAt() time.Time       { return env.startedAt }
 func (env *CommandEnvT) BuildTime() time.Time       { return GetProcessInfo().Timestamp }
-
-func (env *CommandEnvT) SetRootFile(rootFile Filename) {
-	base.LogVerbose(LogCommand, "set root file to %q", rootFile)
-	env.rootFile = rootFile
-}
 
 func (env *CommandEnvT) OnBuildGraphLoaded(e base.EventDelegate[BuildGraph]) error {
 	return env.buildGraph.OnBuildGraphLoaded(e)

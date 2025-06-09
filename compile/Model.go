@@ -3,11 +3,13 @@ package compile
 import (
 	"fmt"
 	"io"
-	"path"
+	"sort"
 	"strings"
 
 	"github.com/poppolopoppo/ppb/internal/base"
 	"github.com/poppolopoppo/ppb/utils"
+
+	internal_io "github.com/poppolopoppo/ppb/internal/io"
 )
 
 var LogModel = base.NewLogCategory("Model")
@@ -15,124 +17,166 @@ var LogModel = base.NewLogCategory("Model")
 const PCH_DEFAULT_HEADER = "stdafx.h"
 const PCH_DEFAULT_SOURCE = "stdafx.cpp"
 
-func BuildRootNamespaceModel() utils.BuildFactoryTyped[*NamespaceModel] {
-	return buildNamespaceModelEx(utils.CommandEnv.RootFile(), "", true)
-}
-
 func GetRootNamespaceName() string {
-	return strings.TrimSuffix(utils.CommandEnv.RootFile().Basename, NAMESPACEMODEL_EXT)
+	return utils.CommandEnv.Prefix()
 }
 
 /***************************************
- * Namespace Model
+ * ModelImporter
  ***************************************/
 
-const NAMESPACEMODEL_EXT = "-namespace.json"
-
-type NamespaceModel struct {
-	Children base.StringSet `json:",omitempty" jsonschema:"description=Children of this namespace, which are other namespaces"`
-	Modules  base.StringSet `json:",omitempty" jsonschema:"description=Modules of this namespace, which are defined in individual files"`
-
-	RootNamespace bool `json:"-"`
-
-	ExtensionModel
+type ModelRecursiveDependencyError struct {
+	A, B ModuleAlias
 }
 
-func BuildNamespaceModel(source utils.Filename, namespace string) utils.BuildFactoryTyped[*NamespaceModel] {
-	return buildNamespaceModelEx(source, namespace, false)
-}
-func buildNamespaceModelEx(source utils.Filename, namespace string, rootNamespace bool) utils.BuildFactoryTyped[*NamespaceModel] {
-	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (NamespaceModel, error) {
-		extensionModel, err := buildExtensionModel(bi, source, namespace, NAMESPACEMODEL_EXT)
-		return NamespaceModel{
-			ExtensionModel: extensionModel,
-			RootNamespace:  rootNamespace,
-		}, err
-	})
+func (x ModelRecursiveDependencyError) Error() string {
+	return fmt.Sprintf("found recursive dependency between %q and %q, modules can't depend from each other", x.A, x.B)
 }
 
-func (x *NamespaceModel) GetNamespaceAlias() NamespaceAlias {
-	return NamespaceAlias{
-		NamespaceName: x.GetAbsoluteName(),
-	}
+type ModelMissingModuleError struct {
+	Alias ModuleAlias
 }
-func (x *NamespaceModel) Build(bc utils.BuildContext) error {
-	*x = NamespaceModel{
-		ExtensionModel: ExtensionModel{
-			Name:      x.Name,
-			Source:    x.Source,
-			Namespace: x.Namespace,
-		},
-		RootNamespace: x.RootNamespace,
+
+func (x ModelMissingModuleError) Error() string {
+	return fmt.Sprintf("can't find module %q, did you miss some declaration?", x.Alias)
+}
+
+type ModelImporter struct {
+	Source     utils.Directory
+	Import     utils.FileSet
+	Modules    ModuleAliases
+	Namespaces NamespaceAliases
+}
+
+func (x *ModelImporter) Alias() utils.BuildAlias {
+	return utils.MakeBuildAlias("ModelImporter", x.Source.Path)
+}
+func (x *ModelImporter) Build(bc utils.BuildContext) (err error) {
+	x.Import, err = internal_io.GlobDirectory(bc, x.Source, base.NewStringSet("*"+MODULEMODEL_EXT), base.StringSet{}, utils.FileSet{})
+	if err != nil {
+		return
 	}
 
-	if err := utils.UFS.OpenBuffered(x.Source, func(r io.Reader) error {
-		return base.JsonDeserialize(x, r)
-	}); err != nil {
-		return err
+	x.Modules = make(ModuleAliases, 0, len(x.Import))
+	x.Namespaces = make(NamespaceAliases, 0, len(x.Import))
+
+	namespaces := make(map[utils.Directory]*NamespaceRules, len(x.Import))
+	getOrCreateNamespaceRules := func(namespaceDir utils.Directory) (namespace *NamespaceRules) {
+		var ok bool
+		if namespace, ok = namespaces[namespaceDir]; !ok {
+			namespace = &NamespaceRules{
+				NamespaceAlias: NamespaceAlias{namespaceDir.Relative(x.Source)},
+				NamespaceDir:   namespaceDir,
+			}
+
+			if len(namespace.NamespaceAlias.NamespaceName) == 0 || namespace.NamespaceAlias.NamespaceName == "." {
+				namespace.NamespaceAlias.NamespaceName = GetRootNamespaceName()
+			}
+
+			x.Namespaces.Append(namespace.NamespaceAlias)
+			namespaces[namespaceDir] = namespace
+		}
+		return
 	}
 
-	rules := &NamespaceRules{
-		NamespaceAlias:   NamespaceAlias{x.GetAbsoluteName()},
-		NamespaceDir:     x.Source.Dirname,
-		NamespaceModules: ModuleAliases{},
-		Facet:            x.Facet,
+	futureModules := base.Map(func(moduleFile utils.Filename) base.Future[*ModuleModel] {
+		namespaceDir := moduleFile.Dirname.Parent()
+		namespace := getOrCreateNamespaceRules(namespaceDir)
+
+		// register the namespace in its parent recursively
+		for {
+			parentNamespaceDir := namespaceDir.Parent()
+			parentNamespace := getOrCreateNamespaceRules(parentNamespaceDir)
+			parentNamespace.NamespaceChildren.AppendUniq(namespace.NamespaceAlias)
+
+			if parentNamespaceDir.Equals(x.Source) {
+				break // reached the root namespace
+			}
+		}
+
+		return BuildModuleModel(moduleFile, namespaceDir.Relative(x.Source)).Prepare(bc)
+	}, x.Import...)
+
+	checkModuleDeps := make(map[ModuleAlias]*ModuleModel, len(x.Import))
+	err = base.ParallelJoin(func(_ int, module *ModuleModel) error {
+		moduleAlias := module.GetModuleAlias()
+
+		if module.hasAllowedPlatforms(moduleAlias) {
+			namespace := getOrCreateNamespaceRules(module.Source.Dirname.Parent())
+			namespace.NamespaceModules.Append(moduleAlias)
+			x.Modules.Append(moduleAlias)
+
+			if m, err := bc.NeedBuildable(module); err == nil {
+				base.AssertIn(utils.Buildable(module), m)
+				checkModuleDeps[moduleAlias] = module
+			} else {
+				return err
+			}
+		}
+
+		return nil
+	}, futureModules...)
+	if err != nil {
+		return
 	}
 
-	if namespace, err := x.GetNamespaceModel(bc); err == nil && namespace != nil {
-		rules.NamespaceParent = namespace.GetNamespaceAlias()
-		x.applyModelExtensions(&namespace.ExtensionModel)
-	} else if err != nil {
-		return err
-	}
-
-	if !x.hasAllowedPlatforms(rules.NamespaceAlias) {
+	// validate module dependencies
+	inspectModuleDeps := func(ma ModuleAlias, deps ...ModuleAlias) error {
+		for _, it := range deps {
+			if other, ok := checkModuleDeps[it]; !ok {
+				return ModelMissingModuleError{it}
+			} else if ma.Compare(it) <= 0 && other.hasModuleDependency(ma) {
+				return ModelRecursiveDependencyError{A: ma, B: it}
+			}
+		}
 		return nil
 	}
-
-	absoluteName := x.GetAbsoluteName()
-	if x.RootNamespace {
-		absoluteName = ""
-	}
-
-	for _, it := range x.Children {
-		filename := rules.NamespaceDir.Folder(it).File(it + NAMESPACEMODEL_EXT)
-		if namespace, err := BuildNamespaceModel(filename, absoluteName).Output(bc); err == nil {
-			rules.NamespaceChildren.Append(namespace.GetNamespaceAlias())
-		} else {
+	for ma, module := range checkModuleDeps {
+		if err = inspectModuleDeps(ma, module.PrivateDependencies...); err != nil {
+			return err
+		}
+		if err = inspectModuleDeps(ma, module.PublicDependencies...); err != nil {
+			return err
+		}
+		if err = inspectModuleDeps(ma, module.RuntimeDependencies...); err != nil {
 			return err
 		}
 	}
 
-	for _, it := range x.Modules {
-		filename := rules.NamespaceDir.Folder(it).File(it + MODULEMODEL_EXT)
-		if module, err := BuildModuleModel(filename, absoluteName).Output(bc); err == nil {
-			rules.NamespaceModules.Append(module.GetModuleAlias())
-		} else {
-			return err
+	// sort the modules and namespaces by their names for determinism
+	sort.Slice(x.Modules, func(i, j int) bool {
+		return x.Modules[i].Compare(x.Modules[j]) < 0
+	})
+	sort.Slice(x.Namespaces, func(i, j int) bool {
+		return x.Namespaces[i].Compare(x.Namespaces[j]) < 0
+	})
+
+	// output the namespace rules for each namespace
+	for _, namespace := range namespaces {
+		if _, err = utils.WrapBuildFactory(func(bi utils.BuildInitializer) (*NamespaceRules, error) {
+			return namespace, nil
+		}).Output(bc); err != nil {
+			return
 		}
 	}
+	return
+}
+func (x *ModelImporter) Serialize(ar base.Archive) {
+	ar.Serializable(&x.Source)
+	ar.Serializable(&x.Import)
+	base.SerializeSlice(ar, x.Modules.Ref())
+	base.SerializeSlice(ar, x.Namespaces.Ref())
+}
 
-	_, err := bc.OutputFactory(utils.WrapBuildFactory(func(bi utils.BuildInitializer) (*NamespaceRules, error) {
-		return rules, nil
-	}), utils.OptionBuildForce)
-	return err
-}
-func (x *NamespaceModel) Serialize(ar base.Archive) {
-	ar.Serializable(&x.Children)
-	ar.Serializable(&x.Modules)
-	ar.Bool(&x.RootNamespace)
-	ar.Serializable(&x.ExtensionModel)
-}
-func (x *NamespaceModel) Append(o *NamespaceModel) {
-	x.Children.Append(o.Children...)
-	x.Modules.Append(o.Modules...)
-	x.ExtensionModel.Append(&o.ExtensionModel)
-}
-func (x *NamespaceModel) Prepend(o *NamespaceModel) {
-	x.Children.Prepend(o.Children...)
-	x.Modules.Prepend(o.Modules...)
-	x.ExtensionModel.Prepend(&o.ExtensionModel)
+func BuildModelImporter(source utils.Directory) utils.BuildFactoryTyped[*ModelImporter] {
+	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (ModelImporter, error) {
+		if err := bi.NeedDirectories(source); err != nil {
+			return ModelImporter{}, err
+		}
+		return ModelImporter{
+			Source: source.Normalize(),
+		}, nil
+	})
 }
 
 /***************************************
@@ -142,6 +186,11 @@ func (x *NamespaceModel) Prepend(o *NamespaceModel) {
 const MODULEMODEL_EXT = "-module.json"
 
 type ModuleModel struct {
+	// following fields are deduced and not serialized
+	Name      string         `json:"-"`
+	Source    utils.Filename `json:"-"`
+	Namespace string         `json:"-"`
+
 	ModuleType ModuleType `json:",omitempty" jsonschema:"description=Type of module, such as library, executable, etc."`
 
 	SourceDirs    base.StringSet `json:",omitempty" jsonschema:"description=Directories to search for source files, relative to the module directory"`
@@ -161,19 +210,31 @@ type ModuleModel struct {
 	PublicDependencies  ModuleAliases `json:",omitempty" jsonschema:"description=List of public dependencies for the module, which are exposed to other modules"`
 	RuntimeDependencies ModuleAliases `json:",omitempty" jsonschema:"description=List of runtime dependencies for the module, which are required at runtime"`
 
+	Archetypes       ModuleArchetypeAliases      `json:",omitempty" jsonschema:"description=Archetypes of this module, which are applied to the module rules"`
+	AllowedPlatforms base.SetT[PlatformAlias]    `json:",omitempty" jsonschema:"description=List of allowed platforms for this module, which are applied to the module rules"`
+	HAL              map[base.HostId]ModuleModel `json:",omitempty" jsonschema:"description=Platform-specific module extensions, which are applied to the module rules"`
+	TAG              map[TagFlags]ModuleModel    `json:",omitempty" jsonschema:"description=Tag-specific module extensions, which are applied to the module rules"`
+
+	Facet
 	CppRules
-	ExtensionModel
 }
 
 func BuildModuleModel(source utils.Filename, namespace string) utils.BuildFactoryTyped[*ModuleModel] {
 	return utils.MakeBuildFactory(func(bi utils.BuildInitializer) (ModuleModel, error) {
-		extensionModel, err := buildExtensionModel(bi, source, namespace, MODULEMODEL_EXT)
+		source = source.Normalize()
+		name := strings.TrimSuffix(source.Basename, MODULEMODEL_EXT)
+
 		return ModuleModel{
-			ExtensionModel: extensionModel,
-		}, err
+			Name:      name,
+			Source:    source,
+			Namespace: namespace,
+		}, bi.NeedFiles(source)
 	})
 }
 
+func (x *ModuleModel) Alias() utils.BuildAlias {
+	return utils.MakeBuildAlias("Model", x.Namespace, x.Name)
+}
 func (x *ModuleModel) GetModuleAlias() ModuleAlias {
 	return ModuleAlias{
 		NamespaceAlias: NamespaceAlias{x.Namespace},
@@ -182,11 +243,9 @@ func (x *ModuleModel) GetModuleAlias() ModuleAlias {
 }
 func (x *ModuleModel) Build(bc utils.BuildContext) error {
 	*x = ModuleModel{
-		ExtensionModel: ExtensionModel{
-			Name:      x.Name,
-			Source:    x.Source,
-			Namespace: x.Namespace,
-		},
+		Name:      x.Name,
+		Source:    x.Source,
+		Namespace: x.Namespace,
 	}
 
 	if err := utils.UFS.OpenBuffered(x.Source, func(r io.Reader) error {
@@ -194,12 +253,6 @@ func (x *ModuleModel) Build(bc utils.BuildContext) error {
 	}); err != nil {
 		return err
 	}
-
-	namespace, err := x.GetNamespaceModel(bc)
-	if err != nil {
-		return err
-	}
-	x.applyModelExtensions(&namespace.ExtensionModel)
 
 	moduleAlias := x.GetModuleAlias()
 	moduleDir := x.Source.Dirname
@@ -213,7 +266,7 @@ func (x *ModuleModel) Build(bc utils.BuildContext) error {
 		return err
 	}
 
-	if err := x.applyArchetypes(&rules, moduleAlias); err != nil {
+	if err := x.applyArchetypes(&rules, moduleAlias.Alias()); err != nil {
 		return err
 	}
 
@@ -253,7 +306,7 @@ func (x *ModuleModel) Build(bc utils.BuildContext) error {
 	return err
 }
 func (x *ModuleModel) createModuleRules(moduleAlias ModuleAlias) (ModuleRules, error) {
-	x.applyHAL(x, moduleAlias)
+	x.applyHAL(x, moduleAlias.Alias())
 
 	moduleDir := x.Source.Dirname
 	rules := ModuleRules{
@@ -291,6 +344,10 @@ func (x *ModuleModel) createModuleRules(moduleAlias ModuleAlias) (ModuleRules, e
 	return rules, nil
 }
 func (x *ModuleModel) Serialize(ar base.Archive) {
+	ar.String(&x.Name)
+	ar.Serializable(&x.Source)
+	ar.String(&x.Namespace)
+
 	ar.Serializable(&x.ModuleType)
 
 	ar.Serializable(&x.SourceDirs)
@@ -311,7 +368,12 @@ func (x *ModuleModel) Serialize(ar base.Archive) {
 	base.SerializeSlice(ar, x.RuntimeDependencies.Ref())
 
 	ar.Serializable(&x.CppRules)
-	ar.Serializable(&x.ExtensionModel)
+
+	base.SerializeSlice(ar, x.Archetypes.Ref())
+	base.SerializeSlice(ar, x.AllowedPlatforms.Ref())
+	base.SerializeMap(ar, &x.HAL)
+	base.SerializeMap(ar, &x.TAG)
+	ar.Serializable(&x.Facet)
 }
 func (x *ModuleModel) Append(o *ModuleModel) {
 	base.Inherit(&x.ModuleType, o.ModuleType)
@@ -334,83 +396,7 @@ func (x *ModuleModel) Append(o *ModuleModel) {
 	x.RuntimeDependencies.Append(o.RuntimeDependencies...)
 
 	x.CppRules.Inherit(&o.CppRules)
-	x.ExtensionModel.Append(&o.ExtensionModel)
-}
-func (x *ModuleModel) Prepend(o *ModuleModel) {
-	base.Overwrite(&x.ModuleType, o.ModuleType)
 
-	x.SourceDirs.Prepend(o.SourceDirs...)
-	x.SourceGlobs.Prepend(o.SourceGlobs...)
-	x.ExcludedGlobs.Prepend(o.ExcludedGlobs...)
-	x.SourceFiles.Prepend(o.SourceFiles...)
-	x.ExcludedFiles.Prepend(o.ExcludedFiles...)
-	x.ForceIncludes.Prepend(o.ForceIncludes...)
-	x.IsolatedFiles.Prepend(o.IsolatedFiles...)
-	x.ExtraFiles.Prepend(o.ExtraFiles...)
-	x.ExtraDirs.Prepend(o.ExtraDirs...)
-
-	x.PrecompiledHeader.Overwrite(o.PrecompiledHeader)
-	x.PrecompiledSource.Overwrite(o.PrecompiledSource)
-
-	x.PrivateDependencies.Prepend(o.PrivateDependencies...)
-	x.PublicDependencies.Prepend(o.PublicDependencies...)
-	x.RuntimeDependencies.Prepend(o.RuntimeDependencies...)
-
-	x.CppRules.Inherit(&o.CppRules)
-	x.ExtensionModel.Prepend(&o.ExtensionModel)
-}
-
-/***************************************
- * Extension Model
- ***************************************/
-
-type ExtensionModel struct {
-	// following fields are deduced and not serialized
-	Name      string         `json:"-"`
-	Source    utils.Filename `json:"-"`
-	Namespace string         `json:"-"`
-
-	Archetypes       ModuleArchetypeAliases      `json:",omitempty" jsonschema:"description=Archetypes of this module, which are applied to the module rules"`
-	AllowedPlatforms base.SetT[PlatformAlias]    `json:",omitempty" jsonschema:"description=List of allowed platforms for this module, which are applied to the module rules"`
-	HAL              map[base.HostId]ModuleModel `json:",omitempty" jsonschema:"description=Platform-specific module extensions, which are applied to the module rules"`
-	TAG              map[TagFlags]ModuleModel    `json:",omitempty" jsonschema:"description=Tag-specific module extensions, which are applied to the module rules"`
-
-	Facet
-}
-
-func buildExtensionModel(bi utils.BuildInitializer, source utils.Filename, namespace string, extname string) (ExtensionModel, error) {
-	source = source.Normalize()
-	name := strings.TrimSuffix(source.Basename, extname)
-
-	if err := bi.NeedFiles(source); err != nil {
-		return ExtensionModel{}, err
-	}
-
-	return ExtensionModel{
-		Name:      name,
-		Source:    source,
-		Namespace: namespace,
-	}, nil
-}
-
-func (x *ExtensionModel) Alias() utils.BuildAlias {
-	return utils.MakeBuildAlias("Model", x.Namespace, x.Name)
-}
-func (x *ExtensionModel) GetAbsoluteName() string {
-	if len(x.Namespace) > 0 {
-		return path.Join(x.Namespace, x.Name)
-	} else {
-		return x.Name
-	}
-}
-func (x *ExtensionModel) GetNamespaceModel(bg utils.BuildGraphReadPort) (*NamespaceModel, error) {
-	if len(x.Namespace) > 0 {
-		return utils.FindBuildable[*NamespaceModel](bg, utils.MakeBuildAlias("Model", x.Namespace))
-	} else {
-		return nil, nil
-	}
-}
-func (x *ExtensionModel) Append(o *ExtensionModel) {
 	x.Archetypes.AppendUniq(o.Archetypes...)
 	x.AllowedPlatforms.AppendUniq(o.AllowedPlatforms...)
 
@@ -433,7 +419,28 @@ func (x *ExtensionModel) Append(o *ExtensionModel) {
 
 	x.Facet.Append(&o.Facet)
 }
-func (x *ExtensionModel) Prepend(o *ExtensionModel) {
+func (x *ModuleModel) Prepend(o *ModuleModel) {
+	base.Overwrite(&x.ModuleType, o.ModuleType)
+
+	x.SourceDirs.Prepend(o.SourceDirs...)
+	x.SourceGlobs.Prepend(o.SourceGlobs...)
+	x.ExcludedGlobs.Prepend(o.ExcludedGlobs...)
+	x.SourceFiles.Prepend(o.SourceFiles...)
+	x.ExcludedFiles.Prepend(o.ExcludedFiles...)
+	x.ForceIncludes.Prepend(o.ForceIncludes...)
+	x.IsolatedFiles.Prepend(o.IsolatedFiles...)
+	x.ExtraFiles.Prepend(o.ExtraFiles...)
+	x.ExtraDirs.Prepend(o.ExtraDirs...)
+
+	x.PrecompiledHeader.Overwrite(o.PrecompiledHeader)
+	x.PrecompiledSource.Overwrite(o.PrecompiledSource)
+
+	x.PrivateDependencies.Prepend(o.PrivateDependencies...)
+	x.PublicDependencies.Prepend(o.PublicDependencies...)
+	x.RuntimeDependencies.Prepend(o.RuntimeDependencies...)
+
+	x.CppRules.Inherit(&o.CppRules)
+
 	x.Archetypes.PrependUniq(o.Archetypes...)
 	x.AllowedPlatforms.PrependUniq(o.AllowedPlatforms...)
 
@@ -456,28 +463,14 @@ func (x *ExtensionModel) Prepend(o *ExtensionModel) {
 
 	x.Facet.Prepend(&o.Facet)
 }
-func (x *ExtensionModel) Serialize(ar base.Archive) {
-	ar.String(&x.Name)
-	ar.Serializable(&x.Source)
-	ar.String(&x.Namespace)
-	base.SerializeSlice(ar, x.Archetypes.Ref())
-	base.SerializeSlice(ar, x.AllowedPlatforms.Ref())
-	base.SerializeMap(ar, &x.HAL)
-	base.SerializeMap(ar, &x.TAG)
-	ar.Serializable(&x.Facet)
-}
-func (x *ExtensionModel) DeepCopy(src *ExtensionModel) {
-	x.Name = src.Name
-	x.Source = src.Source
-	x.Namespace = src.Namespace
-	x.Archetypes = base.NewSet(src.Archetypes.Slice()...)
-	x.AllowedPlatforms = base.NewSet(src.AllowedPlatforms.Slice()...)
-	x.HAL = base.CopyMap(src.HAL)
-	x.TAG = base.CopyMap(src.TAG)
-	x.Facet.DeepCopy(&src.Facet)
+
+func (src *ModuleModel) hasModuleDependency(it ...ModuleAlias) bool {
+	return src.PrivateDependencies.Contains(it...) ||
+		src.PublicDependencies.Contains(it...) ||
+		src.RuntimeDependencies.Contains(it...)
 }
 
-func (src *ExtensionModel) hasAllowedPlatforms(name fmt.Stringer) bool {
+func (src *ModuleModel) hasAllowedPlatforms(name fmt.Stringer) bool {
 	if len(src.AllowedPlatforms) > 0 {
 		localPlatform := GetLocalHostPlatformAlias()
 		if !src.AllowedPlatforms.Contains(localPlatform) {
@@ -487,7 +480,7 @@ func (src *ExtensionModel) hasAllowedPlatforms(name fmt.Stringer) bool {
 	}
 	return true
 }
-func (src *ExtensionModel) applyArchetypes(rules *ModuleRules, name ModuleAlias) error {
+func (src *ModuleModel) applyArchetypes(rules *ModuleRules, name utils.BuildAlias) error {
 	return src.Archetypes.Range(func(id ModuleArchetypeAlias) error {
 		if decorator, ok := AllArchetypes.Get(id.String()); ok {
 			base.LogTrace(LogModel, "%v: inherit module archtype <%v>", name, id)
@@ -500,7 +493,7 @@ func (src *ExtensionModel) applyArchetypes(rules *ModuleRules, name ModuleAlias)
 		return nil
 	})
 }
-func (src *ExtensionModel) applyHAL(model *ModuleModel, name ModuleAlias) {
+func (src *ModuleModel) applyHAL(model *ModuleModel, name utils.BuildAlias) {
 	hostId := base.GetCurrentHost().Id
 	for id, other := range src.HAL {
 		var hal base.HostId
@@ -509,25 +502,6 @@ func (src *ExtensionModel) applyHAL(model *ModuleModel, name ModuleAlias) {
 			model.Prepend(&other)
 		} else if err != nil {
 			base.LogError(LogModel, "%v: invalid platform id [%v], %v", name, id, err)
-		}
-	}
-}
-func (model *ExtensionModel) applyModelExtensions(other *ExtensionModel) {
-	model.Archetypes.PrependUniq(other.Archetypes...)
-
-	for key, src := range other.HAL {
-		if dst, ok := model.HAL[key]; ok {
-			dst.Append(&src)
-		} else {
-			model.HAL[key] = src
-		}
-	}
-
-	for key, src := range other.TAG {
-		if dst, ok := model.TAG[key]; ok {
-			dst.Append(&src)
-		} else {
-			model.TAG[key] = src
 		}
 	}
 }

@@ -12,7 +12,7 @@ var CommandConfigure = utils.NewCommand(
 	"parse project configuration files and prepare build graph",
 	compile.OptionCommandAllCompilationFlags(),
 	utils.OptionCommandRun(func(cc utils.CommandContext) error {
-		base.LogClaim(utils.LogCommand, "configure compilation graph with %q as root", utils.CommandEnv.RootFile())
+		base.LogClaim(utils.LogCommand, "configure compilation graph with %q as root", utils.UFS.Root)
 
 		bg := utils.CommandEnv.BuildGraph().OpenWritePort(base.ThreadPoolDebugId{Category: "Configure"})
 		defer bg.Close()

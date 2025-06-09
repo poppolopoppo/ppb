@@ -292,7 +292,7 @@ func (x *ModuleRules) DeepCopy(src *ModuleRules) {
 func (rules *ModuleRules) expandTagsRec(env *CompileEnv, dst *ModuleRules) {
 	for tags, tagged := range rules.PerTags {
 		if selectedTags := env.Tags.Intersect(tags); !selectedTags.Empty() {
-			base.LogVeryVerbose(LogCompile, "expand module %q with rules tagged [%v]", dst.ModuleAlias, selectedTags)
+			base.LogVeryVerbose(LogCompile, "expand module %q with rules tagged [%v] and environment %q", dst.ModuleAlias, selectedTags, env.EnvironmentAlias)
 			dst.Prepend(&tagged)
 			tagged.expandTagsRec(env, dst)
 		}
@@ -489,16 +489,12 @@ func NeedAllBuildModules(bc BuildContext) (modules []Module, err error) {
 }
 
 func NeedAllModuleAliases(bc BuildContext) (moduleAliases ModuleAliases, err error) {
-	rootModel, err := BuildRootNamespaceModel().Need(bc)
-	if err != nil {
-		return
+	importer, err := BuildModelImporter(UFS.Source).Need(bc)
+	if err == nil {
+		return importer.Modules, nil
+	} else {
+		return ModuleAliases{}, err
 	}
-
-	err = ForeachNamespaceModuleAlias(bc, rootModel.GetNamespaceAlias(), func(ma ModuleAlias) error {
-		moduleAliases.Append(ma)
-		return nil
-	})
-	return
 }
 
 func ForeachNamespaceModuleAlias(bc BuildContext, namespaceAlias NamespaceAlias, each func(ModuleAlias) error) error {

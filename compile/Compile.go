@@ -12,7 +12,7 @@ func InitCompile() {
 	base.LogTrace(LogCompile, "build/compile.Init()")
 
 	// register type for serialization
-	base.RegisterSerializable[NamespaceModel]()
+	base.RegisterSerializable[ModelImporter]()
 	base.RegisterSerializable[ModuleModel]()
 
 	base.RegisterSerializable[BuildConfig]()

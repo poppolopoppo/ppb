@@ -377,13 +377,6 @@ func (vsc *VscodeBuilder) settings(readPort BuildGraphReadPort, outputFile Filen
 	// Create JSON validation schemas and bind them for all *-[module|namespace].json in workspace settings
 	schemas_dir := outputFile.Dirname.Folder("schemas")
 
-	schema_namespace := schemas_dir.File("namespace.schema.json")
-	if err := UFS.Create(schema_namespace, func(w io.Writer) error {
-		return base.JsonSchemaFromType(reflect.TypeFor[compile.NamespaceModel](), readPort, w, base.OptionJsonPrettyPrint(true))
-	}); err != nil {
-		return err
-	}
-
 	schema_module := schemas_dir.File("module.schema.json")
 	if err := UFS.Create(schema_module, func(w io.Writer) error {
 		return base.JsonSchemaFromType(reflect.TypeFor[compile.ModuleModel](), readPort, w, base.OptionJsonPrettyPrint(true))
@@ -393,10 +386,6 @@ func (vsc *VscodeBuilder) settings(readPort BuildGraphReadPort, outputFile Filen
 
 	settings := base.JsonMap{
 		"json.schemas": []base.JsonMap{
-			{
-				"fileMatch": []string{"**/*" + compile.NAMESPACEMODEL_EXT},
-				"url":       schema_namespace.Relative(UFS.Root),
-			},
 			{
 				"fileMatch": []string{"**/*" + compile.MODULEMODEL_EXT},
 				"url":       schema_module.Relative(UFS.Root),
