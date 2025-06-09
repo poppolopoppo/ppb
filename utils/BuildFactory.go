@@ -12,9 +12,12 @@ type BuildInitializer interface {
 
 	GetBuildOptions() *BuildOptions
 
+	// Do not expect the aliases to be available immediately, they will be built when the build is launched.
 	DependsOn(...BuildAlias) error
 
+	// NeedBuildable will return the buildable for the given alias, and add it as a static dependency.
 	NeedBuildable(BuildAliasable, ...BuildOptionFunc) (Buildable, error)
+	// NeedFactory will create a buildable using the given factory, and add it as a static dependency.
 	NeedFactory(BuildFactory, ...BuildOptionFunc) (Buildable, error)
 
 	NeedFactories(...BuildFactory) error
@@ -162,14 +165,11 @@ func (x *buildInitializer) DependsOn(aliases ...BuildAlias) error {
 	x.Lock()
 	defer x.Unlock()
 
-	for _, alias := range aliases {
-		if node, err := x.Expect(alias); err == nil {
-			x.staticDeps.Append(node.Alias())
-		} else {
-			return err
-		}
-	}
-
+	// Aliases are not expected to be available immediately, so we just append them to the static dependencies.
+	// Aliases are expected to be available when the build is launched.
+	// This is useful for build factories that need to depend on other buildables that are not yet built.
+	// This is also faster than expecting the nodes, as it avoids the need to lock the graph.
+	x.staticDeps.Append(aliases...)
 	return nil
 }
 func (x *buildInitializer) NeedBuildable(aliasable BuildAliasable, opts ...BuildOptionFunc) (Buildable, error) {
