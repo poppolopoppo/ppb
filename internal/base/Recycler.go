@@ -113,7 +113,8 @@ func (x *bytesRecyclerPool) Release(item *[]byte) {
 	x.pool.Put(item)
 }
 
-var TransientPage1MiB = newBytesRecycler(1 << 20) // SHOULD BE EQUALS TO ONE OF PREDEFINED LZ4.BLOCKSIZE! (64KiB,256KiB,1MiB,4MiB)
+var TransientPage4MiB = newBytesRecycler(4 << 20) // SHOULD BE EQUALS TO ONE OF PREDEFINED LZ4.BLOCKSIZE! (64KiB,256KiB,1MiB,4MiB)
+var TransientPage1MiB = newBytesRecycler(1 << 20)
 var TransientPage256KiB = newBytesRecycler(256 << 10)
 var TransientPage64KiB = newBytesRecycler(64 << 10)
 var TransientPage4KiB = newBytesRecycler(4 << 10)
@@ -126,6 +127,9 @@ func GetBytesRecyclerBySize(size int64) BytesRecycler {
 			pageAlloc = TransientPage256KiB
 			if 2*size > int64(TransientPage1MiB.Stride()) {
 				pageAlloc = TransientPage1MiB
+				if 2*size > int64(TransientPage4MiB.Stride()) {
+					pageAlloc = TransientPage4MiB
+				}
 			}
 		}
 	}
@@ -173,7 +177,7 @@ const useTransientIoCopyOverIoCopy = true
 
 // io copy with transient bytes to replace io.Copy()
 func TransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler, allowAsync bool) (size int64, err error) {
-	if useTransientIoCopyOverIoCopy {
+	if useTransientIoCopyOverIoCopy && allowAsync {
 		return AsyncTransientIoCopy(dst, src, pageAlloc, TASKPRIORITY_NORMAL)
 	} else {
 		buf := pageAlloc.Allocate()
