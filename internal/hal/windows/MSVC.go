@@ -416,22 +416,20 @@ func (msvc *MsvcCompiler) AddResources(bg BuildGraphReadPort, compileEnv *Compil
 		return err
 	}
 
-	resources := CustomUnit{
-		Unit: Unit{
-			TargetAlias:     u.TargetAlias,
-			ModuleDir:       u.ModuleDir,
-			GeneratedDir:    u.GeneratedDir,
-			IntermediateDir: u.IntermediateDir,
-			Payload:         PAYLOAD_OBJECTLIST,
-			Facet:           u.Facet,
-			Source: ModuleSource{
-				SourceFiles: FileSet{rc},
-			},
-			CompilerAlias: resourceCompiler.GetCompiler().CompilerAlias,
-			CppRules: CppRules{
-				PCH:   PCH_DISABLED,
-				Unity: UNITY_DISABLED,
-			},
+	resources := Unit{
+		TargetAlias:     u.TargetAlias,
+		ModuleDir:       u.ModuleDir,
+		GeneratedDir:    u.GeneratedDir,
+		IntermediateDir: u.IntermediateDir,
+		Payload:         PAYLOAD_OBJECTLIST,
+		Facet:           u.Facet,
+		Source: ModuleSource{
+			SourceFiles: FileSet{rc},
+		},
+		CompilerAlias: resourceCompiler.GetCompiler().CompilerAlias,
+		CppRules: CppRules{
+			PCH:   PCH_DISABLED,
+			Unity: UNITY_DISABLED,
 		},
 	}
 
@@ -447,8 +445,7 @@ func (msvc *MsvcCompiler) AddResources(bg BuildGraphReadPort, compileEnv *Compil
 	}
 	resources.Append(resources.GetCompiler(bg)) // compiler options need to be at the end of command-line
 
-	u.CustomUnits.Append(resources)
-
+	u.AddCustomUnit(resources)
 	return nil
 }
 

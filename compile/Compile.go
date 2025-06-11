@@ -23,7 +23,6 @@ func InitCompile() {
 	base.RegisterSerializable[CompilerRules]()
 	base.RegisterSerializable[ConfigRules]()
 	base.RegisterSerializable[ConfigurationAlias]()
-	base.RegisterSerializable[CustomUnit]()
 	base.RegisterSerializable[EnvironmentAlias]()
 	base.RegisterSerializable[Facet]()
 	base.RegisterSerializable[GeneratorRules]()

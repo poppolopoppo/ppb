@@ -121,7 +121,7 @@ func RemoveOnUnitCompile(h base.DelegateHandle) bool {
  * Unit Rules
  ***************************************/
 
-type Units = base.SetT[*Unit]
+type Units = []Unit
 
 type Unit struct {
 	TargetAlias TargetAlias
@@ -154,7 +154,7 @@ type Unit struct {
 
 	TransitiveFacet Facet // append in case of public dependency
 	GeneratedFiles  FileSet
-	CustomUnits     CustomUnitList
+	CustomUnits     Units
 
 	CppRules
 	Facet
@@ -251,6 +251,10 @@ func (unit *Unit) GetPayloadOutput(compiler Compiler, src Filename, payload Payl
 	return
 }
 
+func (unit *Unit) AddCustomUnit(u Unit) {
+	unit.CustomUnits = append(unit.CustomUnits, u)
+}
+
 func (unit *Unit) Serialize(ar base.Archive) {
 	ar.Serializable(&unit.TargetAlias)
 
@@ -282,7 +286,7 @@ func (unit *Unit) Serialize(ar base.Archive) {
 
 	ar.Serializable(&unit.TransitiveFacet)
 	ar.Serializable(&unit.GeneratedFiles)
-	ar.Serializable(&unit.CustomUnits)
+	base.SerializeSlice(ar, &unit.CustomUnits)
 
 	ar.Serializable(&unit.CppRules)
 	ar.Serializable(&unit.Facet)

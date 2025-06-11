@@ -221,7 +221,6 @@ type ModuleRules struct {
 	PrivateDependencies ModuleAliases
 	RuntimeDependencies ModuleAliases
 
-	Customs    CustomList
 	Generators GeneratorList
 
 	Facet
@@ -280,7 +279,6 @@ func (x *ModuleRules) DeepCopy(src *ModuleRules) {
 	x.PrivateDependencies = base.CopySlice(src.PrivateDependencies...)
 	x.RuntimeDependencies = base.CopySlice(src.RuntimeDependencies...)
 
-	x.Customs = base.CopySlice(src.Customs...)
 	x.Generators = base.CopySlice(src.Generators...)
 
 	x.Facet.DeepCopy(&src.Facet)
@@ -363,7 +361,6 @@ func (rules *ModuleRules) Serialize(ar base.Archive) {
 	base.SerializeSlice(ar, rules.PrivateDependencies.Ref())
 	base.SerializeSlice(ar, rules.RuntimeDependencies.Ref())
 
-	ar.Serializable(&rules.Customs)
 	ar.Serializable(&rules.Generators)
 
 	ar.Serializable(&rules.Facet)
@@ -398,7 +395,6 @@ func (x *ModuleRules) Append(other *ModuleRules) {
 	x.PublicDependencies.Append(other.PublicDependencies...)
 	x.RuntimeDependencies.Append(other.RuntimeDependencies...)
 
-	x.Customs.Append(other.Customs...)
 	x.Generators.Append(other.Generators...)
 
 	x.Facet.Append(other)
@@ -421,7 +417,6 @@ func (x *ModuleRules) Prepend(other *ModuleRules) {
 	x.PublicDependencies.Prepend(other.PublicDependencies...)
 	x.RuntimeDependencies.Prepend(other.RuntimeDependencies...)
 
-	x.Customs.Prepend(other.Customs...)
 	x.Generators.Prepend(other.Generators...)
 
 	x.Facet.Prepend(other)

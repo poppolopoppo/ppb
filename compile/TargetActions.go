@@ -484,7 +484,7 @@ func (x *buildActionGenerator) CustomActions() (action.ActionSet, error) {
 		}
 		generator := buildActionGenerator{
 			Environment:   x.TargetAlias.EnvironmentAlias,
-			Unit:          &custom.Unit,
+			Unit:          &custom,
 			Compiler:      compiler,
 			TargetActions: x.TargetActions,
 			BuildContext:  x.BuildContext,
