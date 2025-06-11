@@ -1007,7 +1007,7 @@ func (x *interactiveLogPin) format(dst LogWriter) {
 func (x *interactiveLogPin) Log(msg string, args ...interface{}) {
 	var text string
 	if len(args) > 0 {
-		text = fmt.Sprintf(msg, args...) + " "
+		text = fmt.Sprintf(msg+" ", args...)
 	} else {
 		text = msg + " "
 	}
@@ -1091,6 +1091,7 @@ func newInteractiveLogger(basic *basicLogger) *interactiveLogger {
 		logger: result,
 		output: basic.Writer,
 	}, 4096)
+	interactiveLoggerOutput.WriteString(ANSI_HIDE_CURSOR.Always())
 	return result
 }
 func (x *interactiveLogger) IsInteractive() bool {
@@ -1169,6 +1170,7 @@ func (x *interactiveLogger) Flush() {
 func (x *interactiveLogger) Purge() {
 	x.basicLogger.Purge()
 	x.detachMessages()
+	interactiveLoggerOutput.WriteString(ANSI_SHOW_CURSOR.Always())
 }
 func (x *interactiveLogger) Write(buf []byte) (n int, err error) {
 	return x.basicLogger.Write(buf)
@@ -1207,35 +1209,36 @@ func prepareAttachMessages(buf LogWriter, messages ...*interactiveLogPin) (infli
 	})
 
 	inflight = 1 + len(messages)
-	buf.WriteString(ANSI_HIDE_CURSOR.Always())
-	fmt.Fprintln(buf, "\r")
+	buf.WriteString(ANSI_DISABLE_LINE_WRAPPING.Always())
+
+	fmt.Fprintln(buf, "\033[2K\r") // spacer line
 
 	for i := range messages {
 		it := messages[len(messages)-1-i]
 
 		if i > 0 && it.isProgressBar() && !messages[len(messages)-i].isProgressBar() {
-			fmt.Fprintln(buf, "\r")
+			fmt.Fprintln(buf, "\033[2K\r") // spacer line
 			inflight++
 		}
 
-		fmt.Fprint(buf, "\r", it.color.Ansi(true))
+		fmt.Fprint(buf, "\033[2K\r", it.color.Ansi(true)) // Clear line and set color
 		{
 			it.format(buf)
 		}
-		fmt.Fprintln(buf, ANSI_RESET.Always())
+		fmt.Fprintln(buf, ANSI_RESET.Always()) // Reset color
 	}
 
-	buf.WriteString(ANSI_SHOW_CURSOR.Always())
+	buf.WriteString(ANSI_RESTORE_LINE_WRAPPING.Always())
 	return
 }
 func prepareDetachMessages(buf LogWriter, inflight int) {
 	if inflight > 0 {
 		fmt.Fprint(buf,
-			ANSI_HIDE_CURSOR.Always(),
+			ANSI_DISABLE_LINE_WRAPPING.Always(),
 			ANSI_ERASE_ALL_LINE.Always(),
 			"\033[", inflight, "F", // move cursor up # lines
 			ANSI_ERASE_SCREEN_FROM_CURSOR.Always(),
-			ANSI_SHOW_CURSOR.Always())
+			ANSI_RESTORE_LINE_WRAPPING.Always())
 	}
 }
 
@@ -1312,8 +1315,8 @@ func (x *interactiveLogPin) writeLogHeader(lw LogWriter) {
 	}
 }
 
-var logProgressPattern = []rune{' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '▉'} //'█'}
-var logSpinnerPattern = []rune{'⠏', '⠛', '⠹', '⢸', '⣰', '⣤', '⣆', '⡇'}
+var logProgressPattern = []string{" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "▉"} //"█"}
+var logSpinnerPattern = []string{" ⠏ ", " ⠛ ", " ⠹ ", " ⢸ ", " ⣰ ", " ⣤ ", " ⣆ ", " ⡇ "}
 
 func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
 	progress := x.progress.Load()
@@ -1337,22 +1340,22 @@ func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
 
 		pf := float64(progress-x.first) / (1e-8 + float64(last-x.first))
 
-		lw.WriteString(ANSI_FG1_WHITE.String())
 		ff := math.Max(0.0, math.Min(1.0, pf)) * width
 		f0 := math.Floor(ff)
 		fi := int(f0)
 		ff -= f0
 
 		colorF := x.color.Unquantize(true)
+		ft := Smootherstep(math.Cos(t*1.5)*0.5 + 0.5)
+		mi := 0.5
+
+		fg := colorF.Brightness(ft*0.09 + mi - 0.05).Quantize(true)
+		bg := colorF.Brightness(ft*0.07 + 0.28).Quantize(true)
+
+		fmt.Fprint(lw, bg.Ansi(false), fg.Ansi(true))
 
 		for i := 0; i < width; i++ {
-			ft := Smootherstep(math.Cos(t*1.5+float64(i)/(width-1)*math.Pi)*0.5 + 0.5)
-			mi := 0.5
-
-			fg := colorF.Brightness(ft*0.09 + mi - 0.05).Quantize(true)
-			bg := colorF.Brightness(ft*0.07 + 0.28).Quantize(true)
-
-			var ch rune
+			var ch string
 			if i < fi {
 				ch = logProgressPattern[len(logProgressPattern)-1]
 			} else if i == fi {
@@ -1361,7 +1364,7 @@ func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
 				ch = logProgressPattern[0]
 			}
 
-			fmt.Fprint(lw, bg.Ansi(false), fg.Ansi(true), string(ch)) //`▁`)
+			lw.WriteString(ch)
 		}
 
 		lw.WriteString(ANSI_RESET.String())
@@ -1409,7 +1412,7 @@ func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
 			return
 		}
 
-		fmt.Fprintf(lw, " %c ", logSpinnerPattern[ti])
+		fmt.Fprint(lw, logSpinnerPattern[ti])
 
 		heat := Smootherstep(duration.Seconds() / Elapsed().Seconds()) // use percent of blocking duration
 		fmt.Fprint(lw, NewColdHotColor(math.Sqrt(heat)).Quantize(true).Ansi(true))
