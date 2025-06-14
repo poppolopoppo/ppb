@@ -477,6 +477,10 @@ func (x basicLogProgress) Add(int64)       {}
 func (x basicLogProgress) Inc()            {}
 func (x basicLogProgress) Set(int64)       {}
 
+func NewDummyLogProgress() ProgressScope {
+	return basicLogProgress{}
+}
+
 type basicLogger struct {
 	MinimumLevel  LogLevel
 	ShowCategory  bool

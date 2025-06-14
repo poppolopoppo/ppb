@@ -161,6 +161,34 @@ func SafeNormalize[T interface {
 	return in
 }
 
+type ShortUserFriendlyPath struct {
+	path fmt.Stringer
+}
+
+func (x ShortUserFriendlyPath) String() string {
+	parts := SplitPath(x.path.String())
+	if len(parts) == 0 {
+		return ""
+	}
+	sb := strings.Builder{}
+	sb.WriteString(parts[0])
+	if len(parts) > 1 {
+		for _, it := range parts[1 : len(parts)-1] {
+			sb.WriteRune(OSPathSeparator)
+			for _, rn := range it {
+				sb.WriteRune(rn)
+				break
+			}
+		}
+		sb.WriteString(parts[len(parts)-1])
+	}
+	return sb.String()
+}
+
+func MakeShortUserFriendlyPath(in fmt.Stringer) ShortUserFriendlyPath {
+	return ShortUserFriendlyPath{path: in}
+}
+
 /***************************************
  * Directory
  ***************************************/
@@ -959,7 +987,7 @@ func (ufs *UFSFrontEnd) Rename(src, dst Filename) error {
 	base.LogDebug(LogUFS, "rename file '%v' to '%v'", src, dst)
 	return os.Rename(src.String(), dst.String())
 }
-func (ufs *UFSFrontEnd) Copy(src, dst Filename) error {
+func (ufs *UFSFrontEnd) Copy(src, dst Filename, allowAsync bool) error {
 	ufs.Mkdir(dst.Dirname)
 	defer dst.Invalidate()
 
@@ -972,11 +1000,11 @@ func (ufs *UFSFrontEnd) Copy(src, dst Filename) error {
 		}
 
 		return ufs.CreateFile(dst, func(w *os.File) error {
-			if err := base.SetMTime(w, info.ModTime()); err == nil {
-				return base.CopyWithProgress(dst.Basename, info.Size(), w, r)
-			} else {
+			pageAlloc := base.GetBytesRecyclerBySize(info.Size())
+			if _, err := base.TransientIoCopy(w, r, pageAlloc, allowAsync); err != nil {
 				return err
 			}
+			return base.SetMTime(w, info.ModTime())
 		})
 	})
 }

@@ -278,7 +278,8 @@ func (g *BuildSummary) PrintSummary(level base.LogLevel) {
 		})
 	}
 
-	base.LogForwardf("\nMost expansive nodes built:")
+	base.LogForwardln("\nMost expansive nodes built:", base.ANSI_DISABLE_LINE_WRAPPING.String())
+	defer base.LogForward(base.ANSI_RESTORE_LINE_WRAPPING.String())
 
 	for i, node := range g.MostExpansiveNodes {
 		fract := node.Stats.Duration.Exclusive.Seconds() / g.AggregatedStats.Duration.Exclusive.Seconds()

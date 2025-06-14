@@ -192,7 +192,7 @@ func DownloadFile(dst utils.Filename, src base.Url) (int64, error) {
 			return dstInfo.Size(), nil
 		}
 
-		err = utils.UFS.Copy(cacheFile, dst)
+		err = utils.UFS.Copy(cacheFile, dst, false)
 		return cacheInfo.Size(), err
 
 	} else { // cache miss
@@ -206,12 +206,12 @@ func DownloadFile(dst utils.Filename, src base.Url) (int64, error) {
 		}
 
 		err = utils.UFS.CreateFile(dst, func(w *os.File) error {
-			return base.CopyWithProgress(dst.Basename, contentLength, w, resp.Body)
+			return base.CopyWithProgress(utils.MakeShortUserFriendlyPath(src).String(), contentLength, w, resp.Body)
 		})
 
 		if err == nil && cacheResult.ShouldCache() {
 			base.LogDebug(LogDownload, "cache store in '%v'", cacheFile)
-			if err := utils.UFS.Copy(dst, cacheFile); err != nil {
+			if err := utils.UFS.Copy(dst, cacheFile, false); err != nil {
 				base.LogWarning(LogDownload, "failed to cache download with %v", err)
 			}
 		}
