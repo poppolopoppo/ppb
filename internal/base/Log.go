@@ -429,23 +429,23 @@ func (x LogLevel) Header(dst io.Writer) {
 	// case LOG_FATAL:
 	// 	fmt.Fprint(dst, "  ")
 	case LOG_DEBUG:
-		fmt.Fprint(dst, " ~ ")
+		fmt.Fprint(dst, "🐞")
 	case LOG_TRACE:
-		fmt.Fprint(dst, " . ")
+		fmt.Fprint(dst, "👣")
 	case LOG_VERYVERBOSE:
-		fmt.Fprint(dst, "   ")
+		fmt.Fprint(dst, "👥")
 	case LOG_VERBOSE:
-		fmt.Fprint(dst, " - ")
+		fmt.Fprint(dst, "🗣️")
 	case LOG_INFO:
-		fmt.Fprint(dst, "---")
+		fmt.Fprint(dst, "ℹ️️")
 	case LOG_CLAIM:
-		fmt.Fprint(dst, "-->")
+		fmt.Fprint(dst, "❇️")
 	case LOG_WARNING:
-		fmt.Fprint(dst, "/?\\")
+		fmt.Fprint(dst, "⚠️")
 	case LOG_ERROR:
-		fmt.Fprint(dst, "/!\\")
+		fmt.Fprint(dst, "❌")
 	case LOG_FATAL:
-		fmt.Fprint(dst, "[!]")
+		fmt.Fprint(dst, "💀")
 	default:
 		UnexpectedValue(x)
 	}
