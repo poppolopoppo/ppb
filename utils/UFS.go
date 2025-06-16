@@ -9,6 +9,7 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -189,6 +190,14 @@ func MakeShortUserFriendlyPath(in fmt.Stringer) ShortUserFriendlyPath {
 	return ShortUserFriendlyPath{path: in}
 }
 
+func Realpath(in string) (string, error) {
+	if abs, err := filepath.Abs(in); err == nil {
+		return filepath.EvalSymlinks(abs)
+	} else {
+		return "", err
+	}
+}
+
 /***************************************
  * Directory
  ***************************************/
@@ -262,6 +271,13 @@ func (d Directory) Relative(to Directory) string {
 		return d.String()
 	}
 }
+func (d Directory) Realpath() (Directory, error) {
+	if path, err := Realpath(d.String()); err == nil {
+		return MakeDirectory(path), nil
+	} else {
+		return Directory{}, err
+	}
+}
 func (d Directory) Normalize() (result Directory) {
 	return MakeDirectory(d.Path)
 }
@@ -331,6 +347,13 @@ func (f Filename) Relative(to Directory) string {
 		return filepath.Join(path, f.Basename)
 	} else {
 		return f.String()
+	}
+}
+func (f Filename) Realpath() (Filename, error) {
+	if path, err := Realpath(f.String()); err == nil {
+		return MakeFilename(path), nil
+	} else {
+		return Filename{}, err
 	}
 }
 func (f Filename) Normalize() (result Filename) {
@@ -838,6 +861,16 @@ func (ufs *UFSFrontEnd) CreateBuffered(dst Filename, write func(io.Writer) error
 			return buffered.Flush()
 		}
 	})
+}
+
+func (ufs *UFSFrontEnd) Which(basename string) (Filename, error) {
+	base.LogDebug(LogUFS, "which %q", basename)
+	if path, err := exec.LookPath(basename); err == nil {
+		base.LogTrace(LogUFS, "which %q -> %q", basename, path)
+		return MakeFilename(path), nil
+	} else {
+		return Filename{}, err
+	}
 }
 
 type TemporaryFile struct {
