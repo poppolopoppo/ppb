@@ -241,7 +241,7 @@ func (g *buildGraphWritePort) RecordSummary(startedAt time.Time) BuildSummary {
 
 func (g *BuildSummary) PrintSummary(level base.LogLevel) {
 	// Total duration (always)
-	base.LogForwardf("\nGraph for %q took %.3f seconds to run", g.PortName, g.TotalDuration.Seconds())
+	base.LogForwardf("\n🏁 Graph for %q took %.3f seconds to run", g.PortName, g.TotalDuration.Seconds())
 
 	// Build duration (if something was built)
 	if !level.IsVisible(base.LOG_INFO) {

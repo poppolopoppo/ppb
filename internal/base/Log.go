@@ -97,7 +97,7 @@ func LogPanic(category *LogCategory, msg string, args ...interface{}) {
 	LogPanicErr(category, fmt.Errorf(msg, args...))
 }
 func LogPanicErr(category *LogCategory, err error) {
-	LogError(category, "panic: caught error %v", err)
+	LogError(category, "💀 panic: caught error %v", err)
 	FlushLog()
 	Panic(err)
 }
@@ -410,42 +410,24 @@ func (x LogLevel) Style(dst io.Writer) {
 }
 func (x LogLevel) Header(dst io.Writer) {
 	switch x {
-	// case LOG_DEBUG:
-	// 	fmt.Fprint(dst, "   ")
-	// case LOG_TRACE:
-	// 	fmt.Fprint(dst, "  ")
-	// case LOG_VERYVERBOSE:
-	// 	fmt.Fprint(dst, "   ")
-	// case LOG_VERBOSE:
-	// 	fmt.Fprint(dst, "  ")
-	// case LOG_INFO:
-	// 	fmt.Fprint(dst, "  ")
-	// case LOG_CLAIM:
-	// 	fmt.Fprint(dst, "  ")
-	// case LOG_WARNING:
-	// 	fmt.Fprint(dst, "  ")
-	// case LOG_ERROR:
-	// 	fmt.Fprint(dst, "  ")
-	// case LOG_FATAL:
-	// 	fmt.Fprint(dst, "  ")
 	case LOG_DEBUG:
-		fmt.Fprint(dst, "🐞")
+		fmt.Fprint(dst, "🐜 ")
 	case LOG_TRACE:
-		fmt.Fprint(dst, "👣")
+		fmt.Fprint(dst, "👣 ")
 	case LOG_VERYVERBOSE:
-		fmt.Fprint(dst, "👥")
+		fmt.Fprint(dst, "👥 ")
 	case LOG_VERBOSE:
-		fmt.Fprint(dst, "🗣️")
+		fmt.Fprint(dst, "🗣️ ")
 	case LOG_INFO:
-		fmt.Fprint(dst, "ℹ️️")
+		fmt.Fprint(dst, "💠 ")
 	case LOG_CLAIM:
-		fmt.Fprint(dst, "❇️")
+		fmt.Fprint(dst, "❇️ ")
 	case LOG_WARNING:
-		fmt.Fprint(dst, "⚠️")
+		fmt.Fprint(dst, "⚠️ ")
 	case LOG_ERROR:
-		fmt.Fprint(dst, "❌")
+		fmt.Fprint(dst, "❌ ")
 	case LOG_FATAL:
-		fmt.Fprint(dst, "💀")
+		fmt.Fprint(dst, "💀 ")
 	default:
 		UnexpectedValue(x)
 	}
@@ -1071,6 +1053,8 @@ type interactiveLogger struct {
 	messages SetT[*interactiveLogPin]
 	inflight int
 
+	colorPhi float64
+
 	lastRefresh time.Time
 
 	recycler  Recycler[*interactiveLogPin]
@@ -1082,6 +1066,7 @@ func newInteractiveLogger(basic *basicLogger) *interactiveLogger {
 	result := &interactiveLogger{
 		messages:    make([]*interactiveLogPin, 0, runtime.NumCPU()),
 		inflight:    0,
+		colorPhi:    rand.Float64(),
 		basicLogger: basic,
 		recycler: NewRecycler(
 			func() *interactiveLogPin {
@@ -1113,13 +1098,19 @@ func (x *interactiveLogger) Forwardf(msg string, args ...interface{}) {
 func (x *interactiveLogger) Log(category *LogCategory, level LogLevel, msg string, args ...interface{}) {
 	x.basicLogger.Log(category, level, msg, args...)
 }
+func (x *interactiveLogger) nextColor() Color3b {
+	color := NewPastelizerColor(x.colorPhi)
+	const golden_number = 1.6180339887498948482045868
+	x.colorPhi += golden_number
+	return color.Quantize(true)
+}
 func (x *interactiveLogger) Pin(msg string, args ...interface{}) PinScope {
 	if EnableInteractiveShell() {
 		pin := x.recycler.Allocate()
 		pin.Log(msg, args...)
 		pin.first = 1 // considered as a spinner
 		pin.startedAt = Elapsed()
-		pin.color = NewPastelizerColor(rand.Float64()).Quantize(true)
+		pin.color = x.nextColor()
 		pin.writer = pin.writeLogHeader
 
 		x.refreshMessages(func() {
