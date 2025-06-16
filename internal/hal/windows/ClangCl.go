@@ -113,6 +113,8 @@ func (clang *ClangCompiler) Decorate(bg BuildGraphReadPort, compileEnv *compile.
 		return err
 	}
 
+	u.Defines.Remove("CPP_COMPILER=VisualStudio")
+
 	// add platform command flags for clang, intellisense is still assuming a cl-like frontend
 	switch compileEnv.GetPlatform(bg).Arch {
 	case compile.ARCH_ARM, compile.ARCH_X86:
@@ -245,7 +247,12 @@ func (clang *ClangCompiler) Build(bc BuildContext) error {
 		rules.Linker = llvm.LldLink_exe
 	}
 
-	rules.Defines.Append("CPP_CLANG", "LLVM_FOR_WINDOWS", "_CRT_SECURE_NO_WARNINGS")
+	rules.Defines.Append(
+		"CPP_CLANG_CL",
+		"CPP_COMPILER=ClangCl",
+		"LLVM_FOR_WINDOWS",
+		"_CRT_SECURE_NO_WARNINGS",
+	)
 	rules.AddCompilationFlag_NoAnalysis(
 		// msvc compatibility
 		"-fmsc-version="+clang.MsvcCompiler.MSC_VER.String(),

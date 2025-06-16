@@ -21,6 +21,8 @@ func InitLinuxCompile() {
 	base.LogTrace(LogLinux, "build/hal/linux.Init()")
 
 	base.RegisterSerializable[LinuxPlatform]()
+	base.RegisterSerializable[GccProductInstall]()
+	base.RegisterSerializable[GccCompiler]()
 	base.RegisterSerializable[LlvmProductInstall]()
 	base.RegisterSerializable[LlvmCompiler]()
 
@@ -43,6 +45,7 @@ func InitLinuxCompile() {
 
 type LinuxFlags struct {
 	Compiler          CompilerType
+	GccVer            GccVersion
 	LlvmVer           LlvmVersion
 	DumpRecordLayouts DumpRecordLayoutsType
 	StackSize         IntVar
@@ -50,6 +53,7 @@ type LinuxFlags struct {
 
 var GetLinuxFlags = compile.NewCompilationFlags("LinuxCompilation", "linux-specific compilation flags", LinuxFlags{
 	Compiler:          COMPILER_CLANG,
+	GccVer:            gcc_any,
 	LlvmVer:           llvm_any,
 	DumpRecordLayouts: DUMPRECORDLAYOUTS_NONE,
 	StackSize:         2000000,
@@ -58,6 +62,7 @@ var GetLinuxFlags = compile.NewCompilationFlags("LinuxCompilation", "linux-speci
 func (flags *LinuxFlags) Flags(cfv CommandFlagsVisitor) {
 	cfv.Persistent("Compiler", "select windows compiler", &flags.Compiler)
 	cfv.Persistent("DumpRecordLayouts", "use to investigate structure layouts", &flags.DumpRecordLayouts)
+	cfv.Persistent("GccVer", "select GCC toolchain version", &flags.GccVer)
 	cfv.Persistent("LlvmVer", "select LLVM toolchain version", &flags.LlvmVer)
 	cfv.Persistent("StackSize", "set default thread stack size in bytes", &flags.StackSize)
 }
@@ -91,8 +96,10 @@ func (linux *LinuxPlatform) GetCompiler() BuildFactoryTyped[compile.Compiler] {
 			return llvm.(compile.Compiler), err
 		})
 	case COMPILER_GCC:
-		base.NotImplemented("need to implement GCC support")
-		return nil
+		return WrapBuildFactory(func(bi BuildInitializer) (compile.Compiler, error) {
+			llvm, err := GetGccCompiler(linux.Arch).Create(bi)
+			return llvm.(compile.Compiler), err
+		})
 	default:
 		base.UnexpectedValue(linux.CompilerType)
 		return nil

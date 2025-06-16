@@ -217,6 +217,129 @@ func getCppStdFromLlvm(ver LlvmVersion) compile.CppStdType {
 }
 
 /***************************************
+ * GCC Version
+ ***************************************/
+
+type GccVersion int32
+
+const (
+	gcc_any    GccVersion = -1
+	GCC_LATEST GccVersion = 0
+	GCC_14     GccVersion = 14
+	GCC_13     GccVersion = 13
+	GCC_12     GccVersion = 12
+	GCC_11     GccVersion = 11
+	GCC_10     GccVersion = 10
+	GCC_9      GccVersion = 9
+	GCC_8      GccVersion = 8
+	GCC_7      GccVersion = 7
+	GCC_6      GccVersion = 6
+	GCC_5      GccVersion = 5
+)
+
+func GetGccVersions() []GccVersion {
+	return []GccVersion{
+		GCC_14,
+		GCC_13,
+		GCC_12,
+		GCC_11,
+		GCC_10,
+		GCC_9,
+		GCC_8,
+		GCC_7,
+		GCC_6,
+		GCC_5,
+	}
+}
+func (v GccVersion) Equals(o GccVersion) bool {
+	return (v == o)
+}
+func (v GccVersion) String() string {
+	switch v {
+	case gcc_any:
+		return "ANY"
+	case GCC_LATEST:
+		return "LATEST"
+	case GCC_14:
+		return "14"
+	case GCC_13:
+		return "13"
+	case GCC_12:
+		return "12"
+	case GCC_11:
+		return "11"
+	case GCC_10:
+		return "10"
+	case GCC_9:
+		return "9"
+	case GCC_8:
+		return "8"
+	case GCC_7:
+		return "7"
+	case GCC_6:
+		return "6"
+	case GCC_5:
+		return "5"
+	default:
+		base.UnreachableCode()
+		return ""
+	}
+}
+func (v *GccVersion) Set(in string) (err error) {
+	switch in {
+	case gcc_any.String():
+		*v = gcc_any
+	case GCC_LATEST.String():
+		*v = GCC_LATEST
+	case GCC_14.String():
+		*v = GCC_14
+	case GCC_13.String():
+		*v = GCC_13
+	case GCC_12.String():
+		*v = GCC_12
+	case GCC_11.String():
+		*v = GCC_11
+	case GCC_10.String():
+		*v = GCC_10
+	case GCC_9.String():
+		*v = GCC_9
+	case GCC_8.String():
+		*v = GCC_8
+	case GCC_7.String():
+		*v = GCC_7
+	case GCC_6.String():
+		*v = GCC_6
+	case GCC_5.String():
+		*v = GCC_5
+	default:
+		err = base.MakeUnexpectedValueError(v, in)
+	}
+	return err
+}
+func (x *GccVersion) Serialize(ar base.Archive) {
+	ar.Int32((*int32)(x))
+}
+func (x GccVersion) AutoComplete(in base.AutoComplete) {
+	for _, it := range GetGccVersions() {
+		in.Add(it.String(), fmt.Sprintf("GCC compiler version %v", it))
+	}
+}
+
+func getCppStdFromGcc(ver GccVersion) compile.CppStdType {
+	if ver >= GCC_14 {
+		return compile.CPPSTD_23
+	} else if ver >= GCC_11 {
+		return compile.CPPSTD_20
+	} else if ver >= GCC_8 {
+		return compile.CPPSTD_17
+	} else if ver >= GCC_5 {
+		return compile.CPPSTD_14
+	} else {
+		return compile.CPPSTD_11
+	}
+}
+
+/***************************************
  * Dump record layouts type
  ***************************************/
 

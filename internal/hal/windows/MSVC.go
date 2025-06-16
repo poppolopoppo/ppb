@@ -1140,6 +1140,7 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 
 	facet.Defines.Append(
 		"CPP_VISUALSTUDIO",
+		"CPP_COMPILER=VisualStudio",
 		"_ENABLE_EXTENDED_ALIGNED_STORAGE",              // https://devblogs.microsoft.com/cppblog/stl-features-and-fixes-in-vs-2017-15-8/
 		"_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING", // warning STL4043: stdext::checked_array_iterator, stdext::unchecked_array_iterator, and related factory functions are non-Standard extensions and will be removed in the future. std::span (since C++20) and gsl::span can be used instead. You can define _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING or _SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS to suppress this warning.
 	)
