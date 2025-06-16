@@ -558,6 +558,100 @@ func (x ExceptionType) AutoComplete(in base.AutoComplete) {
 }
 
 /***************************************
+ * FloatingPoint
+ ***************************************/
+
+type FloatingPointType byte
+
+const (
+	FLOATINGPOINT_INHERIT FloatingPointType = iota
+	FLOATINGPOINT_FAST
+	FLOATINGPOINT_PRECISE
+	FLOATINGPOINT_STRICT
+)
+
+func GetFloatingPointTypes() []FloatingPointType {
+	return []FloatingPointType{
+		FLOATINGPOINT_INHERIT,
+		FLOATINGPOINT_FAST,
+		FLOATINGPOINT_PRECISE,
+		FLOATINGPOINT_STRICT,
+	}
+}
+func (x FloatingPointType) Ord() int32 {
+	return (int32)(x)
+}
+func (x FloatingPointType) Mask() int32 {
+	return base.EnumBitMask(GetInstructionSets()...)
+}
+func (x *FloatingPointType) FromOrd(i int32) {
+	*(*byte)(x) = byte(i)
+}
+
+func (x FloatingPointType) IsInheritable() bool {
+	return x == FLOATINGPOINT_INHERIT
+}
+func (x FloatingPointType) Description() string {
+	switch x {
+	case FLOATINGPOINT_INHERIT:
+		return "inherit default mode from configuration"
+	case FLOATINGPOINT_FAST:
+		return "fast floating point mode, allowing intrinsics and instruction reordering"
+	case FLOATINGPOINT_PRECISE:
+		return "precise floating point mode, only allow deterministic instructions"
+	case FLOATINGPOINT_STRICT:
+		return "strict floating point mode, like precise but will also raise floating point exceptions"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x FloatingPointType) String() string {
+	switch x {
+	case FLOATINGPOINT_INHERIT:
+		return "INHERIT"
+	case FLOATINGPOINT_FAST:
+		return "FAST"
+	case FLOATINGPOINT_PRECISE:
+		return "PRECISE"
+	case FLOATINGPOINT_STRICT:
+		return "STRICT"
+	default:
+		base.UnexpectedValue(x)
+		return ""
+	}
+}
+func (x *FloatingPointType) Set(in string) (err error) {
+	switch strings.ToUpper(in) {
+	case FLOATINGPOINT_INHERIT.String():
+		*x = FLOATINGPOINT_INHERIT
+	case FLOATINGPOINT_FAST.String():
+		*x = FLOATINGPOINT_FAST
+	case FLOATINGPOINT_PRECISE.String():
+		*x = FLOATINGPOINT_PRECISE
+	case FLOATINGPOINT_STRICT.String():
+		*x = FLOATINGPOINT_STRICT
+	default:
+		err = base.MakeUnexpectedValueError(x, in)
+	}
+	return err
+}
+func (x *FloatingPointType) Serialize(ar base.Archive) {
+	ar.Byte((*byte)(x))
+}
+func (x FloatingPointType) MarshalText() ([]byte, error) {
+	return base.UnsafeBytesFromString(x.String()), nil
+}
+func (x *FloatingPointType) UnmarshalText(data []byte) error {
+	return x.Set(base.UnsafeStringFromBytes(data))
+}
+func (x FloatingPointType) AutoComplete(in base.AutoComplete) {
+	for _, it := range GetFloatingPointTypes() {
+		in.Add(it.String(), it.Description())
+	}
+}
+
+/***************************************
  * InstructionSet
  ***************************************/
 

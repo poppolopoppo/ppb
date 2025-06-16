@@ -294,6 +294,15 @@ func (llvm *LlvmCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv
 		}
 	}
 
+	switch u.FloatingPoint {
+	case compile.FLOATINGPOINT_FAST:
+		u.AddCompilationFlag("-ffp-model=aggressive")
+	case compile.FLOATINGPOINT_PRECISE:
+		u.AddCompilationFlag("-ffp-model=precise")
+	case compile.FLOATINGPOINT_STRICT:
+		u.AddCompilationFlag("-ffp-model=strict")
+	}
+
 	// can only enable LTCG when optimizations are enabled
 	if u.Optimize.IsEnabled() {
 		llvm_CXX_linkTimeCodeGeneration(u, u.LTO.IsEnabled(), u.Incremental.IsEnabled())

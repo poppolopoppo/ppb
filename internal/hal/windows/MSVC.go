@@ -588,6 +588,16 @@ func (msvc *MsvcCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv
 		u.AddCompilationFlag("/arch:AVX")
 	}
 
+	// set floating point mode
+	switch u.FloatingPoint {
+	case FLOATINGPOINT_FAST:
+		u.AddCompilationFlag("/fp:fast")
+	case FLOATINGPOINT_PRECISE:
+		u.AddCompilationFlag("/fp:precise")
+	case FLOATINGPOINT_STRICT:
+		u.AddCompilationFlag("/fp:strict")
+	}
+
 	// set default thread stack size
 	stackSize := msvc.WindowsFlags.StackSize.Get()
 	if u.Sanitizer.IsEnabled() {
@@ -1161,7 +1171,6 @@ func (msvc *MsvcCompiler) Build(bc BuildContext) (err error) {
 		"/bigobj",  // more sections inside obj files, support larger translation units, needed for unity builds
 		"/d2FH4",   // https://devblogs.microsoft.com/cppblog/msvc-backend-updates-in-visual-studio-2019-preview-2/
 		"/EHsc",    // structure exception support (#TODO: optional ?)
-		"/fp:fast", // non-deterministic, allow vendor specific float intrinsics (https://msdn.microsoft.com/fr-fr/library/tzkfha43.aspx)
 		"/vmb",     // class is always defined before pointer to member (https://docs.microsoft.com/en-us/cpp/build/reference/vmb-vmg-representation-method?view=vs-2019)
 		"/openmp-", // disable OpenMP automatic parallelization
 		//"/Za",                // disable non-ANSI features

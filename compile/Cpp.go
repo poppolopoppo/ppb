@@ -20,16 +20,17 @@ type CppRules struct {
 
 	Warnings CppWarnings `json:",omitempty" jsonschema:"description=Warning levels for the compiler, can be set to OFF, DEFAULT, or HIGH"`
 
-	CppStd     CppStdType            `json:",omitempty" jsonschema:"description=The C++ standard to use for the build, e.g. C++11, C++14, C++17, C++20"`
-	CppRtti    CppRttiType           `json:",omitempty" jsonschema:"description=Whether to enable RTTI (Run-Time Type Information) in the build"`
-	DebugInfo  DebugInfoType         `json:",omitempty" jsonschema:"description=Debug information level for the build, can be set to OFF, DEFAULT, or FULL"`
-	Exceptions ExceptionType         `json:",omitempty" jsonschema:"description=Whether to enable C++ exceptions in the build"`
-	Link       LinkType              `json:",omitempty" jsonschema:"description=Linking options for the build"`
-	Optimize   OptimizationLevel     `json:",omitempty" jsonschema:"description=Optimization level for the build"`
-	PCH        PrecompiledHeaderType `json:",omitempty" jsonschema:"description=Precompiled header options for the build"`
-	RuntimeLib RuntimeLibType        `json:",omitempty" jsonschema:"description=Runtime library options for the build"`
-	Sanitizer  SanitizerType         `json:",omitempty" jsonschema:"description=Sanitizer options for the build"`
-	Unity      UnityType             `json:",omitempty" jsonschema:"description=Unity build options for the build"`
+	CppStd        CppStdType            `json:",omitempty" jsonschema:"description=The C++ standard to use for the build, e.g. C++11, C++14, C++17, C++20"`
+	CppRtti       CppRttiType           `json:",omitempty" jsonschema:"description=Whether to enable RTTI (Run-Time Type Information) in the build"`
+	DebugInfo     DebugInfoType         `json:",omitempty" jsonschema:"description=Debug information level for the build, can be set to OFF, DEFAULT, or FULL"`
+	Exceptions    ExceptionType         `json:",omitempty" jsonschema:"description=Whether to enable C++ exceptions in the build"`
+	FloatingPoint FloatingPointType     `json:",omitempty" jsonschema:"description=Floating point instruction mode"`
+	Link          LinkType              `json:",omitempty" jsonschema:"description=Linking options for the build"`
+	Optimize      OptimizationLevel     `json:",omitempty" jsonschema:"description=Optimization level for the build"`
+	PCH           PrecompiledHeaderType `json:",omitempty" jsonschema:"description=Precompiled header options for the build"`
+	RuntimeLib    RuntimeLibType        `json:",omitempty" jsonschema:"description=Runtime library options for the build"`
+	Sanitizer     SanitizerType         `json:",omitempty" jsonschema:"description=Sanitizer options for the build"`
+	Unity         UnityType             `json:",omitempty" jsonschema:"description=Unity build options for the build"`
 
 	AdaptiveUnity utils.BoolVar `json:",omitempty" jsonschema:"description=Enable adaptive unity builds"`
 	Benchmark     utils.BoolVar `json:",omitempty" jsonschema:"description=Enable benchmarking"`
@@ -69,6 +70,7 @@ func (rules *CppRules) Serialize(ar base.Archive) {
 	ar.Serializable(&rules.CppRtti)
 	ar.Serializable(&rules.DebugInfo)
 	ar.Serializable(&rules.Exceptions)
+	ar.Serializable(&rules.FloatingPoint)
 	ar.Serializable(&rules.Link)
 	ar.Serializable(&rules.Optimize)
 	ar.Serializable(&rules.PCH)
@@ -92,6 +94,7 @@ func (rules *CppRules) Inherit(other *CppRules) {
 	base.Inherit(&rules.CppRtti, other.CppRtti)
 	base.Inherit(&rules.DebugInfo, other.DebugInfo)
 	base.Inherit(&rules.Exceptions, other.Exceptions)
+	base.Inherit(&rules.FloatingPoint, other.FloatingPoint)
 	base.Inherit(&rules.Instructions, other.Instructions)
 	base.Inherit(&rules.PCH, other.PCH)
 	base.Inherit(&rules.Link, other.Link)
@@ -124,6 +127,7 @@ func (rules *CppRules) Overwrite(other *CppRules) {
 	base.Overwrite(&rules.CppRtti, other.CppRtti)
 	base.Overwrite(&rules.DebugInfo, other.DebugInfo)
 	base.Overwrite(&rules.Exceptions, other.Exceptions)
+	base.Overwrite(&rules.FloatingPoint, other.FloatingPoint)
 	base.Overwrite(&rules.Instructions, other.Instructions)
 	base.Overwrite(&rules.PCH, other.PCH)
 	base.Overwrite(&rules.Link, other.Link)
