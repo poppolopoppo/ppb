@@ -63,7 +63,7 @@ type OptionType byte
 type OptionFlags = base.EnumSet[OptionType, *OptionType]
 
 func MakeOptionFlags(opts ...OptionType) OptionFlags {
-	return base.NewEnumSet[OptionType, *OptionType](opts...)
+	return base.NewEnumSet(opts...)
 }
 
 const (

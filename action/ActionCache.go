@@ -608,7 +608,7 @@ func ForeachCacheCompression(each func(CacheCompression) error) error {
 	return nil
 }
 
-var GetCacheCompression = base.Memoize[*CacheCompression](func() *CacheCompression {
+var GetCacheCompression = base.Memoize(func() *CacheCompression {
 	flags := GetActionFlags()
 	var compression CacheCompression
 	switch flags.CacheCompression {
