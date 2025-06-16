@@ -129,8 +129,8 @@ func (clang *ClangCompiler) Decorate(bg BuildGraphReadPort, compileEnv *compile.
 	}
 
 	switch u.Warnings.Default {
-	case compile.WARNING_ERROR, compile.WARNING_DISABLED, compile.WARNING_INHERIT:
-	case compile.WARNING_WARN:
+	case compile.WARNING_DISABLED, compile.WARNING_INHERIT:
+	case compile.WARNING_ERROR, compile.WARNING_WARN:
 		if u.Warnings.Pedantic.IsEnabled() {
 			if u.Warnings.Default == compile.WARNING_ERROR {
 				base.LogVeryVerbose(LogClangCl, "%v: enable standard and pedantic errors", u)

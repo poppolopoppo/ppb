@@ -545,7 +545,7 @@ func (msvc *MsvcCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv
 	case WARNING_ERROR:
 		base.LogVeryVerbose(LogMsvc, "%v: treat warnings as errors", u)
 		u.AddCompilationFlag("/WX")
-		fallthrough
+		fallthrough // also append warning levels
 	case WARNING_WARN:
 		if u.Warnings.Pedantic.IsEnabled() {
 			base.LogVeryVerbose(LogMsvc, "%v: enable standard and pedantic warnings", u)
@@ -560,7 +560,7 @@ func (msvc *MsvcCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv
 	}
 
 	msvc_CXX_set_warning_level(u, 4996, "deprecated function, class member, variable or typedef", u.Warnings.Deprecation)
-	msvc_CXX_set_warning_level(u, 4456, "identifier local declaration shadowing the previous one", u.Warnings.UndefinedMacro)
+	msvc_CXX_set_warning_level(u, 4456, "identifier local declaration shadowing the previous one", u.Warnings.ShadowVariable)
 	msvc_CXX_set_warning_level(u, 4668, "undefined preprocessor identifier of macro", u.Warnings.UndefinedMacro)
 	msvc_CXX_set_warning_level(u, 4244, "conversion of integral type to a smaller integral type", u.Warnings.UnsafeTypeCast)
 	msvc_CXX_set_warning_level(u, 4800, "implicit conversion with possible information loss", u.Warnings.UnsafeTypeCast)
