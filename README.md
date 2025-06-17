@@ -1,6 +1,6 @@
 <div align='center'>
 
-# PoPpOloPOpPo Build System (PPB)
+# PoPpOloPOpPo Build System (PPB) 🛠️
 
 **A distributed, cache-aware, parallel build system for C++ and more, written in Go.**
 
@@ -96,6 +96,17 @@ PPB is structured as a modular, extensible build graph engine. Key architectural
 
 ---
 
+## Configuration
+
+- **Module and action definitions:**
+  Place JSON files describing modules and their dependencies in your project, see [compile/Model.go](compile/Model.go).
+- **Compiler/toolchain selection:**
+  Configurable via JSON and command-line flags, see [compile/compiler.go](compile/compiler.go).
+- **Cluster configuration:**
+  Workers auto-discover each other via QUIC; resource limits can be set per worker, see [cluster/cluster.go](cluster/cluster.go)..
+
+---
+
 ## Usage
 
 ### Build the tool
@@ -106,41 +117,101 @@ cd ppb/Build
 go build
 ```
 
-### Basic commands
+### 🧑‍💻 Example Usage
 
-- **Build a project:**
-  ```sh
-  ./Build [options]
-  ```
-- **Generate VS Code workspace:**
-  ```sh
-  ./Build vscode
-  ```
-- **Debug the build graph:**
-  ```sh
-  ./Build debug
-  ```
-- **List all known artifacts:**
-  ```sh
-  ./Build list-artifacts
-  ```
-- **List modified files (from source control):**
-  ```sh
-  ./Build list-modified-files
-  ```
+```sh
+# Parse json module files and bootstrap the build graph (this is only needed the first time)
+./ppb configure [options]
 
-Run j for a full list of commands and options.
+# Build all targets with verbose output and summary
+./ppb build -v -Summary
+
+# List all known build artifacts
+./ppb list-artifacts
+
+# Generate VS Code workspace
+./ppb vscode
+
+# List modified files from source control
+./ppb list-modified-files
+
+# Print all available commands and options with detailed descriptions
+./ppb help -v
+
+# Show help for a specific command
+./ppb help list-artifacts
+```
+
+## 📋 Available Commands
+
+Below is a list of the main commands. For each, you can run `./Build help <command>` for detailed usage.
+
+| Command                | Description                                                      |
+|------------------------|------------------------------------------------------------------|
+| `help`                 | Print help about command usage                                   |
+| `autocomplete`         | Run auto-completion for commands and arguments                   |
+| `version`              | Print build version                                              |
+| `seed`                 | Print build seed                                                 |
+| `vscode`               | Generate workspace for Visual Studio Code                        |
+| `vcxproj`              | Generate projects and solution for Visual Studio                 |
+| `debug`                | Debug the build graph                                            |
+| `list-artifacts`       | List all known build artifacts                                   |
+| `list-modified-files`  | List modified files from source control                          |
+| `list-source-files`    | List all known source files                                      |
+| `list-generated-files` | List all known generated files                                   |
+| `list-namespaces`      | List all available namespaces                                    |
+| `list-environments`    | List all compilation environments                                |
+| `list-targets`         | List all translated targets                                      |
+| `list-programs`        | List all executable targets                                      |
+| `list-persistents`     | List all persistent data                                         |
+| `list-commands`        | List all available commands                                      |
+| `list-platforms`       | List all available platforms                                     |
+| `list-configs`         | List all available configurations                                |
+| `list-compilers`       | List all available compilers                                     |
+| `list-modules`         | List all available modules                                       |
+| `check-build`          | Build graph aliases passed as input parameters                   |
+| `check-fingerprint`    | Recompute nodes fingerprint and compare with stored stamp        |
+| `import-action`        | Import actions from external JSON file(s)                        |
+| `export-action`        | Export selected compilation actions to JSON                      |
+
+> **Tip:** Many commands accept additional arguments or flags. Use `./ppb help <command>` for details.
 
 ---
 
-## Configuration
+**Note:**  
+- You can chain multiple commands using `-and`, e.g. `./Build configure -and vscode -and build -Summary`
+- All commands and flags are case-
 
-- **Module and action definitions:**
-  Place JSON files describing modules and their dependencies in your project, see [compile/Model.go](compile/Model.go).
-- **Compiler/toolchain selection:**
-  Configurable via JSON and command-line flags, see [compile/compiler.go](compile/compiler.go).
-- **Cluster configuration:**
-  Workers auto-discover each other via QUIC; resource limits can be set per worker, see [cluster/cluster.go](cluster/cluster.go)..
+---
+
+### 🛠️ Command-Line Options
+
+The following **global flags** can be used with any command:
+
+| Flag            | Description                                                                                  |
+|-----------------|----------------------------------------------------------------------------------------------|
+| `-f`            | Force build even if up-to-date                                                               |
+| `-F`            | Force build and ignore cache                                                                 |
+| `-j`            | Override number of worker threads (default: numCpu-1)                                        |
+| `-q`            | Disable all messages                                                                         |
+| `-v`            | Turn on verbose mode                                                                         |
+| `-t`            | Print more information about progress                                                        |
+| `-V`            | Turn on very verbose mode                                                                    |
+| `-d`            | Turn on debug assertions and more log (only if built with debug enabled)                     |
+| `-T`            | Turn on timestamp logging                                                                    |
+| `-X`            | Turn on diagnostics mode                                                                     |
+| `-Color`        | Control ANSI color output in log messages                                                    |
+| `-Ide`          | Set output to IDE mode (disable interactive shell)                                           |
+| `-LogAll`       | Output all messages for given log categories                                                 |
+| `-LogMute`      | Mute all messages for given log categories                                                   |
+| `-LogImmediate` | Disable buffering of log messages                                                            |
+| `-LogFile`      | Output log to specified file (default: stdout)                                               |
+| `-OutputDir`    | Override default output directory                                                            |
+| `-RootDir`      | Override root directory                                                                      |
+| `-StopOnError`  | Interrupt build process immediately when an error occurred                                   |
+| `-Summary`      | Print build graph execution summary when build finished                                      |
+| `-WX`           | Consider warnings as errors                                                                  |
+| `-EX`           | Consider errors as panics                                                                    |
 
 ---
 
