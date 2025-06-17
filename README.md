@@ -11,21 +11,6 @@
 
 ---
 
-## :notebook_with_decorative_cover: Table of Contents
-
-- [About](#about)
-- [Architecture](#architecture)
-- [Features](#features)
-- [Source Control Integration](#source-control-integration)
-- [Usage](#usage)
-- [Configuration](#configuration)
-- [Development History](#development-history)
-- [Dependencies](#dependencies)
-- [Contributing](#contributing)
-- [License](#license)
-
----
-
 ## About
 
 **PPB** is a next-generation build system designed for high-performance, distributed, and cache-efficient builds. It was originally forked from the [PoPpOloPOpPo Engine](https://github.com/poppolopoppo/ppe) and has evolved into a standalone, language-agnostic build orchestrator, with a strong focus on C++ but extensible to other languages and asset pipelines.
