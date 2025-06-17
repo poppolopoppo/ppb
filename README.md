@@ -107,15 +107,110 @@ PPB is structured as a modular, extensible build graph engine. Key architectural
 
 ---
 
+## C++ Toolchain Customization Options
+
+You can customize the following rules per-project or per-archetype to control the C++ toolchain behavior:
+
+### Warning Levels (`Warnings`)
+
+| Field            | Description                                         |
+|------------------|-----------------------------------------------------|
+| `Default`        | Base warning level for the compiler (e.g., OFF, DEFAULT, HIGH) |
+| `Deprecation`    | Controls warnings for deprecated features           |
+| `Pedantic`       | Controls warnings for strict standard conformance   |
+| `ShadowVariable` | Controls warnings for variable shadowing            |
+| `UndefinedMacro` | Controls warnings for use of undefined macros       |
+| `UnsafeTypeCast` | Controls warnings for unsafe type casts and promotions |
+
+---
+
+### Build and Compilation Rules
+
+| Field            | Description                                         |
+|------------------|-----------------------------------------------------|
+| `SizePerUnity`   | Size (in bytes) of each unity file for adaptive unity builds |
+| `Instructions`   | Instruction sets to enable (e.g., SSE, AVX2, AVX512)|
+| `CppStd`         | The C++ standard to use (e.g., C++11, C++14, C++17, C++20) |
+| `CppRtti`        | Enable or disable Run-Time Type Information (RTTI)  |
+| `DebugInfo`      | Level of debug information to generate (OFF, DEFAULT, FULL) |
+| `Exceptions`     | Enable or disable C++ exceptions                    |
+| `FloatingPoint`  | Floating point model (e.g., precise, fast, strict)  |
+| `Link`           | Linking options (e.g., static, dynamic)             |
+| `Optimize`       | Optimization level (e.g., none, size, speed, full)  |
+| `PCH`            | Precompiled header options                          |
+| `RuntimeLib`     | Runtime library selection (e.g., static, dynamic, debug, release) |
+| `Sanitizer`      | Enable runtime sanitizers (e.g., address, thread, undefined behavior) |
+| `Unity`          | Unity build options (enabled, disabled)             |
+
+---
+
+### Boolean Feature Toggles
+
+| Field            | Description                                         |
+|------------------|-----------------------------------------------------|
+| `AdaptiveUnity`  | Enable adaptive unity builds                        |
+| `Benchmark`      | Enable benchmarking features                        |
+| `Deterministic`  | Enable deterministic (reproducible) builds          |
+| `DebugFastLink`  | Enable fast linking for debug builds                |
+| `Incremental`    | Enable incremental builds                           |
+| `LTO`            | Enable Link-Time Optimization                       |
+| `RuntimeChecks`  | Enable runtime checks (e.g., stack protection)      |
+| `CompilerVerbose`| Enable verbose output from the compiler             |
+| `LinkerVerbose`  | Enable verbose output from the linker               |
+
+---
+
+### Example JSON Configuration
+
+```json
+{
+    "CppStd": "C++20",
+    "Optimize": "FULL",
+    "DebugInfo": "FULL",
+    "Exceptions": "ON",
+    "FloatingPoint": "PRECISE",
+    "Instructions": ["AVX2", "SSE4.2"],
+    "Warnings": {
+        "Default": "HIGH",
+        "Deprecation": "DEFAULT",
+        "Pedantic": "HIGH",
+        "ShadowVariable": "HIGH",
+        "UndefinedMacro": "DEFAULT",
+        "UnsafeTypeCast": "HIGH"
+    },
+    "LTO": true,
+    "Deterministic": true,
+    "Incremental": true,
+    "CompilerVerbose": false,
+    "LinkerVerbose": false
+}
+```
+
+---
+
+**How to Use:**
+- These rules can be set globally, per-project, or per-archetype (template).
+- They control the generated compiler and linker flags for each build.
+- Boolean toggles (`true`/`false`) enable or disable features.
+- Enum/string options select the desired mode or level for each rule.
+
+> **Tip:** Refer to your build system’s documentation or schema for the exact allowed values for each field (e.g., which C++ standards, optimization levels, or sanitizer types are supported).
+
+---
+
 ## Usage
 
-### Build the tool
+### 🚀 Quick Start
 
 ```sh
 git clone https://github.com/poppolopoppo/ppb.git
 cd ppb/Build
 go build
+./ppb configure
+./ppb build
 ```
+
+> **Tip:** For distributed builds, start additional workers with `./ppb worker`on other machines in your network.
 
 ### 🧑‍💻 Example Usage
 
@@ -178,7 +273,7 @@ Below is a list of the main commands. For each, you can run `./Build help <comma
 
 ---
 
-**Note:**  
+**Note:**
 - You can chain multiple commands using `-and`, e.g. `./Build configure -and vscode -and build -Summary`
 - All commands and flags are case-
 
