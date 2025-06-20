@@ -555,7 +555,7 @@ func (llvm *LlvmCompiler) Build(bc utils.BuildContext) error {
 		"-Wno-#pragma-messages",             // silence Unity pragma messages, which are interpreted as warnings by clang
 		"-Wno-unused-command-line-argument", // #TODO: unsilence this warning (-lxxx are generating warnings when do not directly consumes specified libraries)
 		"-fcolor-diagnostics",
-		"-mlzcnt", "-mpopcnt",
+		"-mlzcnt", "-mpopcnt", "-mbmi",
 		"-fsized-deallocation", // https://isocpp.org/files/papers/n3778.html
 		"-c",                   // compile only
 	)

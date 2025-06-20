@@ -302,10 +302,6 @@ func (gcc *GccCompiler) Decorate(bg utils.BuildGraphReadPort, compileEnv *compil
 		}
 	}
 
-	if u.Optimize.IsEnabled() {
-		u.AddCompilationFlag("-mlzcnt", "-mpopcnt")
-	}
-
 	switch u.FloatingPoint {
 	case compile.FLOATINGPOINT_FAST:
 		u.AddCompilationFlag("-ffp-model=fast")
@@ -530,6 +526,7 @@ func (x *GccCompiler) Build(bc utils.BuildContext) error {
 	facet.AddCompilationFlag(
 		"-Wformat", "-Wformat-security", // detect Potential Formatting Attack
 		"-fsized-deallocation", // https://isocpp.org/files/papers/n3778.html
+		"-mlzcnt", "-mpopcnt", "-mbmi",
 	)
 
 	if compileFlags, err := compile.GetCompileFlags(bc); err == nil && compileFlags.Benchmark.Get() {
