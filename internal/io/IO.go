@@ -16,7 +16,7 @@ func InitIO() {
 
 	// disable ansi colors when pipe output is detected
 	if IsOutputRedirectToPipe {
-		base.SetEnableAnsiColor(false)
+		base.SetAnsiColorMode(base.ANSICOLOR_DISABLED)
 		base.SetEnableInteractiveShell(false)
 	}
 

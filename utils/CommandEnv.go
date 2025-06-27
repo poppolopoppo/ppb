@@ -25,7 +25,7 @@ type CommandFlags struct {
 	Timestamp      BoolVar
 	Diagnostics    BoolVar
 	Jobs           IntVar
-	Color          BoolVar
+	Color          base.AnsiColorMode
 	Ide            BoolVar
 	LogAll         base.LogCategorySet
 	LogMute        base.LogCategorySet
@@ -49,7 +49,7 @@ var GetCommandFlags = NewGlobalCommandParsableFlags("global command options", &C
 	Debug:          base.MakeBoolVar(base.DEBUG_ENABLED),
 	Diagnostics:    base.MakeBoolVar(base.DEBUG_ENABLED),
 	Jobs:           base.InheritableInt(base.INHERIT_VALUE),
-	Color:          base.INHERITABLE_INHERIT,
+	Color:          base.ANSICOLOR_INHERIT,
 	Ide:            base.INHERITABLE_INHERIT,
 	Timestamp:      base.INHERITABLE_FALSE,
 	StopOnError:    base.INHERITABLE_FALSE,
@@ -102,7 +102,7 @@ func (flags *CommandFlags) Apply() error {
 
 	if flags.LogFile.Valid() {
 		if outp, err := UFS.CreateWriter(flags.LogFile); err == nil {
-			base.SetEnableAnsiColor(false)
+			base.SetAnsiColorMode(base.ANSICOLOR_DISABLED)
 			base.SetEnableInteractiveShell(false)
 			base.GetLogger().SetWriter(outp)
 		} else {
@@ -114,8 +114,9 @@ func (flags *CommandFlags) Apply() error {
 	base.GetLogger().SetShowTimestamp(flags.Timestamp.Get())
 
 	if flags.Ide.Get() {
-		base.SetEnableAnsiColor(false)
+		base.SetAnsiColorMode(base.ANSICOLOR_DISABLED)
 		base.SetEnableInteractiveShell(false)
+		flags.StopOnError.Enable()
 	}
 
 	if flags.Debug.Get() {
@@ -124,7 +125,7 @@ func (flags *CommandFlags) Apply() error {
 	}
 
 	if !flags.Color.IsInheritable() {
-		base.SetEnableAnsiColor(flags.Color.Get())
+		base.SetAnsiColorMode(flags.Color)
 	}
 
 	if flags.Verbose.Get() {

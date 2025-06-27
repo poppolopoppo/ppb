@@ -71,21 +71,15 @@ const maxUint8OO = 1.0 / maxUint8f
 func unquantizeColor(b uint8) float64 { return float64(b) * maxUint8OO }
 func quantizeColor(f float64) uint8   { return uint8(f * maxUint8f) }
 
-func (x Color3b) Unquantize(srgb bool) (result Color3f) {
+func (x Color3b) Unquantize() (result Color3f) {
 	result = Color3f{
 		R: unquantizeColor(x.R),
 		G: unquantizeColor(x.G),
 		B: unquantizeColor(x.B),
 	}
-	if srgb {
-		result = result.SrgbToLinear()
-	}
 	return
 }
-func (x Color3f) Quantize(srgb bool) (result Color3b) {
-	if srgb {
-		x = x.LinearToSrgb()
-	}
+func (x Color3f) Quantize() (result Color3b) {
 	result = Color3b{
 		R: quantizeColor(x.R),
 		G: quantizeColor(x.G),
@@ -95,27 +89,47 @@ func (x Color3f) Quantize(srgb bool) (result Color3b) {
 }
 
 func (x Color3b) Ansi(fg bool) string {
-	if !enableAnsiColor {
-		return ""
-	}
-	ansiFmt := ANSI_BG_TRUECOLOR_FMT
-	if fg {
-		ansiFmt = ANSI_FG_TRUECOLOR_FMT
-	}
-	return fmt.Sprintf(ansiFmt.String(), uint(x.R), uint(x.G), uint(x.B))
+	return FormatAnsiColor(x.R, x.G, x.B, fg)
 }
 func (x Color3b) Lerp(o Color3b, f float64) Color3b {
-	return x.Unquantize(false).Lerp(o.Unquantize(false), f).Quantize(false)
+	return x.Unquantize().Lerp(o.Unquantize(), f).Quantize()
 }
 
-var colorHslHot = Color3b{R: 255, G: 210, B: 128}.Unquantize(true)
-var colorHslCold = Color3b{R: 103, G: 79, B: 73}.Unquantize(true)
+// Convert HSV to RGB (all in range [0,1])
+func HSVtoRGB(h, s, v float64) Color3f {
+	h = math.Mod(h, 360.0) / 60.0
+	c := v * s
+	x := c * (1 - math.Abs(math.Mod(h, 2)-1))
+	var r, g, b float64
 
-func NewColdHotColor(f float64) Color3f {
-	color := colorHslCold.Lerp(colorHslHot, f)
-	return color.Brightness(0.45 + 0.40*f*f)
+	switch {
+	case 0 <= h && h < 1:
+		r, g, b = c, x, 0
+	case 1 <= h && h < 2:
+		r, g, b = x, c, 0
+	case 2 <= h && h < 3:
+		r, g, b = 0, c, x
+	case 3 <= h && h < 4:
+		r, g, b = 0, x, c
+	case 4 <= h && h < 5:
+		r, g, b = x, 0, c
+	case 5 <= h && h < 6:
+		r, g, b = c, 0, x
+	default:
+		r, g, b = 0, 0, 0
+	}
+	m := v - c
+	return Color3f{float64(r + m), float64(g + m), float64(b + m)}
 }
 
+func NewColdHotColor(f float64) (result Color3f) {
+	f = Saturate(f)      // optional contrast boost
+	t := Smootherstep(f) // smooth interpolation
+	h := 220.0 - t*160.0 // hue: 220° (blue) → 60° (yellow)
+	s := 0.65 - 0.25*t   // saturation: 0.65 → 0.5 (less green tint)
+	v := 0.5 + 0.5*t     // value: 0.5 → 1.0
+	return HSVtoRGB(h, s, v)
+}
 func NewHeatmapColor(f float64) Color3f {
 	f = Saturate(f)
 	x1 := [4]float64{1, f, f * f, f * f * f}   // 1 x x2 x3
@@ -131,7 +145,7 @@ func NewPastelizerColor(f float64) Color3f {
 	h = math.Abs(h) * 6.2831853071796
 	cocg_x, cocg_y := 0.25*math.Cos(h), 0.25*math.Sin(h)
 	br_x, br_y := -cocg_x-cocg_y, cocg_x-cocg_y
-	c_x, c_y, c_z := 0.729+br_y, 0.729+cocg_y, 0.729+br_x
+	c_x, c_y, c_z := 0.929+br_y, 0.929+cocg_y, 0.929+br_x
 	return Color3f{
 		R: Saturate(c_x * c_x),
 		G: Saturate(c_y * c_y),
@@ -155,11 +169,21 @@ func NewColorFromStringHash(s string) Color3f {
 }
 
 func (x Color3f) Brightness(f float64) Color3f {
-	brightness := math.Exp2((f*2.0 - 1.0) * 4.0)
+	f = Saturate(f)
+	brightness := math.Exp2((f*2.0 - 1.0) * 2.0)
 	return Color3f{
 		R: Saturate(x.R * brightness),
 		G: Saturate(x.G * brightness),
 		B: Saturate(x.B * brightness),
+	}
+}
+func (x Color3f) Desaturate(f float64) Color3f {
+	f = Saturate(f)
+	lum := x.R*0.2126 + x.G*0.7152 + x.B*0.0722
+	return Color3f{
+		R: Lerp(x.R, lum, f),
+		G: Lerp(x.G, lum, f),
+		B: Lerp(x.B, lum, f),
 	}
 }
 func (x Color3f) Lerp(o Color3f, f float64) Color3f {
@@ -169,36 +193,21 @@ func (x Color3f) Lerp(o Color3f, f float64) Color3f {
 		B: Lerp(x.B, o.B, f),
 	}
 }
-func (x Color3f) SrgbToLinear() Color3f {
-	return Color3f{
-		R: linearizeColor(x.R),
-		G: linearizeColor(x.G),
-		B: linearizeColor(x.B),
-	}
-}
-func (x Color3f) LinearToSrgb() Color3f {
-	return Color3f{
-		R: delinearizeColor(x.R),
-		G: delinearizeColor(x.G),
-		B: delinearizeColor(x.B),
-	}
-}
-
-func linearizeColor(c float64) float64 {
-	if c <= 0.04045 {
-		return c / 12.92
-	} else {
-		return math.Pow(float64((c+0.055)/1.055), 2.4)
-	}
-}
-func delinearizeColor(c float64) float64 {
-	if c <= 0.0031308 {
-		return 12.92 * c
-	} else {
-		return 1.055*math.Pow(float64(c), 1/2.4) - 0.055
-	}
-}
 
 func (x Color3b) ToHTML(alpha uint8) string {
 	return fmt.Sprintf("#%02x%02x%02x%02x", x.R, x.G, x.B, alpha)
+}
+
+type ColorGenerator struct {
+	seed float64
+}
+
+func MakeColorGenerator() ColorGenerator {
+	return ColorGenerator{seed: rand.Float64()}
+}
+func (x *ColorGenerator) Next() Color3f {
+	f := x.seed
+	const golden_number = 1.6180339887498948482045868
+	_, x.seed = math.Modf(x.seed + golden_number)
+	return NewPastelizerColor(f)
 }

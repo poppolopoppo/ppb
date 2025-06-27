@@ -335,7 +335,7 @@ func MakeLogCategory(name string) LogCategory {
 		Name:  name,
 		Level: LOG_FATAL,
 		Hash:  hash,
-		Color: NewColorFromHash(hash).Quantize(true),
+		Color: NewColorFromHash(hash).Quantize(),
 	}
 }
 
@@ -419,7 +419,7 @@ func (x LogLevel) Header(dst io.Writer) {
 	case LOG_VERBOSE:
 		fmt.Fprint(dst, "🗣️ ")
 	case LOG_INFO:
-		fmt.Fprint(dst, "💠 ")
+		fmt.Fprint(dst, "🔹 ")
 	case LOG_CLAIM:
 		fmt.Fprint(dst, "❇️ ")
 	case LOG_WARNING:
@@ -1043,6 +1043,7 @@ func (x *interactiveWriter) Write(buf []byte) (n int, err error) {
 			err = FlushWriterIFP(x.output)
 		}
 		x.logger.attachMessages()
+		x.logger.lastRefresh = time.Now()
 	} else {
 		n, err = x.output.Write(buf)
 	}
@@ -1050,13 +1051,11 @@ func (x *interactiveWriter) Write(buf []byte) (n int, err error) {
 }
 
 type interactiveLogger struct {
-	messages SetT[*interactiveLogPin]
-	inflight int
-
-	colorPhi float64
-
+	messages    SetT[*interactiveLogPin]
+	inflight    int
 	lastRefresh time.Time
 
+	colors    ColorGenerator
 	recycler  Recycler[*interactiveLogPin]
 	transient bytes.Buffer
 	*basicLogger
@@ -1066,7 +1065,7 @@ func newInteractiveLogger(basic *basicLogger) *interactiveLogger {
 	result := &interactiveLogger{
 		messages:    make([]*interactiveLogPin, 0, runtime.NumCPU()),
 		inflight:    0,
-		colorPhi:    rand.Float64(),
+		colors:      MakeColorGenerator(),
 		basicLogger: basic,
 		recycler: NewRecycler(
 			func() *interactiveLogPin {
@@ -1098,19 +1097,13 @@ func (x *interactiveLogger) Forwardf(msg string, args ...interface{}) {
 func (x *interactiveLogger) Log(category *LogCategory, level LogLevel, msg string, args ...interface{}) {
 	x.basicLogger.Log(category, level, msg, args...)
 }
-func (x *interactiveLogger) nextColor() Color3b {
-	color := NewPastelizerColor(x.colorPhi)
-	const golden_number = 1.6180339887498948482045868
-	x.colorPhi += golden_number
-	return color.Quantize(true)
-}
 func (x *interactiveLogger) Pin(msg string, args ...interface{}) PinScope {
 	if EnableInteractiveShell() {
 		pin := x.recycler.Allocate()
 		pin.Log(msg, args...)
 		pin.first = 1 // considered as a spinner
 		pin.startedAt = Elapsed()
-		pin.color = x.nextColor()
+		pin.color = x.colors.Next().Quantize()
 		pin.writer = pin.writeLogHeader
 
 		x.refreshMessages(func() {
@@ -1123,7 +1116,7 @@ func (x *interactiveLogger) Pin(msg string, args ...interface{}) PinScope {
 func (x *interactiveLogger) Progress(opts ...ProgressOptionFunc) ProgressScope {
 	if EnableInteractiveShell() {
 		po := ProgressOptions{}
-		po.Color = NewPastelizerColor(rand.Float64()).Quantize(true)
+		po.Color = x.colors.Next().Quantize()
 		for _, it := range opts {
 			it(&po)
 		}
@@ -1298,9 +1291,6 @@ func writeLogCropped(dst LogWriter, capacity int, in string) {
 }
 
 func (x *interactiveLogPin) writeLogHeader(lw LogWriter) {
-	buf := TransientPage4KiB.Allocate()
-	defer TransientPage4KiB.Release(buf)
-
 	const width = 100
 
 	if value := x.header.Load(); !IsNil(value) {
@@ -1310,7 +1300,7 @@ func (x *interactiveLogPin) writeLogHeader(lw LogWriter) {
 	}
 }
 
-var logProgressPattern = []string{" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "▉"} //"█"}
+var logProgressPattern = []string{" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "▉", "█"}
 var logSpinnerPattern = []string{" ⠏ ", " ⠛ ", " ⠹ ", " ⢸ ", " ⣰ ", " ⣤ ", " ⣆ ", " ⡇ "}
 
 func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
@@ -1340,19 +1330,23 @@ func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
 		fi := int(f0)
 		ff -= f0
 
-		colorF := x.color.Unquantize(true)
-		ft := Smootherstep(math.Cos(t*1.5)*0.5 + 0.5)
+		colorF := x.color.Unquantize()
+		ft := 0.5 //Smootherstep(math.Cos(t*1.5)*0.5 + 0.5)
 		mi := 0.5
 
-		fg := colorF.Brightness(ft*0.09 + mi - 0.05).Quantize(true)
-		bg := colorF.Brightness(ft*0.07 + 0.28).Quantize(true)
+		if ansiColorMode == ANSICOLOR_256COLORS {
+			ft = 0.3 // avoid time animations with 256 bits color
+		}
+
+		fg := colorF.Brightness(ft*0.07 + mi - 0.05).Quantize()
+		bg := colorF.Brightness(ft*0.05 + 0.28).Quantize()
 
 		fmt.Fprint(lw, bg.Ansi(false), fg.Ansi(true))
 
 		for i := 0; i < width; i++ {
 			var ch string
 			if i < fi {
-				ch = logProgressPattern[len(logProgressPattern)-1]
+				ch = logProgressPattern[len(logProgressPattern)-2]
 			} else if i == fi {
 				ch = logProgressPattern[int(math.Round(ff*float64(len(logProgressPattern)-1)))]
 			} else {
@@ -1400,19 +1394,19 @@ func (x *interactiveLogPin) writeLogProgress(lw LogWriter) {
 	} else {
 		ti := int(math.Abs(t*3)) % len(logSpinnerPattern)
 
+		fmt.Fprint(lw, logSpinnerPattern[ti])
+
+		heat := Smootherstep(duration.Seconds() / Elapsed().Seconds()) // use percent of blocking duration
+		fmt.Fprint(lw, FormatAnsiColdHotColor(heat, true))
+		fmt.Fprintf(lw, "%6.2fs ", duration.Seconds())
+		fmt.Fprint(lw, x.color.Ansi(true))
+
 		var header string
 		if it := x.header.Load(); !IsNil(it) {
 			header = it.(string)
 		} else {
 			return
 		}
-
-		fmt.Fprint(lw, logSpinnerPattern[ti])
-
-		heat := Smootherstep(duration.Seconds() / Elapsed().Seconds()) // use percent of blocking duration
-		fmt.Fprint(lw, NewColdHotColor(math.Sqrt(heat)).Quantize(true).Ansi(true))
-		fmt.Fprintf(lw, "%6.2fs ", duration.Seconds())
-		fmt.Fprint(lw, x.color.Ansi(true))
 
 		lw.WriteString(header)
 	}

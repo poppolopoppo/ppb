@@ -144,7 +144,7 @@ func (x *buildGraphViz) Visit(node BuildNode, userOptions ...internal_io.GraphVi
 
 	default:
 		ty := reflect.TypeOf(buildable)
-		color := base.NewColorFromStringHash(ty.String()).Quantize(true)
+		color := base.NewColorFromStringHash(ty.String()).Quantize()
 
 		options.Color = color.ToHTML(0x80)
 		options.Style = internal_io.GRAPHVIZ_Filled

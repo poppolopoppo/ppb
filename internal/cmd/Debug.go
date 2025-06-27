@@ -260,7 +260,7 @@ var ProgressBar = utils.NewCommand(
 			for i := 0; i < n; i++ {
 				c := color(float64(i+1) / float64(n))
 
-				sb.WriteString(c.Quantize(true).Ansi(true))
+				sb.WriteString(c.Quantize().Ansi(true))
 				sb.WriteRune('▇')
 			}
 			sb.WriteString(base.ANSI_RESET.String())
@@ -269,15 +269,15 @@ var ProgressBar = utils.NewCommand(
 			base.LogForwardln(sb.String())
 		}
 
-		printGradient("brightness linear", 100, func(f float64) base.Color3f { return basecol.Brightness(f) })
-		printGradient("brightness srgb", 100, func(f float64) base.Color3f { return basecol.Brightness(f).LinearToSrgb() })
-		printGradient("broadcast linear", 100, func(f float64) (c base.Color3f) { c.Broadcast(f); return })
-		printGradient("broadcast srgb", 100, func(f float64) (c base.Color3f) { c.Broadcast(f); return c.LinearToSrgb() })
+		printGradient("brightness", 100, func(f float64) base.Color3f { return basecol.Brightness(f) })
+		printGradient("broadcast", 100, func(f float64) (c base.Color3f) { c.Broadcast(f); return })
 		printGradient("pastelizer", 100, func(f float64) base.Color3f { return base.NewPastelizerColor(f) })
 		printGradient("heatmap", 100, func(f float64) base.Color3f { return base.NewHeatmapColor(f) })
+		printGradient("coldhot", 100, func(f float64) base.Color3f { return base.NewColdHotColor(f) })
+		printGradient("coldhot sqrt", 100, func(f float64) base.Color3f { return base.NewColdHotColor(math.Sqrt(f)) })
 
-		white := base.NewColor3f(1, 1, 1).Quantize(true)
-		black := base.NewColor3f(0, 0, 0).Quantize(true)
+		white := base.NewColor3f(1, 1, 1).Quantize()
+		black := base.NewColor3f(0, 0, 0).Quantize()
 
 		base.LogForwardln(
 			white.Ansi(true),
@@ -288,16 +288,16 @@ var ProgressBar = utils.NewCommand(
 			black.Ansi(true),
 			"Black On White", base.ANSI_RESET.String())
 		base.LogForwardln(
-			base.NewColor3f(1, 0, 0).Quantize(true).Ansi(true),
-			base.NewColor3f(0, 0, 1).Quantize(true).Ansi(false),
+			base.NewColor3f(1, 0, 0).Quantize().Ansi(true),
+			base.NewColor3f(0, 0, 1).Quantize().Ansi(false),
 			"Red On Blue", base.ANSI_RESET.String())
 		base.LogForwardln(
-			base.NewColor3f(1, 1, 0).Quantize(true).Ansi(true),
-			base.NewColor3f(0, 1, 0).Quantize(true).Ansi(false),
+			base.NewColor3f(1, 1, 0).Quantize().Ansi(true),
+			base.NewColor3f(0, 1, 0).Quantize().Ansi(false),
 			"Yellow On Green", base.ANSI_RESET.String())
 		base.LogForwardln(
-			base.NewColor3f(1, 0.1, 0.1).Brightness(0.8).Quantize(true).Ansi(true),
-			base.NewColor3f(0.1, 0.1, 1).Brightness(0.3).Quantize(true).Ansi(false),
+			base.NewColor3f(1, 0.1, 0.1).Brightness(0.8).Quantize().Ansi(true),
+			base.NewColor3f(0.1, 0.1, 1).Brightness(0.3).Quantize().Ansi(false),
 			"Light Red On Dark Blue", base.ANSI_RESET.String())
 
 		base.LogForwardln("Unicode emojis:")

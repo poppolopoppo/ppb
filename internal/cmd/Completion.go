@@ -97,18 +97,18 @@ func printFileCompletion(w io.Writer, path utils.Filename, detailed bool) error 
 		}
 
 		_, err := fmt.Fprintf(w, "%v%v %v%10v %v%v  %v%v%v\n",
-			modeColor.Quantize(true).Ansi(true),
+			modeColor.Quantize().Ansi(true),
 			fileMode,
 			sizeColor,
 			fileSize,
 			timeColor,
 			fileTime.Format(time.Stamp),
-			pathColor.Quantize(true).Ansi(true),
+			pathColor.Quantize().Ansi(true),
 			path,
 			base.ANSI_RESET)
 		return err
 	} else {
-		_, err := fmt.Fprintln(w, pathColor.Quantize(true).Ansi(true), path.String(), base.ANSI_RESET)
+		_, err := fmt.Fprintln(w, pathColor.Quantize().Ansi(true), path.String(), base.ANSI_RESET)
 		return err
 	}
 }

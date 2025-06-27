@@ -1,23 +1,30 @@
 package base
 
 import (
+	"fmt"
+	"math"
 	"math/rand"
 	"strconv"
+	"strings"
 )
+
+/***************************************
+ * Ansi Codes
+ ***************************************/
 
 type AnsiCode string
 
-var enableAnsiColor bool = true
+var ansiColorMode AnsiColorMode = ANSICOLOR_ENABLED
 
-func SetEnableAnsiColor(enabled bool) {
-	enableAnsiColor = enabled
+func SetAnsiColorMode(mode AnsiColorMode) {
+	ansiColorMode = mode
 }
 
 func (x AnsiCode) Always() string {
 	return (string)(x)
 }
 func (x AnsiCode) String() string {
-	if enableAnsiColor {
+	if ansiColorMode.IsEnabled() {
 		return (string)(x)
 	}
 	return ""
@@ -91,8 +98,11 @@ const (
 	ANSI_CURSOR_UP        AnsiCode = "\033[A"
 	ANSI_CURSOR_PREV_LINE AnsiCode = "\033[F"
 
-	ANSI_BG_TRUECOLOR_FMT AnsiCode = "\033[48;2;%v;%v;%vm"
-	ANSI_FG_TRUECOLOR_FMT AnsiCode = "\033[38;2;%v;%v;%vm"
+	ANSI_BG_TRUECOLOR_FMT string = "\033[48;2;%v;%v;%vm"
+	ANSI_FG_TRUECOLOR_FMT string = "\033[38;2;%v;%v;%vm"
+
+	ANSI_BG_256COLOR_FMT string = "\033[48;5;%vm"
+	ANSI_FG_256COLOR_FMT string = "\033[38;5;%vm"
 )
 
 var (
@@ -137,7 +147,7 @@ var (
 )
 
 func ansi_escaped_len(in string) int {
-	if !enableAnsiColor {
+	if !ansiColorMode.IsEnabled() {
 		return len(in)
 	}
 
@@ -156,14 +166,186 @@ func ansi_escaped_len(in string) int {
 	return n
 }
 
-//lint:ignore U1000 ignore unused function
-func make_ansi_color(prefix string, color string) AnsiCode {
-	if enableAnsiColor {
-		return ANSI_CODES[prefix+"_"+color]
-	} else {
-		return AnsiCode("")
+/***************************************
+ * ANSI Colors
+ ***************************************/
+
+type AnsiColorMode byte
+
+const (
+	ANSICOLOR_INHERIT AnsiColorMode = iota
+	ANSICOLOR_DISABLED
+	ANSICOLOR_ENABLED
+	ANSICOLOR_256COLORS
+	ANSICOLOR_TRUECOLORS
+)
+
+func GetAnsiColorModes() []AnsiColorMode {
+	return []AnsiColorMode{
+		ANSICOLOR_INHERIT,
+		ANSICOLOR_DISABLED,
+		ANSICOLOR_256COLORS,
+		ANSICOLOR_TRUECOLORS,
 	}
 }
+func (x AnsiColorMode) IsEnabled() bool {
+	switch x {
+	case ANSICOLOR_DISABLED:
+		return false
+	default:
+		return true
+	}
+}
+func (x AnsiColorMode) IsInheritable() bool {
+	return x == ANSICOLOR_INHERIT
+}
+func (x AnsiColorMode) Equals(o AnsiColorMode) bool {
+	return (x == o)
+}
+func (x AnsiColorMode) Description() string {
+	switch x {
+	case ANSICOLOR_INHERIT:
+		return "inherit program default color mode"
+	case ANSICOLOR_DISABLED:
+		return "disable ANSI colors"
+	case ANSICOLOR_256COLORS:
+		return "enable 8-bit ANSI colors"
+	case ANSICOLOR_TRUECOLORS:
+		return "enable 24-bit ANSI colors (may increase flicker)"
+	default:
+		UnexpectedValue(x)
+		return ""
+	}
+}
+func (x AnsiColorMode) String() string {
+	switch x {
+	case ANSICOLOR_INHERIT:
+		return "INHERIT"
+	case ANSICOLOR_DISABLED:
+		return "FALSE"
+	case ANSICOLOR_ENABLED:
+		return "TRUE"
+	case ANSICOLOR_256COLORS:
+		return "256COLORS"
+	case ANSICOLOR_TRUECOLORS:
+		return "TRUECOLORS"
+	default:
+		UnexpectedValue(x)
+		return ""
+	}
+}
+func (x *AnsiColorMode) Set(in string) (err error) {
+	switch strings.ToUpper(in) {
+	case ANSICOLOR_INHERIT.String():
+		*x = ANSICOLOR_INHERIT
+	case ANSICOLOR_DISABLED.String():
+		*x = ANSICOLOR_DISABLED
+	case ANSICOLOR_256COLORS.String():
+		*x = ANSICOLOR_256COLORS
+	case ANSICOLOR_TRUECOLORS.String():
+		*x = ANSICOLOR_TRUECOLORS
+	default:
+		err = MakeUnexpectedValueError(x, in)
+	}
+	return err
+}
+func (x *AnsiColorMode) Serialize(ar Archive) {
+	ar.Byte((*byte)(x))
+}
+func (x AnsiColorMode) MarshalText() ([]byte, error) {
+	return UnsafeBytesFromString(x.String()), nil
+}
+func (x *AnsiColorMode) UnmarshalText(data []byte) error {
+	return x.Set(UnsafeStringFromBytes(data))
+}
+func (x AnsiColorMode) AutoComplete(in AutoComplete) {
+	for _, it := range GetAnsiColorModes() {
+		in.Add(it.String(), it.Description())
+	}
+}
+
+func FormatAnsiColor(r, g, b byte, fg bool) string {
+	switch ansiColorMode {
+	case ANSICOLOR_DISABLED:
+	case ANSICOLOR_ENABLED, ANSICOLOR_256COLORS:
+		index := get_ansi_256color_from_rgb(r, g, b)
+		return format_ansi_256color(index, fg)
+	case ANSICOLOR_TRUECOLORS:
+		return format_ansi_truecolor(r, g, b, fg)
+	}
+	return ""
+}
+
+func FormatAnsiGrayscale(level float64, fg bool) string {
+	if !ansiColorMode.IsEnabled() {
+		return ""
+	} else {
+		index := get_ansi_256color_from_grayscale(level)
+		return format_ansi_256color(index, fg)
+	}
+}
+
+func FormatAnsiColdHotColor(level float64, fg bool) string {
+	if !ansiColorMode.IsEnabled() {
+		return ""
+	} else {
+		col := NewColdHotColor(level).Quantize()
+		return FormatAnsiColor(col.R, col.G, col.B, fg)
+	}
+}
+
+func format_ansi_truecolor(r, g, b byte, fg bool) string {
+	if !ansiColorMode.IsEnabled() {
+		return ""
+	}
+	ansiFmt := ANSI_BG_TRUECOLOR_FMT
+	if fg {
+		ansiFmt = ANSI_FG_TRUECOLOR_FMT
+	}
+	return fmt.Sprintf(ansiFmt, uint(r), uint(g), uint(b))
+}
+
+func get_ansi_256color_from_grayscale(level float64) int {
+	// clamp
+	if level < 0 {
+		level = 0
+	} else if level > 1 {
+		level = 1
+	}
+	// there are 24 steps: indices 232 to 255 inclusive
+	step := math.Round(level * 23)
+	return 232 + int(step)
+}
+
+func get_ansi_256color_from_rgb(r, g, b byte) int {
+	// Clamp to [0,255]
+	r = byte(math.Max(0, math.Min(255, float64(r))))
+	g = byte(math.Max(0, math.Min(255, float64(g))))
+	b = byte(math.Max(0, math.Min(255, float64(b))))
+
+	// Convert to 0-5 range
+	r6 := int(math.Round(float64(r) / 255 * 5))
+	g6 := int(math.Round(float64(g) / 255 * 5))
+	b6 := int(math.Round(float64(b) / 255 * 5))
+
+	// Compute index in cube: 16 + 36*r6 + 6*g6 + b6
+	return 16 + 36*r6 + 6*g6 + b6
+}
+
+func format_ansi_256color(index int, fg bool) string {
+	if !ansiColorMode.IsEnabled() {
+		return ""
+	}
+	ansiFmt := ANSI_BG_256COLOR_FMT
+	if fg {
+		ansiFmt = ANSI_FG_256COLOR_FMT
+	}
+	return fmt.Sprintf(ansiFmt, index)
+}
+
+/***************************************
+ * Unicode Emojis for progress reportingj
+ ***************************************/
 
 var UnicodeEmojisShuffled = func() (result []rune) {
 	result = CopySlice(UnicodeEmojis...)

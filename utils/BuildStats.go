@@ -286,17 +286,17 @@ func (g *BuildSummary) PrintSummary(level base.LogLevel) {
 
 		// use percent of blocking duration
 		sstep := base.Smootherstep(node.Stats.Duration.Exclusive.Seconds() / float64(g.TotalDuration.Seconds()))
-		rowColor := base.NewColdHotColor(math.Sqrt(sstep))
+		rowColor := base.FormatAnsiColdHotColor(sstep, true)
 
 		base.LogForwardf("%v[%02d] - %6.2f%% -  %7.3f  %7.3f  -- %s%v%v %s%v%v",
-			rowColor.Quantize(true).Ansi(true),
+			rowColor,
 			(i + 1),
 			100.0*fract,
 			node.Stats.Duration.Exclusive.Seconds(),
 			node.Stats.Duration.Inclusive.Seconds(),
 			printNodeStatus(node),
 			base.ANSI_RESET,
-			rowColor.Quantize(true).Ansi(true),
+			rowColor,
 			node.Alias,
 			node.Annotation,
 			base.ANSI_RESET)
@@ -317,16 +317,16 @@ func (g *BuildSummary) PrintSummary(level base.LogLevel) {
 		fract := node.Stats.Duration.Exclusive.Seconds() / g.AggregatedStats.Duration.Exclusive.Seconds()
 		// use percent of blocking duration
 		sstep := base.Smootherstep(node.Stats.Duration.Exclusive.Seconds() / g.TotalDuration.Seconds())
-		rowColor := base.NewColdHotColor(math.Sqrt(sstep))
+		rowColor := base.FormatAnsiColdHotColor(sstep, true)
 
 		base.LogForwardf("%v[%02d] - %6.2f%% -  %7.3f  %7.3f  -- %s%v %s%s%v%v",
-			rowColor.Quantize(true).Ansi(true),
+			rowColor,
 			depth,
 			100.0*fract,
 			node.Stats.Duration.Exclusive.Seconds(),
 			node.Stats.Duration.Inclusive.Seconds(),
 			printNodeStatus(node),
-			rowColor.Quantize(true).Ansi(true),
+			rowColor,
 			strings.Repeat(` `, depth),
 			node.Alias,
 			node.Annotation,

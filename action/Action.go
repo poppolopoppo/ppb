@@ -418,8 +418,8 @@ func executeOrDistributeAction(bc utils.BuildContext, action *ActionRules, flags
 				spinner := base.LogSpinnerEx(
 					base.ProgressOptionFormat("%c %v",
 						base.UnicodeEmojisShuffled[int(tc.GetThreadId())%len(base.UnicodeEmojisShuffled)],
-						utils.ForceLocalFilename(action.GetGeneratedFile())),
-					base.ProgressOptionColor(base.NewPastelizerColor(float64(tc.GetThreadId())/float64(tc.GetThreadPool().GetArity())).Quantize(true)))
+						action.GetGeneratedFile().Relative(utils.UFS.Output)),
+					base.ProgressOptionColor(base.NewPastelizerColor(float64(tc.GetThreadId())/float64(tc.GetThreadPool().GetArity())).Quantize()))
 				return spinner
 			})(&processOptions)
 
