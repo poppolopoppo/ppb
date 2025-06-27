@@ -1,6 +1,7 @@
 package base
 
 import (
+	"math"
 	"math/rand"
 	"sort"
 	"sync"
@@ -434,6 +435,41 @@ func Fnv1a(s string, basis uint64) (h uint64) {
 	return
 }
 
+// prime number generator
+
+// isPrime checks whether a number is prime.
+func isPrime(n int) bool {
+	if n <= 1 {
+		return false
+	}
+	if n <= 3 {
+		return true
+	}
+	if n%2 == 0 || n%3 == 0 {
+		return false
+	}
+	sqrtN := int(math.Sqrt(float64(n)))
+	for i := 5; i <= sqrtN; i += 6 {
+		if n%i == 0 || n%(i+2) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// NextPrime returns the smallest prime number greater than n.
+func nextPrime(n int) int {
+	if n < 2 {
+		return 2
+	}
+	// Start from n+1 and go up until we find a prime.
+	for candidate := n + 1; ; candidate++ {
+		if isPrime(candidate) {
+			return candidate
+		}
+	}
+}
+
 // lower contentions using mutiple shards
 
 type Hashable interface {
@@ -452,6 +488,7 @@ func NewShardedMap[K interface {
 	comparable
 	Hashable
 }, V any](numShards int) *ShardedMapT[K, V] {
+	numShards = nextPrime(numShards)
 	shards := make([]*SharedMapT[K, V], numShards)
 	for i := range shards {
 		shards[i] = NewSharedMapT[K, V]()
