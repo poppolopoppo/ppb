@@ -2,6 +2,7 @@ package utils
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -914,10 +915,10 @@ func (ufs *UFSFrontEnd) Open(src Filename, read func(io.Reader) error) error {
 		return read(f)
 	})
 }
-func (ufs *UFSFrontEnd) OpenBuffered(src Filename, read func(io.Reader) error) error {
+func (ufs *UFSFrontEnd) OpenBuffered(ctx context.Context, src Filename, read func(io.Reader) error) error {
 	return ufs.OpenFile(src, func(r *os.File) (err error) {
 		if base.EnableAsyncIO {
-			return base.WithAsyncReader(r, base.TransientPage4KiB, base.TASKPRIORITY_NORMAL, read)
+			return base.WithAsyncReader(ctx, r, base.TransientPage4KiB, base.TASKPRIORITY_NORMAL, read)
 		} else {
 			var buffered bufio.Reader
 			buffered.Reset(r)
@@ -1020,7 +1021,7 @@ func (ufs *UFSFrontEnd) Rename(src, dst Filename) error {
 	base.LogDebug(LogUFS, "rename file '%v' to '%v'", src, dst)
 	return os.Rename(src.String(), dst.String())
 }
-func (ufs *UFSFrontEnd) Copy(src, dst Filename, allowAsync bool) error {
+func (ufs *UFSFrontEnd) Copy(ctx context.Context, src, dst Filename, allowAsync bool) error {
 	ufs.Mkdir(dst.Dirname)
 	defer dst.Invalidate()
 
@@ -1034,14 +1035,14 @@ func (ufs *UFSFrontEnd) Copy(src, dst Filename, allowAsync bool) error {
 
 		return ufs.CreateFile(dst, func(w *os.File) error {
 			pageAlloc := base.GetBytesRecyclerBySize(info.Size())
-			if _, err := base.TransientIoCopy(w, r, pageAlloc, allowAsync); err != nil {
+			if _, err := base.TransientIoCopy(ctx, w, r, pageAlloc, allowAsync); err != nil {
 				return err
 			}
 			return base.SetMTime(w, info.ModTime())
 		})
 	})
 }
-func (ufs *UFSFrontEnd) Crc32(src Filename) (checksum uint32, err error) {
+func (ufs *UFSFrontEnd) Crc32(ctx context.Context, src Filename) (checksum uint32, err error) {
 	base.LogDebug(LogUFS, "crc32 file %q", src)
 	err = ufs.OpenFile(src, func(f *os.File) error {
 		stat, err := f.Stat()
@@ -1054,14 +1055,14 @@ func (ufs *UFSFrontEnd) Crc32(src Filename) (checksum uint32, err error) {
 		pageAlloc := base.GetBytesRecyclerBySize(totalSize)
 
 		crc := crc32.NewIEEE()
-		if _, err = base.TransientIoCopy(crc, f, pageAlloc, totalSize > int64(pageAlloc.Stride())); err == nil {
+		if _, err = base.TransientIoCopy(ctx, crc, f, pageAlloc, totalSize > int64(pageAlloc.Stride())); err == nil {
 			checksum = crc.Sum32()
 		}
 		return err
 	})
 	return
 }
-func (ufs *UFSFrontEnd) Fingerprint(src Filename, seed base.Fingerprint) (base.Fingerprint, error) {
+func (ufs *UFSFrontEnd) Fingerprint(ctx context.Context, src Filename, seed base.Fingerprint) (base.Fingerprint, error) {
 	base.LogDebug(LogUFS, "fingerprint file %q", src)
 	var fingerprint base.Fingerprint
 	if err := ufs.OpenFile(src, func(f *os.File) error {
@@ -1073,7 +1074,7 @@ func (ufs *UFSFrontEnd) Fingerprint(src Filename, seed base.Fingerprint) (base.F
 
 		totalSize := stat.Size()
 		pageAlloc := base.GetBytesRecyclerBySize(totalSize)
-		fingerprint, err = base.ReaderFingerprint(f, seed, pageAlloc, totalSize > int64(pageAlloc.Stride()))
+		fingerprint, err = base.ReaderFingerprint(ctx, f, seed, pageAlloc, totalSize > int64(pageAlloc.Stride()))
 		return err
 	}); err != nil {
 		return base.Fingerprint{}, err

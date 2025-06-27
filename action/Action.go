@@ -356,6 +356,7 @@ func executeOrDistributeAction(bc utils.BuildContext, action *ActionRules, flags
 	// run the external process with action command-line and file access hooking
 	processOptions.Init(
 		// internal_io.OptionProcessNewProcessGroup, // do not catch parent's signals
+		internal_io.OptionProcessContext(bc),
 		internal_io.OptionProcessEnvironment(action.Environment),
 		internal_io.OptionProcessWorkingDir(action.WorkingDir),
 		internal_io.OptionProcessCaptureOutputIf(flags.ShowOutput.Get()),

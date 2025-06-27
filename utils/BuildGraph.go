@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"math"
@@ -96,9 +97,11 @@ type BuildGraphReadPort interface {
 
 type BuildGraphWritePort interface {
 	BuildGraphReadPort
+	context.Context
 
 	GlobalContext(options ...BuildOptionFunc) BuildContext
 
+	Cancel(error)
 	Join() error
 
 	Create(buildable Buildable, staticDeps BuildAliases, options ...BuildOptionFunc) BuildNode
@@ -147,9 +150,11 @@ type buildGraph struct {
 	flags *CommandFlags
 
 	portBarrier sync.RWMutex
-	abort       atomic.Pointer[error]
 	dirty       atomic.Bool
 	revision    atomic.Int32
+
+	globalContext context.Context
+	cancelCause   context.CancelCauseFunc
 
 	buildEvents
 }
@@ -170,6 +175,9 @@ type buildGraphWritePortPrivate interface {
 type buildGraphWritePort struct {
 	buildGraphReadPort
 
+	context.Context
+	cancelCause context.CancelCauseFunc
+
 	state base.SharedMapT[BuildAlias, *buildState]
 	stats BuildStats
 
@@ -180,28 +188,25 @@ func NewBuildGraph(flags *CommandFlags) BuildGraph {
 	result := &buildGraph{
 		flags:       flags,
 		buildEvents: newBuildEvents(),
-		nodes:       base.NewShardedMap[BuildAlias, *buildNode](runtime.NumCPU() * 2),
+		nodes:       base.NewShardedMap[BuildAlias, *buildNode](runtime.NumCPU() + 1),
 	}
+	result.globalContext, result.cancelCause = context.WithCancelCause(context.Background())
 	return result
 }
 
 func (g *buildGraph) Abort(err error) {
-	if !base.IsNil(err) {
-		// only keeps the first error
-		g.abort.CompareAndSwap(nil, &err)
-	}
-}
-
-func (g *buildGraph) CheckForAbort() error {
-	err := g.abort.Load()
 	if err != nil {
-		return buildAbortError{inner: *err}
+		g.cancelCause(buildAbortError{err})
 	}
-	return nil
 }
 
 func (g *buildGraph) Dirty() bool {
 	return g.dirty.Load()
+}
+func (g *buildGraph) makeDirty(reason string) {
+	if !g.dirty.Swap(true) {
+		base.LogWarningVerbose(LogBuildGraph, "graph was dirtied, need to resave before process exit: %s", reason)
+	}
 }
 
 func (g *buildGraph) OpenReadPort(name base.ThreadPoolDebugId, flags ...BuildGraphPortFlags) BuildGraphReadPort {
@@ -230,14 +235,23 @@ func (g *buildGraph) OpenWritePort(name base.ThreadPoolDebugId, flags ...BuildGr
 			revision:   g.revision.Add(1),
 		},
 	}
+	writePort.Context, writePort.cancelCause = context.WithCancelCause(g.globalContext)
 	writePort.onBuildGraphStart_ThreadSafe()
 	return &writePort
+}
+func (x *buildGraphWritePort) Cancel(err error) {
+	if err != nil {
+		x.cancelCause(err)
+	}
 }
 func (x *buildGraphWritePort) Close() (err error) {
 	defer x.portBarrier.Unlock()
 	err = x.Join()
+	x.cancelCause(nil)
 	x.onBuildGraphFinished_ThreadSafe()
 	x.buildGraph = nil
+	x.Context = nil
+	x.cancelCause = nil
 	return
 }
 
@@ -283,19 +297,13 @@ func (g *buildGraph) Load(src io.Reader) error {
 	if g.flags.Force.Get() || g.flags.Purge.Get() {
 		archiveFlags = base.AR_FLAGS_TOLERANT
 	}
-	file, err := base.CompressedArchiveFileRead(src, g.Serialize, base.TransientPage64KiB, base.TASKPRIORITY_HIGH, archiveFlags)
+	file, err := base.CompressedArchiveFileRead(g.globalContext, src, g.Serialize, base.TransientPage64KiB, base.TASKPRIORITY_HIGH, archiveFlags)
 	base.LogVeryVerbose(LogBuildGraph, "archive version = %v tags = %v", file.Version, file.Tags)
 	return err
 }
 
 func (g *buildGraph) Equals(other BuildGraph) bool {
 	return other.(*buildGraph) == g
-}
-
-func (g *buildGraph) makeDirty(reason string) {
-	if !g.dirty.Swap(true) {
-		base.LogWarningVerbose(LogBuildGraph, "graph was dirtied, need to resave before process exit: %s", reason)
-	}
 }
 
 /***************************************
@@ -505,10 +513,11 @@ func (g *buildGraphReadPort) GetDependencyChain(src, dst BuildAlias, weight func
 		previous[i] = INDEX_NONE
 		linkTypes[i] = DEPENDENCY_ROOT
 
-		if a == src {
+		switch a {
+		case src:
 			distances[i] = 0
 			srcIndex = int32(i)
-		} else if a == dst {
+		case dst:
 			dstIndex = int32(i)
 		}
 	}
@@ -682,6 +691,13 @@ func (g *buildGraphWritePort) Create(buildable Buildable, static BuildAliases, o
 			}))
 	})
 	return node
+}
+
+func (x *buildGraphWritePort) CheckForAbort() error {
+	if err := x.Context.Err(); err != nil {
+		return buildAbortError{context.Cause(x.Context)}
+	}
+	return nil
 }
 
 func (g *buildGraphWritePort) Build(it BuildAliasable, options ...BuildOptionFunc) (BuildNode, base.Future[BuildResult]) {

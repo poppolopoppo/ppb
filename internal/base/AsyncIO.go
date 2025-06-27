@@ -2,6 +2,7 @@ package base
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,9 +28,9 @@ var GetIOWriteThreadPool = Memoize(func() (result ThreadPool) {
  * Async IO Copy
  ***************************************/
 
-func AsyncTransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler, priority TaskPriority) (n int64, err error) {
+func AsyncTransientIoCopy(ctx context.Context, dst io.Writer, src io.Reader, pageAlloc BytesRecycler, priority TaskPriority) (n int64, err error) {
 	err = WithAsyncReaderFrom(dst, pageAlloc, priority, func(w io.Writer) error {
-		return WithAsyncWriterTo(src, pageAlloc, priority, func(r io.Reader) (er error) {
+		return WithAsyncWriterTo(ctx, src, pageAlloc, priority, func(r io.Reader) (er error) {
 			n, er = io.Copy(w, r)
 			return
 		})
@@ -41,13 +42,13 @@ func AsyncTransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler,
  * WithAsyncReader
  ***************************************/
 
-func alwaysWithAsyncReader(reader io.Reader, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Reader) error) error {
-	asyncReader := NewAsyncReader(reader, pageAlloc, priority)
+func alwaysWithAsyncReader(ctx context.Context, reader io.Reader, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Reader) error) error {
+	asyncReader := NewAsyncReader(ctx, reader, pageAlloc, priority)
 	defer asyncReader.Close()
 	return scope(&asyncReader)
 }
 
-func WithAsyncWriterTo(reader io.Reader, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Reader) error) error {
+func WithAsyncWriterTo(ctx context.Context, reader io.Reader, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Reader) error) error {
 	if EnableAsyncIO {
 		var dispatch func(actual io.Reader) error
 		dispatch = func(actual io.Reader) error {
@@ -55,11 +56,11 @@ func WithAsyncWriterTo(reader io.Reader, pageAlloc BytesRecycler, priority TaskP
 			case ObservableReader:
 				return dispatch(rd.Reader)
 			case *os.File:
-				return alwaysWithAsyncReader(reader, pageAlloc, priority, scope)
+				return alwaysWithAsyncReader(ctx, reader, pageAlloc, priority, scope)
 			case io.WriterTo:
 				return scope(reader)
 			case CompressedReader:
-				return alwaysWithAsyncReader(reader, pageAlloc, priority, scope)
+				return alwaysWithAsyncReader(ctx, reader, pageAlloc, priority, scope)
 			default:
 				return scope(reader)
 			}
@@ -70,7 +71,7 @@ func WithAsyncWriterTo(reader io.Reader, pageAlloc BytesRecycler, priority TaskP
 	}
 }
 
-func WithAsyncReader(reader io.Reader, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Reader) error) error {
+func WithAsyncReader(ctx context.Context, reader io.Reader, pageAlloc BytesRecycler, priority TaskPriority, scope func(io.Reader) error) error {
 	if EnableAsyncIO {
 		var dispatch func(actual io.Reader) error
 		dispatch = func(actual io.Reader) error {
@@ -78,9 +79,9 @@ func WithAsyncReader(reader io.Reader, pageAlloc BytesRecycler, priority TaskPri
 			case ObservableReader:
 				return dispatch(rd.Reader)
 			case *os.File:
-				return alwaysWithAsyncReader(reader, pageAlloc, priority, scope)
+				return alwaysWithAsyncReader(ctx, reader, pageAlloc, priority, scope)
 			case CompressedReader:
-				return alwaysWithAsyncReader(reader, pageAlloc, priority, scope)
+				return alwaysWithAsyncReader(ctx, reader, pageAlloc, priority, scope)
 			default:
 				return scope(reader)
 			}
@@ -163,14 +164,15 @@ type AsyncReader struct {
 	buf asyncIOBlock
 	cur int
 
-	cancel chan struct{}
-	queue  <-chan Optional[asyncIOBlock]
+	context context.Context
+	cancel  context.CancelFunc
+	queue   <-chan Optional[asyncIOBlock]
 }
 
-func NewAsyncReaderSize(reader io.Reader, totalSize int64, priority TaskPriority) AsyncReader {
-	return NewAsyncReader(reader, GetBytesRecyclerBySize(totalSize), priority)
+func NewAsyncReaderSize(ctx context.Context, reader io.Reader, totalSize int64, priority TaskPriority) AsyncReader {
+	return NewAsyncReader(ctx, reader, GetBytesRecyclerBySize(totalSize), priority)
 }
-func NewAsyncReader(reader io.Reader, pageAlloc BytesRecycler, priority TaskPriority) AsyncReader {
+func NewAsyncReader(ctx context.Context, reader io.Reader, pageAlloc BytesRecycler, priority TaskPriority) AsyncReader {
 	Assert(func() bool {
 		if IsNil(reader) {
 			return false
@@ -184,40 +186,14 @@ func NewAsyncReader(reader io.Reader, pageAlloc BytesRecycler, priority TaskPrio
 		return true
 	})
 
-	cancel := make(chan struct{})
+	reader_ctx, cancel := context.WithCancel(ctx)
 	queue := make(chan Optional[asyncIOBlock])
-
-	// go func() {
-	// 	defer close(queue)
-	// 	for {
-	// 		select {
-	// 		case <-cancel:
-	// 			return
-	// 		default:
-	// 			var buf asyncIOBlock
-	// 			var err error
-	// 			buf.allocate(pageAlloc)
-	// 			buf.off, err = reader.Read(*buf.data)
-
-	// 			if buf.off > 0 {
-	// 				queue <- NewOption(buf)
-	// 			} else {
-	// 				buf.release(pageAlloc)
-	// 			}
-
-	// 			if err != nil {
-	// 				queue <- UnexpectedOption[asyncIOBlock](err)
-	// 				return
-	// 			}
-	// 		}
-	// 	}
-	// }()
 
 	GetIOReadThreadPool().Queue(func(ThreadContext) {
 		defer close(queue)
 		for {
 			select {
-			case <-cancel:
+			case <-reader_ctx.Done():
 				return
 			default:
 				var buf asyncIOBlock
@@ -242,10 +218,11 @@ func NewAsyncReader(reader io.Reader, pageAlloc BytesRecycler, priority TaskPrio
 	})})
 
 	return AsyncReader{
-		rd:     reader,
-		al:     pageAlloc,
-		cancel: cancel,
-		queue:  queue,
+		rd:      reader,
+		al:      pageAlloc,
+		context: reader_ctx,
+		cancel:  cancel,
+		queue:   queue,
 	}
 }
 
@@ -291,10 +268,9 @@ func (x *AsyncReader) Read(p []byte) (n int, err error) {
 }
 
 func (x *AsyncReader) Close() (err error) {
+	AssertNotIn(x.context, nil)
 	// cancel remote task and release all read buffers in flight
-	AssertNotIn(x.cancel, nil) // Close() already called?
-	close(x.cancel)
-	x.cancel = nil
+	x.cancel()
 	for {
 		if err = x.retrieveNextBlock(); err != nil {
 			break
@@ -307,6 +283,8 @@ func (x *AsyncReader) Close() (err error) {
 		x.buf.release(x.al)
 	}
 	x.cur = 0
+	x.context = nil
+	x.cancel = nil
 	return
 }
 

@@ -1,6 +1,7 @@
 package action
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -119,7 +120,7 @@ func (x *actionCache) CacheRead(bg BuildGraphWritePort, key ActionCacheKey, arti
 	defer x.stats.CacheRead.Append(&readStat)
 
 	entry := ActionCacheEntry{Key: key}
-	err := entry.LoadEntry(x.path)
+	err := entry.LoadEntry(bg, x.path)
 	if err == nil {
 		err = entry.CacheRead(bg, artifact)
 	}
@@ -142,7 +143,7 @@ func (x *actionCache) CacheWrite(bg BuildGraphWritePort, key ActionCacheKey, art
 	defer x.stats.CacheWrite.Append(&scopedStat)
 
 	entry := ActionCacheEntry{Key: key}
-	if err = entry.LoadEntry(x.path); err != nil {
+	if err = entry.LoadEntry(bg, x.path); err != nil {
 		var dirty bool
 		if dirty, err = entry.CacheWrite(bg, x.path, artifact); err == nil {
 			if dirty {
@@ -243,7 +244,7 @@ func (x *ActionCacheBulk) CacheHit(bg BuildGraphWritePort, options ...BuildOptio
 			x.Digests[i].Source, x.Digests[i].Digest, fd.Digest)
 	}, digests...)
 }
-func (x *ActionCacheBulk) Deflate(root Directory, artifacts ...Filename) error {
+func (x *ActionCacheBulk) Deflate(ctx context.Context, root Directory, artifacts ...Filename) error {
 	deflateStat := StartBuildStats()
 	defer getActionCache().stats.CacheDeflate.Append(&deflateStat)
 
@@ -272,7 +273,7 @@ func (x *ActionCacheBulk) Deflate(root Directory, artifacts ...Filename) error {
 			}
 
 			if err := UFS.Open(file, func(r io.Reader) error {
-				return base.CopyWithProgress(file.String(), info.Size(), w, r)
+				return base.CopyWithProgress(ctx, file.String(), info.Size(), w, r)
 			}); err != nil {
 				return err
 			}
@@ -281,7 +282,7 @@ func (x *ActionCacheBulk) Deflate(root Directory, artifacts ...Filename) error {
 		return zw.Close()
 	})
 }
-func (x *ActionCacheBulk) Inflate(dst Directory) (FileSet, error) {
+func (x *ActionCacheBulk) Inflate(ctx context.Context, dst Directory) (FileSet, error) {
 	inflateStat := StartBuildStats()
 	defer getActionCache().stats.CacheInflate.Append(&inflateStat)
 
@@ -322,7 +323,7 @@ func (x *ActionCacheBulk) Inflate(dst Directory) (FileSet, error) {
 					return err
 				}
 
-				_, err := base.TransientIoCopy(w, rc, base.TransientPage1MiB, true)
+				_, err := base.TransientIoCopy(ctx, w, rc, base.TransientPage1MiB, true)
 				return err
 			})
 		}, zr.File...)
@@ -367,7 +368,7 @@ func (x *ActionCacheEntry) Serialize(ar base.Archive) {
 func (x *ActionCacheEntry) CacheRead(bg BuildGraphWritePort, artifact *CacheArtifact) error {
 	for _, bulk := range x.Bulks {
 		if err := bulk.CacheHit(bg); err == nil {
-			retrieved, err := bulk.Inflate(UFS.Root)
+			retrieved, err := bulk.Inflate(bg, UFS.Root)
 
 			if err == nil && !retrieved.Equals(artifact.OutputFiles) {
 				err = actionCacheMissmatchError{x.Key}
@@ -418,27 +419,27 @@ func (x *ActionCacheEntry) CacheWrite(bg BuildGraphWritePort, cachePath Director
 	}
 
 	if dirty {
-		if err = bulk.Deflate(UFS.Root, artifact.OutputFiles...); err == nil {
+		if err = bulk.Deflate(bg, UFS.Root, artifact.OutputFiles...); err == nil {
 			x.Bulks = append(x.Bulks, bulk)
 		}
 	}
 
 	return dirty, err
 }
-func (x *ActionCacheEntry) OpenEntry(src Filename) error {
+func (x *ActionCacheEntry) OpenEntry(ctx context.Context, src Filename) error {
 	benchmark := base.LogBenchmark(LogActionCache, "read cache entry with key %q", x.Key)
 	defer benchmark.Close()
 
 	return UFS.Open(src, func(r io.Reader) error {
-		_, err := base.CompressedArchiveFileRead(r, func(ar base.Archive) {
+		_, err := base.CompressedArchiveFileRead(ctx, r, func(ar base.Archive) {
 			ar.Serializable(x)
 		}, base.TransientPage64KiB, base.TASKPRIORITY_LOW, base.AR_FLAGS_NONE)
 		return err
 	})
 }
-func (x *ActionCacheEntry) LoadEntry(cachePath Directory) error {
+func (x *ActionCacheEntry) LoadEntry(ctx context.Context, cachePath Directory) error {
 	if path := x.Key.GetEntryPath(cachePath); path.Exists() {
-		return x.OpenEntry(path)
+		return x.OpenEntry(ctx, path)
 	} else {
 		return fmt.Errorf("no cache entry with key %q", x.Key)
 	}

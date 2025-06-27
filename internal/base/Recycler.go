@@ -2,6 +2,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"sync"
 )
@@ -176,9 +177,9 @@ var TransientBuffer = NewRecycler(
 const useTransientIoCopyOverIoCopy = true
 
 // io copy with transient bytes to replace io.Copy()
-func TransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler, allowAsync bool) (size int64, err error) {
+func TransientIoCopy(ctx context.Context, dst io.Writer, src io.Reader, pageAlloc BytesRecycler, allowAsync bool) (size int64, err error) {
 	if useTransientIoCopyOverIoCopy && allowAsync {
-		return AsyncTransientIoCopy(dst, src, pageAlloc, TASKPRIORITY_NORMAL)
+		return AsyncTransientIoCopy(ctx, dst, src, pageAlloc, TASKPRIORITY_NORMAL)
 	} else {
 		buf := pageAlloc.Allocate()
 		defer pageAlloc.Release(buf)
@@ -192,7 +193,7 @@ func TransientIoCopy(dst io.Writer, src io.Reader, pageAlloc BytesRecycler, allo
 	return
 }
 
-func TransientIoCopyWithProgress(context string, totalSize int64, dst io.Writer, src io.Reader, pageAlloc BytesRecycler) (size int64, err error) {
+func TransientIoCopyWithProgress(ctx context.Context, context string, totalSize int64, dst io.Writer, src io.Reader, pageAlloc BytesRecycler) (size int64, err error) {
 	var pbar ProgressScope
 	if totalSize > 0 {
 		pbar = LogProgress(0, totalSize, "copying %s -- %.3f MiB", context, float32(totalSize)/(1024*1024))
@@ -202,7 +203,7 @@ func TransientIoCopyWithProgress(context string, totalSize int64, dst io.Writer,
 	defer pbar.Close()
 
 	allowAsync := totalSize > int64(pageAlloc.Stride())
-	return TransientIoCopy(NewObservableWriter(dst, func(w io.Writer) func(int64, error) error {
+	return TransientIoCopy(ctx, NewObservableWriter(dst, func(w io.Writer) func(int64, error) error {
 		return func(n int64, err error) error {
 			pbar.Add(n)
 			return err

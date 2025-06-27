@@ -81,6 +81,8 @@ func (x *GlobalBuildGraph) Abort(err error) {
 
 	if x.protected != nil {
 		x.protected.BuildGraph.Abort(err)
+	} else {
+		base.LogPanicErr(LogBuildGraph, err)
 	}
 }
 

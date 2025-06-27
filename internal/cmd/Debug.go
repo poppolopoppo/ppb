@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"os"
 	"reflect"
@@ -73,7 +75,7 @@ var CommandCheckCache = utils.NewCommand(
 				}()
 
 				base.LogDebug(utils.LogCommand, "found cache entry %q", f)
-				if err := entry.OpenEntry(f); err != nil {
+				if err := entry.OpenEntry(context.TODO(), f); err != nil {
 					base.LogError(utils.LogCommand, "%v", err)
 					removeCacheEntry = true
 				}
@@ -88,7 +90,7 @@ var CommandCheckCache = utils.NewCommand(
 					dst := tempPath.Folder(bulk.Path.ReplaceExt("").Basename)
 					defer os.RemoveAll(dst.String())
 
-					artifacts, err := bulk.Inflate(dst)
+					artifacts, err := bulk.Inflate(context.TODO(), dst)
 					if err == nil {
 						numArtifacts += len(artifacts)
 						for _, it := range artifacts {

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -392,7 +393,7 @@ func (env *CommandEnvT) loadConfig() error {
 	benchmark := base.LogBenchmark(LogCommand, "loading config from '%v'...", env.configPath)
 	defer benchmark.Close()
 
-	return UFS.OpenBuffered(env.configPath, env.persistent.Deserialize)
+	return UFS.OpenBuffered(context.TODO(), env.configPath, env.persistent.Deserialize)
 }
 func (env *CommandEnvT) saveConfig() error {
 	if !env.persistent.Dirty() {

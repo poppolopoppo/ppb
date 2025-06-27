@@ -195,7 +195,7 @@ func (x *CompressedUnarchiver) Build(bc utils.BuildContext) error {
 					bSkipExtraction := false
 					if info.ModTime().UTC().Equal(header.archiveMtime.UTC()) && info.Size() == src.Size() {
 						if checkCrc32, err := header.archiveCrc32.Get(); err == nil {
-							if localCrc32, err := utils.UFS.Crc32(destination); err == nil {
+							if localCrc32, err := utils.UFS.Crc32(bc, destination); err == nil {
 								bSkipExtraction = (localCrc32 == checkCrc32)
 							}
 						} else {
@@ -211,7 +211,7 @@ func (x *CompressedUnarchiver) Build(bc utils.BuildContext) error {
 
 			return utils.UFS.CreateFile(destination, func(dst *os.File) error {
 				// extract file contents
-				if _, err := base.TransientIoCopy(dst, src, base.TransientPage1MiB, false); err != nil {
+				if _, err := base.TransientIoCopy(bc, dst, src, base.TransientPage1MiB, false); err != nil {
 					return err
 				}
 				// replicate modification time stored in archive

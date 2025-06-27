@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -34,6 +35,7 @@ type BuildAnnotateFunc func(*BuildAnnotations)
 
 type BuildContext interface {
 	BuildInitializer
+	context.Context
 
 	CheckForAbort() error
 
@@ -232,12 +234,14 @@ func (x *buildExecuteContext) Execute(state *buildState) (BuildResult, bool, err
 	x.stats = StartBuildStats()
 	x.stats.pauseTimer()
 
+	emptyResult := BuildResult{
+		BuildAlias: x.node.BuildAlias,
+		Buildable:  x.node.GetBuildable(),
+		BuildStamp: BuildStamp{},
+	}
+
 	if err := x.prepareStaticDependencies_rlock(); err != nil {
-		return BuildResult{
-			BuildAlias: x.node.BuildAlias,
-			Buildable:  x.node.GetBuildable(),
-			BuildStamp: BuildStamp{},
-		}, false, err
+		return emptyResult, false, err
 	}
 
 	x.node.Lock()
@@ -251,11 +255,7 @@ func (x *buildExecuteContext) Execute(state *buildState) (BuildResult, bool, err
 		x.node.Dynamic.makeDirty()
 		x.node.OutputFiles.makeDirty()
 
-		return BuildResult{
-			BuildAlias: x.node.BuildAlias,
-			Buildable:  x.node.Buildable,
-			BuildStamp: BuildStamp{},
-		}, false, err
+		return emptyResult, false, err
 	}
 
 	if !(needToBuild || x.options.Force) {
@@ -267,11 +267,7 @@ func (x *buildExecuteContext) Execute(state *buildState) (BuildResult, bool, err
 	}
 
 	if err := x.CheckForAbort(); err != nil {
-		return BuildResult{
-			BuildAlias: x.node.BuildAlias,
-			Buildable:  x.node.GetBuildable(),
-			BuildStamp: BuildStamp{},
-		}, false, err
+		return emptyResult, false, err
 	}
 
 	defer func() {
@@ -321,18 +317,33 @@ func (x *buildExecuteContext) Execute(state *buildState) (BuildResult, bool, err
 		// reset static timestamps to make sure this node is built again
 		x.node.Static.makeDirty()
 
-		err = buildExecuteError{alias: x.Alias(), inner: err}
+		// if x.Context.Err() == nil {
+		// 	err = buildExecuteError{alias: x.Alias(), inner: err}
 
-		// abort every other build if stop-on-error is enabled
-		if GetCommandFlags().StopOnError.Get() {
-			x.Abort(err)
+		// 	// abort every other build if stop-on-error is enabled
+		// 	if GetCommandFlags().StopOnError.Get() {
+		// 		x.Cancel(err)
+		// 	}
+		// } else {
+		// 	err = context.Cause(x.Context)
+		// } %NOCOMMIT%
+
+		switch err.(type) {
+		case buildAbortError, buildDependencyError:
+		default: // failed dependency errors are only printed once
+			// abort every other build if stop-on-error is enabled
+			if GetCommandFlags().StopOnError.Get() {
+				x.Cancel(buildDependencyError{
+					alias: x.Alias(),
+					link:  DEPENDENCY_ROOT,
+					inner: err,
+				})
+			}
+
+			err = buildExecuteError{alias: x.Alias(), inner: err}
 		}
 
-		return BuildResult{
-			BuildAlias: x.node.BuildAlias,
-			Buildable:  x.node.Buildable,
-			BuildStamp: BuildStamp{},
-		}, true, err
+		return emptyResult, true, err
 	}
 }
 
@@ -372,6 +383,10 @@ func (x *buildExecuteContext) unlock_for_dependency() {
 }
 
 func (x *buildExecuteContext) NeedBuildResult(results ...BuildResult) {
+	if len(results) == 0 {
+		return
+	}
+
 	x.lock_for_dependency()
 	defer x.unlock_for_dependency()
 
@@ -381,12 +396,26 @@ func (x *buildExecuteContext) NeedBuildResult(results ...BuildResult) {
 }
 
 func (x *buildExecuteContext) NeedBuildAliasables(n int, buildAliasables func(int) BuildAliasable, onBuildResult func(int, BuildResult) error) error {
+	if n == 0 {
+		return nil
+	}
+	x.lock_for_dependency()
+	locked := true
+	defer func() {
+		if locked {
+			x.unlock_for_dependency()
+		}
+	}()
 	return x.buildMany(n,
 		func(i int, _ *BuildOptions) (*buildNode, error) {
 			return x.findNode(buildAliasables(i).Alias())
 		},
 		func(i int, br BuildResult) error {
-			x.NeedBuildResult(br)
+			if i == 0 {
+				x.unlock_for_dependency()
+				locked = false
+			}
+			x.node.addDynamic_AssumeLocked(br.BuildAlias, br.BuildStamp)
 			return onBuildResult(i, br)
 		})
 }
@@ -405,6 +434,10 @@ func (x *buildExecuteContext) dependsOn_AssumeLocked(n int, aliases func(int) Bu
 		opts...)
 }
 func (x *buildExecuteContext) DependsOn(aliases ...BuildAlias) error {
+	if len(aliases) == 0 {
+		return nil
+	}
+
 	x.lock_for_dependency()
 	defer x.unlock_for_dependency()
 

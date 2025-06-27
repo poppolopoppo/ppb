@@ -83,7 +83,7 @@ func (x *ImportActionsCommand) Run(cc utils.CommandContext) error {
 	for _, src := range x.InputFiles {
 		var importedActions []ImportedAction
 
-		if err := utils.UFS.OpenBuffered(src, func(r io.Reader) error {
+		if err := utils.UFS.OpenBuffered(bg, src, func(r io.Reader) error {
 			return base.JsonDeserialize(&importedActions, r)
 		}); err != nil {
 			return err

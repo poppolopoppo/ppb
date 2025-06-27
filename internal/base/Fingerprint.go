@@ -1,6 +1,7 @@
 package base
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"hash"
@@ -108,25 +109,25 @@ func SerializeAnyFingerprint(any func(ar Archive) error, seed Fingerprint) (resu
 	return
 }
 
-func ReaderFingerprint(rd io.Reader, seed Fingerprint, pageAlloc BytesRecycler, allowAsync bool) (result Fingerprint, err error) {
+func ReaderFingerprint(ctx context.Context, rd io.Reader, seed Fingerprint, pageAlloc BytesRecycler, allowAsync bool) (result Fingerprint, err error) {
 	digester := DigesterPool.Allocate()
 	defer DigesterPool.Release(digester)
 
 	digester.Write(seed[:])
 
-	if _, err = TransientIoCopy(digester, rd, pageAlloc, allowAsync); err == nil {
+	if _, err = TransientIoCopy(ctx, digester, rd, pageAlloc, allowAsync); err == nil {
 		copy(result[:], digester.Sum(nil))
 		Assert(result.Valid)
 	}
 	return
 }
-func ReaderFingerprintWithProgress(context string, totalSize int64, rd io.Reader, seed Fingerprint) (result Fingerprint, err error) {
+func ReaderFingerprintWithProgress(ctx context.Context, context string, totalSize int64, rd io.Reader, seed Fingerprint) (result Fingerprint, err error) {
 	digester := DigesterPool.Allocate()
 	defer DigesterPool.Release(digester)
 
 	digester.Write(seed[:])
 
-	if err = CopyWithProgress(context, totalSize, digester, rd); err == nil {
+	if err = CopyWithProgress(ctx, context, totalSize, digester, rd); err == nil {
 		copy(result[:], digester.Sum(nil))
 		Assert(result.Valid)
 	}

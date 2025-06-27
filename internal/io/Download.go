@@ -1,6 +1,7 @@
 package io
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -71,14 +72,22 @@ func (dl *Downloader) Alias() utils.BuildAlias {
 	return utils.MakeBuildAlias("Download", dl.Source.String(), "->", dl.DownloadDir.String())
 }
 func (dl *Downloader) Build(bc utils.BuildContext) error {
+	client := http.Client{
+		CheckRedirect: func(r *http.Request, _ []*http.Request) error {
+			r.URL.Opaque = r.URL.Path
+			return nil
+		},
+	}
+	defer client.CloseIdleConnections()
+
 	var err error
 	var written int64
 	switch dl.Mode {
 	case DOWNLOAD_DEFAULT:
 		dl.Destination = dl.DownloadDir.File(path.Base(dl.Source.Path))
-		written, err = DownloadFile(dl.Destination, dl.Source)
+		written, err = DownloadFile(bc, &client, dl.Destination, dl.Source)
 	case DOWNLOAD_REDIRECT:
-		dl.Destination, written, err = DownloadHttpRedirect(dl.DownloadDir, dl.Source)
+		dl.Destination, written, err = DownloadHttpRedirect(bc, &client, dl.DownloadDir, dl.Source)
 	}
 
 	if err == nil {
@@ -159,18 +168,16 @@ func downloadFromCache(resp *http.Response) (utils.Filename, downloadCacheResult
 	return utils.Filename{}, nonCachableResponse{fmt.Errorf("can't find content hash in http header")}
 }
 
-func DownloadFile(dst utils.Filename, src base.Url) (int64, error) {
+func DownloadFile(ctx context.Context, client *http.Client, dst utils.Filename, src base.Url) (int64, error) {
 	base.LogVerbose(LogDownload, "downloading url '%v' to '%v'...", src.String(), dst.String())
 
-	client := http.Client{
-		CheckRedirect: func(r *http.Request, _ []*http.Request) error {
-			r.URL.Opaque = r.URL.Path
-			return nil
-		},
+	// Create a new HTTP request with context
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, src.String(), nil)
+	if err != nil {
+		return 0, err
 	}
-	defer client.CloseIdleConnections()
 
-	resp, err := client.Get(src.String())
+	resp, err := client.Do(request)
 	if err != nil {
 		return 0, err
 	}
@@ -192,7 +199,7 @@ func DownloadFile(dst utils.Filename, src base.Url) (int64, error) {
 			return dstInfo.Size(), nil
 		}
 
-		err = utils.UFS.Copy(cacheFile, dst, false)
+		err = utils.UFS.Copy(ctx, cacheFile, dst, false)
 		return cacheInfo.Size(), err
 
 	} else { // cache miss
@@ -206,12 +213,12 @@ func DownloadFile(dst utils.Filename, src base.Url) (int64, error) {
 		}
 
 		err = utils.UFS.CreateFile(dst, func(w *os.File) error {
-			return base.CopyWithProgress(utils.MakeShortUserFriendlyPath(src).String(), contentLength, w, resp.Body)
+			return base.CopyWithProgress(ctx, utils.MakeShortUserFriendlyPath(src).String(), contentLength, w, resp.Body)
 		})
 
 		if err == nil && cacheResult.ShouldCache() {
 			base.LogDebug(LogDownload, "cache store in '%v'", cacheFile)
-			if err := utils.UFS.Copy(dst, cacheFile, false); err != nil {
+			if err := utils.UFS.Copy(ctx, dst, cacheFile, false); err != nil {
 				base.LogWarning(LogDownload, "failed to cache download with %v", err)
 			}
 		}
@@ -222,18 +229,16 @@ func DownloadFile(dst utils.Filename, src base.Url) (int64, error) {
 
 var re_metaRefreshRedirect = regexp.MustCompile(`(?i)<meta.*http-equiv="refresh".*content=".*url=(.*)".*?/>`)
 
-func DownloadHttpRedirect(dst utils.Directory, src base.Url) (utils.Filename, int64, error) {
+func DownloadHttpRedirect(ctx context.Context, client *http.Client, dst utils.Directory, src base.Url) (utils.Filename, int64, error) {
 	base.LogVerbose(LogDownload, "download http redirect '%v' to '%v'...", src.String(), dst.String())
 
-	client := http.Client{
-		CheckRedirect: func(r *http.Request, _ []*http.Request) error {
-			r.URL.Opaque = r.URL.Path
-			return nil
-		},
+	// Create a new HTTP request with context
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, src.String(), nil)
+	if err != nil {
+		return utils.Filename{}, 0, err
 	}
-	defer client.CloseIdleConnections()
 
-	resp, err := client.Get(src.String())
+	resp, err := client.Do(request)
 	if err != nil {
 		return utils.Filename{}, 0, err
 	}
@@ -242,7 +247,7 @@ func DownloadHttpRedirect(dst utils.Directory, src base.Url) (utils.Filename, in
 	parse := base.TransientBuffer.Allocate()
 	defer base.TransientBuffer.Release(parse)
 
-	_, err = base.TransientIoCopy(parse, resp.Body, base.TransientPage4KiB, false)
+	_, err = base.TransientIoCopy(ctx, parse, resp.Body, base.TransientPage4KiB, false)
 
 	if err == nil {
 		match := re_metaRefreshRedirect.FindSubmatch(parse.Bytes())
@@ -250,7 +255,7 @@ func DownloadHttpRedirect(dst utils.Directory, src base.Url) (utils.Filename, in
 			var url *url.URL
 			if url, err = url.Parse(base.UnsafeStringFromBytes(match[1])); err == nil {
 				localFile := dst.File(path.Base(url.Path))
-				written, err := DownloadFile(localFile, base.Url{URL: url})
+				written, err := DownloadFile(ctx, client, localFile, base.Url{URL: url})
 				return localFile, written, err
 			}
 		} else {

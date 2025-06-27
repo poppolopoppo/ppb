@@ -2,6 +2,7 @@ package io
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os/exec"
@@ -89,6 +90,7 @@ func (x *MountedPath) Serialize(ar base.Archive) {
 type ProcessOnSpinnerFunc = func(executable utils.Filename, arguments base.StringSet, options *ProcessOptions) base.ProgressScope
 
 type ProcessOptions struct {
+	Context         context.Context
 	Environment     ProcessEnvironment
 	OnFileAccess    base.EventDelegate[FileAccessRecord]
 	OnOutput        base.EventDelegate[string]
@@ -105,6 +107,7 @@ type ProcessOptions struct {
 type ProcessOptionFunc func(*ProcessOptions)
 
 func (x *ProcessOptions) Init(options ...ProcessOptionFunc) {
+	x.Context = context.TODO()
 	x.Environment = NewProcessEnvironment()
 
 	if base.EnableInteractiveShell() {
@@ -122,6 +125,11 @@ func (x *ProcessOptions) Init(options ...ProcessOptionFunc) {
 func OptionProcessStruct(options *ProcessOptions) ProcessOptionFunc {
 	return func(po *ProcessOptions) {
 		*po = *options
+	}
+}
+func OptionProcessContext(ctx context.Context) ProcessOptionFunc {
+	return func(po *ProcessOptions) {
+		po.Context = ctx
 	}
 }
 func OptionProcessEnvironment(environment ProcessEnvironment) ProcessOptionFunc {
@@ -280,7 +288,7 @@ func RunProcess(executable utils.Filename, arguments base.StringSet, userOptions
 }
 
 func RunProcess_Vanilla(executable utils.Filename, arguments base.StringSet, options *ProcessOptions) (err error) {
-	cmd := exec.Command(executable.String(), arguments...)
+	cmd := exec.CommandContext(options.Context, executable.String(), arguments...)
 	cmd.Env = append(cmd.Env, options.Environment.Export()...)
 
 	if len(options.WorkingDir.Path) > 0 {

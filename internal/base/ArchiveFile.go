@@ -1,6 +1,9 @@
 package base
 
-import "io"
+import (
+	"context"
+	"io"
+)
 
 /***************************************
  * ArchiveFile
@@ -81,9 +84,9 @@ func ArchiveFileWrite(writer io.Writer, scope func(ar Archive), flags ArchiveFla
  * CompressedArchiveFile
  ***************************************/
 
-func CompressedArchiveFileRead(reader io.Reader, scope func(ar Archive), pageAlloc BytesRecycler, priority TaskPriority, flags ArchiveFlags, compression ...CompressionOptionFunc) (file ArchiveFile, err error) {
+func CompressedArchiveFileRead(ctx context.Context, reader io.Reader, scope func(ar Archive), pageAlloc BytesRecycler, priority TaskPriority, flags ArchiveFlags, compression ...CompressionOptionFunc) (file ArchiveFile, err error) {
 	err = WithCompressedReader(reader, func(cr io.Reader) error {
-		return WithAsyncReader(cr, pageAlloc, priority, func(ar io.Reader) (err error) {
+		return WithAsyncReader(ctx, cr, pageAlloc, priority, func(ar io.Reader) (err error) {
 			file, err = ArchiveFileRead(ar, scope, flags)
 			return err
 		})

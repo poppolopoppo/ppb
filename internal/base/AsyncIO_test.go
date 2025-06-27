@@ -2,6 +2,7 @@ package base
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"strings"
@@ -37,7 +38,7 @@ func generateRandomData(_ *testing.T, sz int) []byte {
 
 func TestAsyncReaderEarlyClose(t *testing.T) {
 	tmp := bytes.NewBuffer(generateRandomData(t, 218732))
-	src := NewAsyncReader(tmp, TransientPage4KiB, TASKPRIORITY_NORMAL)
+	src := NewAsyncReader(context.TODO(), tmp, TransientPage4KiB, TASKPRIORITY_NORMAL)
 	if err := src.Close(); err != nil {
 		t.Error(err)
 	}
@@ -46,7 +47,7 @@ func TestAsyncReaderEarlyClose(t *testing.T) {
 func TestAsyncReaderString(t *testing.T) {
 	input := "this is test string"
 	src := strings.NewReader(input)
-	err := WithAsyncReader(src, TransientPage4KiB, TASKPRIORITY_NORMAL, func(r io.Reader) error {
+	err := WithAsyncReader(context.TODO(), src, TransientPage4KiB, TASKPRIORITY_NORMAL, func(r io.Reader) error {
 		dst, err := io.ReadAll(r)
 		if err != nil {
 			return err
@@ -64,7 +65,7 @@ func TestAsyncReaderString(t *testing.T) {
 func TestAsyncReaderLarge(t *testing.T) {
 	input := generateRandomData(t, 218732)
 	src := bytes.NewBuffer(input)
-	err := WithAsyncReader(src, TransientPage4KiB, TASKPRIORITY_NORMAL, func(r io.Reader) error {
+	err := WithAsyncReader(context.TODO(), src, TransientPage4KiB, TASKPRIORITY_NORMAL, func(r io.Reader) error {
 		dst, err := io.ReadAll(r)
 		if err != nil {
 			return err

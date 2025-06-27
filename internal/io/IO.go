@@ -73,7 +73,7 @@ func (x *FileDigest) Alias() utils.BuildAlias {
 	return utils.MakeBuildAlias("UFS", "Digest", x.Source.Dirname.Path, x.Source.Basename)
 }
 func (x *FileDigest) Build(bc utils.BuildContext) (err error) {
-	x.Digest, err = utils.UFS.Fingerprint(x.Source, base.Fingerprint{} /* no seed here */)
+	x.Digest, err = utils.UFS.Fingerprint(bc, x.Source, base.Fingerprint{} /* no seed here */)
 	base.LogTrace(utils.LogUFS, "file digest %s for %q", x.Digest, x.Source)
 	return
 }

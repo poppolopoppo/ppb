@@ -248,7 +248,7 @@ func (x *ModuleModel) Build(bc utils.BuildContext) error {
 		Namespace: x.Namespace,
 	}
 
-	if err := utils.UFS.OpenBuffered(x.Source, func(r io.Reader) error {
+	if err := utils.UFS.OpenBuffered(bc, x.Source, func(r io.Reader) error {
 		return base.JsonDeserialize(x, r)
 	}); err != nil {
 		return err
