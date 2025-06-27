@@ -354,6 +354,7 @@ func executeOrDistributeAction(bc utils.BuildContext, action *ActionRules, flags
 	}
 
 	// run the external process with action command-line and file access hooking
+	var showDependencies = flags.ShowFiles.Get() || base.IsLogLevelActive(base.LOG_VERYVERBOSE)
 	processOptions.Init(
 		// internal_io.OptionProcessNewProcessGroup, // do not catch parent's signals
 		internal_io.OptionProcessContext(bc),
@@ -373,7 +374,7 @@ func executeOrDistributeAction(bc utils.BuildContext, action *ActionRules, flags
 				readFiles.Append(far.Path)
 			}
 
-			if flags.ShowFiles.Get() || base.IsLogLevelActive(base.LOG_VERYVERBOSE) {
+			if showDependencies {
 				base.LogForwardf("%v: [%s]  %s%s", base.MakeStringer(func() string {
 					return action.Alias().String()
 				}), far.Access, far.Path, base.Blend("", " (IGNORED)", ignoreFile))
