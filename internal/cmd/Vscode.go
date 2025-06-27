@@ -301,7 +301,7 @@ func (vsc *VscodeBuilder) launch_configs(programAliases compile.ModuleAliases, c
 			"request": "launch",
 			"mode":    "auto",
 			"program": UFS.Caller,
-			"args":    "${input:buildPromptCommand} ${input:buildPromptArgument} -Color",
+			"args":    "${input:buildPromptCommand} ${input:buildPromptArgument}",
 		},
 		base.JsonMap{
 			"name":       fmt.Sprint("Build ", CommandEnv.Prefix(), " (Debug)"),
@@ -311,7 +311,7 @@ func (vsc *VscodeBuilder) launch_configs(programAliases compile.ModuleAliases, c
 			"mode":       "auto",
 			"program":    UFS.Caller,
 			"buildFlags": "-tags=ppb_debug,debug -pgo=off",
-			"args":       "${input:buildPromptCommand} ${input:buildPromptArgument} -Color",
+			"args":       "${input:buildPromptCommand} ${input:buildPromptArgument}",
 		},
 		base.JsonMap{
 			"name":       fmt.Sprint("Build ", CommandEnv.Prefix(), " (Profiling)"),
@@ -321,7 +321,7 @@ func (vsc *VscodeBuilder) launch_configs(programAliases compile.ModuleAliases, c
 			"mode":       "auto",
 			"program":    UFS.Caller,
 			"buildFlags": "-tags=ppb_profiling",
-			"args":       "${input:buildPromptCommand} ${input:buildPromptArgument} -Color -q",
+			"args":       "${input:buildPromptCommand} ${input:buildPromptArgument} -q",
 		},
 		base.JsonMap{
 			"name":       fmt.Sprint("Build ", CommandEnv.Prefix(), " (Race)"),
@@ -334,7 +334,7 @@ func (vsc *VscodeBuilder) launch_configs(programAliases compile.ModuleAliases, c
 			"env": base.JsonMap{
 				"GORACE": "halt_on_error=true atexit_sleep_ms=10000",
 			},
-			"args": "${input:buildPromptCommand} ${input:buildPromptArgument} -Color",
+			"args": "${input:buildPromptCommand} ${input:buildPromptArgument}",
 		},
 		base.JsonMap{
 			"name":       fmt.Sprint("Build ", CommandEnv.Prefix(), " (Trace)"),
@@ -344,7 +344,7 @@ func (vsc *VscodeBuilder) launch_configs(programAliases compile.ModuleAliases, c
 			"mode":       "auto",
 			"program":    UFS.Caller,
 			"buildFlags": "-tags=ppb_trace -pgo=off",
-			"args":       "${input:buildPromptCommand} ${input:buildPromptArgument} -Color",
+			"args":       "${input:buildPromptCommand} ${input:buildPromptArgument}",
 		})
 
 	allCommands := AllCommands.Keys()
