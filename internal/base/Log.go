@@ -3,12 +3,12 @@ package base
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"hash/fnv"
 	"io"
 	"log"
 	"math"
-	"math/rand"
 	"os"
 	"runtime"
 	"sort"
@@ -676,42 +676,35 @@ func newDeferredLogger(logger Logger) *deferredLogger {
 		logger:  logger,
 		barrier: barrier,
 		thread: NewFixedSizeThreadPoolEx("logger", 1,
-			func(threadContext ThreadContext, high <-chan TaskQueued, mid <-chan TaskQueued, low <-chan TaskQueued) {
-				mustQuit := false
-				runTask := func(task TaskFunc) {
-					if task != nil {
-						barrier.Lock()
-						defer barrier.Unlock()
-						task(threadContext)
-					} else {
-						mustQuit = true
-					}
-				}
+			func(threadContext ThreadContext, queue TaskPriorityQueue) {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
 
 				if logger.IsInteractive() {
-					for !mustQuit {
-						// refresh pinned logs if no message output after a while
-						select {
-						case task := <-high:
-							runTask(task.Func)
-						case task := <-mid:
-							runTask(task.Func)
-						case task := <-low:
-							runTask(task.Func)
-						case <-time.After(LOGGER_REFRESH_PERIOD):
-							logger.Refresh()
+					go func() {
+						for {
+							select {
+							case <-ctx.Done():
+								return
+							case <-time.After(LOGGER_REFRESH_PERIOD):
+								queue.Push(TaskQueued{
+									Func: func(_ ThreadContext) {
+										logger.Refresh()
+									},
+									DebugId: ThreadPoolDebugId{Category: "logger.Refresh"},
+								}, TASKPRIORITY_LOW)
+							}
 						}
-					}
-				} else {
-					for !mustQuit {
-						select {
-						case task := <-high:
-							runTask(task.Func)
-						case task := <-mid:
-							runTask(task.Func)
-						case task := <-low:
-							runTask(task.Func)
-						}
+					}()
+				}
+
+				for {
+					if task := queue.Pop(); task.Func != nil {
+						barrier.Lock()
+						task.Func(threadContext)
+						barrier.Unlock()
+					} else {
+						break
 					}
 				}
 			})}
@@ -1167,7 +1160,9 @@ func (x *interactiveLogger) Write(buf []byte) (n int, err error) {
 func (x *interactiveLogger) refreshMessages(inner func()) {
 	now := time.Now()
 	if now.Sub(x.lastRefresh) < LOGGER_REFRESH_PERIOD {
-		inner()
+		if inner != nil {
+			inner()
+		}
 		return
 	}
 	x.lastRefresh = now
@@ -1455,13 +1450,13 @@ func LogBenchmark(category *LogCategory, msg string, args ...interface{}) Benchm
 	}
 }
 
-func CopyWithProgress(context string, totalSize int64, dst io.Writer, src io.Reader) (err error) {
+func CopyWithProgress(ctx context.Context, context string, totalSize int64, dst io.Writer, src io.Reader) (err error) {
 	pageAlloc := GetBytesRecyclerBySize(totalSize)
 
 	if EnableInteractiveShell() {
-		_, err = TransientIoCopyWithProgress(context, totalSize, dst, src, pageAlloc)
+		_, err = TransientIoCopyWithProgress(ctx, context, totalSize, dst, src, pageAlloc)
 	} else {
-		_, err = TransientIoCopy(dst, src, pageAlloc, totalSize > int64(pageAlloc.Stride()))
+		_, err = TransientIoCopy(ctx, dst, src, pageAlloc, totalSize > int64(pageAlloc.Stride()))
 	}
 	return
 }

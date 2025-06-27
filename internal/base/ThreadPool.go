@@ -137,13 +137,63 @@ type TaskQueued struct {
 	DebugId ThreadPoolDebugId
 }
 
-type fixedSizeThreadPool struct {
-	give     [3]chan TaskQueued
-	loop     func(fswp *fixedSizeThreadPool, i int)
-	workload atomic.Int32
+type TaskQueuedAndPriority struct {
+	TaskQueued
+	Piority TaskPriority
+}
 
+type TaskPriorityQueue interface {
+	Len() int
+	Push(task TaskQueued, priority TaskPriority)
+	Pop() TaskQueuedAndPriority
+}
+
+type taskPriorityQueue struct {
+	mu       sync.Mutex
+	nonEmpty *sync.Cond
+	give     [3][]TaskQueued
+	inflight int32
+}
+
+func (x *taskPriorityQueue) Len() int {
+	return int(atomic.LoadInt32(&x.inflight))
+}
+
+func (x *taskPriorityQueue) Push(task TaskQueued, priority TaskPriority) {
+	x.nonEmpty.L.Lock()
+	x.give[int(priority)] = append(x.give[int(priority)], task)
+	x.inflight += 1
+	x.nonEmpty.L.Unlock()
+	x.nonEmpty.Signal()
+}
+
+func (x *taskPriorityQueue) Pop() TaskQueuedAndPriority {
+	x.nonEmpty.L.Lock()
+	defer x.nonEmpty.L.Unlock()
+	for {
+		for i, q := range x.give {
+			if len(q) > 0 {
+				task := q[0]
+				x.give[i] = q[1:]
+				x.inflight -= 1
+				return TaskQueuedAndPriority{
+					TaskQueued: task,
+					Piority:    TaskPriority(i),
+				}
+			}
+		}
+
+		x.nonEmpty.Wait()
+	}
+}
+
+type fixedSizeThreadPool struct {
 	name       string
 	numWorkers int
+	loop       func(fswp *fixedSizeThreadPool, i int)
+
+	queue    taskPriorityQueue
+	workload atomic.Int32
 
 	onWorkStartEvent    ConcurrentEvent[ThreadPoolWorkEvent]
 	onWorkFinishedEvent ConcurrentEvent[ThreadPoolWorkEvent]
@@ -157,12 +207,12 @@ func NewFixedSizeThreadPool(name string, numWorkers int) ThreadPool {
 		fswp.threadLoop(threadContext)
 	})
 }
-func NewFixedSizeThreadPoolEx(name string, numWorkers int, loop func(ThreadContext, <-chan TaskQueued, <-chan TaskQueued, <-chan TaskQueued)) ThreadPool {
+func NewFixedSizeThreadPoolEx(name string, numWorkers int, loop func(ThreadContext, TaskPriorityQueue)) ThreadPool {
 	return newFixedSizeThreadPoolImpl(name, numWorkers, func(fswp *fixedSizeThreadPool, i int) {
 		threadContext := onWorkerThreadStart(fswp, i)
 		defer onWorkerThreadStop(fswp, i)
 
-		loop(threadContext, fswp.give[TASKPRIORITY_HIGH], fswp.give[TASKPRIORITY_NORMAL], fswp.give[TASKPRIORITY_LOW])
+		loop(threadContext, &fswp.queue)
 	})
 }
 func newFixedSizeThreadPoolImpl(name string, numWorkers int, loop func(*fixedSizeThreadPool, int)) ThreadPool {
@@ -171,14 +221,20 @@ func newFixedSizeThreadPoolImpl(name string, numWorkers int, loop func(*fixedSiz
 		name:       name,
 		numWorkers: numWorkers,
 	}
-	pool.give[TASKPRIORITY_HIGH] = make(chan TaskQueued)
-	pool.give[TASKPRIORITY_NORMAL] = make(chan TaskQueued)
-	pool.give[TASKPRIORITY_LOW] = make(chan TaskQueued)
+	pool.queue = taskPriorityQueue{
+		give: [3][]TaskQueued{
+			make([]TaskQueued, 0, 33),
+			make([]TaskQueued, 0, 33),
+			make([]TaskQueued, 0, 33),
+		},
+	}
+	pool.queue.nonEmpty = sync.NewCond(&pool.queue.mu)
 
 	for i := 0; i < pool.numWorkers; i++ {
 		workerIndex := i
 		go pool.loop(pool, workerIndex)
 	}
+
 	runtime.SetFinalizer(pool, func(pool *fixedSizeThreadPool) {
 		pool.Join()
 	})
@@ -189,22 +245,17 @@ func (x *fixedSizeThreadPool) GetArity() int    { return x.numWorkers }
 func (x *fixedSizeThreadPool) GetWorkload() int { return int(x.workload.Load()) }
 func (x *fixedSizeThreadPool) Queue(task TaskFunc, priority TaskPriority, debugId ThreadPoolDebugId) {
 	if task != nil {
-		x.give[priority] <- TaskQueued{
+		x.queue.Push(TaskQueued{
 			Func:    task,
 			DebugId: debugId,
-		}
+		}, priority)
 	}
 }
 func (x *fixedSizeThreadPool) Close() {
-	defer func() {
-		close(x.give[TASKPRIORITY_HIGH])
-		close(x.give[TASKPRIORITY_NORMAL])
-		close(x.give[TASKPRIORITY_LOW])
-	}()
 	for i := 0; i < x.numWorkers; i++ {
-		x.give[TASKPRIORITY_LOW] <- TaskQueued{
+		x.queue.Push(TaskQueued{
 			Func: nil, // push a nil task to kill the future
-		}
+		}, TASKPRIORITY_LOW)
 	}
 }
 func (x *fixedSizeThreadPool) Join() {
@@ -233,9 +284,9 @@ func (x *fixedSizeThreadPool) Resize(n int) {
 		}
 	} else {
 		for i := 0; i < -delta; i++ {
-			x.give[TASKPRIORITY_LOW] <- TaskQueued{
+			x.queue.Push(TaskQueued{
 				Func: nil, // push a nil task to kill a worker goroutine
-			}
+			}, TASKPRIORITY_LOW)
 		}
 	}
 
@@ -269,16 +320,16 @@ func onWorkerThreadStart(pool ThreadPool, workerIndex int) ThreadContext {
 	return NewThreadContext(pool, int32(workerIndex))
 }
 func onWorkerThreadStop(pool ThreadPool, workerIndex int) {
-	//runtime.UnlockOSThread() // let acquired thread die with the pool
+	runtime.UnlockOSThread() // let acquired thread die with the pool
 }
 
-func (x *fixedSizeThreadPool) runTaskOnWorker(threadContext ThreadContext, task TaskQueued, priority TaskPriority) {
+func (x *fixedSizeThreadPool) runTaskOnWorker(threadContext ThreadContext, task TaskQueuedAndPriority) {
 	x.workload.Add(1)
 	if x.onWorkStartEvent.Bound() {
 		x.onWorkStartEvent.Invoke(ThreadPoolWorkEvent{
 			Context:  threadContext,
 			DebugId:  task.DebugId,
-			Priority: priority,
+			Priority: task.Piority,
 		})
 	}
 	defer func() {
@@ -286,7 +337,7 @@ func (x *fixedSizeThreadPool) runTaskOnWorker(threadContext ThreadContext, task 
 			x.onWorkFinishedEvent.Invoke(ThreadPoolWorkEvent{
 				Context:  threadContext,
 				DebugId:  task.DebugId,
-				Priority: priority,
+				Priority: task.Piority,
 			})
 		}
 		x.workload.Add(-1)
@@ -296,21 +347,12 @@ func (x *fixedSizeThreadPool) runTaskOnWorker(threadContext ThreadContext, task 
 }
 func (x *fixedSizeThreadPool) threadLoop(threadContext ThreadContext) {
 	for {
-		var task TaskQueued
-		var priority TaskPriority
-		select {
-		case task = <-x.give[TASKPRIORITY_HIGH]: // high priority first
-			priority = TASKPRIORITY_HIGH
-		case task = <-x.give[TASKPRIORITY_NORMAL]:
-			priority = TASKPRIORITY_NORMAL
-		case task = <-x.give[TASKPRIORITY_LOW]: // low priority only if high and normal are empty
-			priority = TASKPRIORITY_LOW
-		}
+		task := x.queue.Pop()
 
 		if task.Func == nil {
 			break // worker was killed
 		}
 
-		x.runTaskOnWorker(threadContext, task, priority)
+		x.runTaskOnWorker(threadContext, task)
 	}
 }
