@@ -2,7 +2,6 @@ package utils
 
 import (
 	"fmt"
-	"math"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -12,7 +11,7 @@ import (
 
 type BuildStats struct {
 	InclusiveStart time.Duration
-	ExclusiveStart time.Duration
+	ExclusiveStart base.Optional[time.Duration]
 	Duration       struct {
 		Inclusive time.Duration
 		Exclusive time.Duration
@@ -20,9 +19,6 @@ type BuildStats struct {
 	Count int32
 }
 
-func (x BuildStats) GetExclusiveEnd() time.Duration {
-	return x.ExclusiveStart + x.Duration.Exclusive
-}
 func (x BuildStats) GetInclusiveEnd() time.Duration {
 	return x.InclusiveStart + x.Duration.Inclusive
 }
@@ -62,18 +58,23 @@ func (x *BuildStats) add(other *BuildStats) {
 func (x *BuildStats) startTimer() {
 	x.Count++
 	x.InclusiveStart = base.Elapsed()
-	x.ExclusiveStart = x.InclusiveStart
+	x.ExclusiveStart = base.NewOption(x.InclusiveStart)
 }
 func (x *BuildStats) stopTimer() {
 	elapsed := base.Elapsed()
 	x.Duration.Inclusive += (elapsed - x.InclusiveStart)
-	x.Duration.Exclusive += (elapsed - x.ExclusiveStart)
+	if start, err := x.ExclusiveStart.Get(); err == nil {
+		x.Duration.Exclusive += (elapsed - start)
+	}
 }
 func (x *BuildStats) pauseTimer() {
-	x.Duration.Exclusive += (base.Elapsed() - x.ExclusiveStart)
+	if start, err := x.ExclusiveStart.Get(); err == nil {
+		x.Duration.Exclusive += (base.Elapsed() - start)
+	}
+	x.ExclusiveStart = base.NoneOption[time.Duration]()
 }
 func (x *BuildStats) resumeTimer() {
-	x.ExclusiveStart = base.Elapsed()
+	x.ExclusiveStart = base.NewOption(base.Elapsed())
 }
 
 /***************************************
