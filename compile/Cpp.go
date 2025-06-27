@@ -32,13 +32,14 @@ type CppRules struct {
 	Sanitizer     SanitizerType         `json:",omitempty" jsonschema:"description=Sanitizer options for the build"`
 	Unity         UnityType             `json:",omitempty" jsonschema:"description=Unity build options for the build"`
 
-	AdaptiveUnity utils.BoolVar `json:",omitempty" jsonschema:"description=Enable adaptive unity builds"`
-	Benchmark     utils.BoolVar `json:",omitempty" jsonschema:"description=Enable benchmarking"`
-	Deterministic utils.BoolVar `json:",omitempty" jsonschema:"description=Enable deterministic builds"`
-	DebugFastLink utils.BoolVar `json:",omitempty" jsonschema:"description=Enable fast linking for debugging"`
-	Incremental   utils.BoolVar `json:",omitempty" jsonschema:"description=Enable incremental builds"`
-	LTO           utils.BoolVar `json:",omitempty" jsonschema:"description=Enable link-time optimization"`
-	RuntimeChecks utils.BoolVar `json:",omitempty" jsonschema:"description=Enable runtime checks"`
+	AdaptiveUnity  utils.BoolVar `json:",omitempty" jsonschema:"description=Enable adaptive unity builds"`
+	Benchmark      utils.BoolVar `json:",omitempty" jsonschema:"description=Enable benchmarking"`
+	Deterministic  utils.BoolVar `json:",omitempty" jsonschema:"description=Enable deterministic builds"`
+	DebugFastLink  utils.BoolVar `json:",omitempty" jsonschema:"description=Enable fast linking for debugging"`
+	Incremental    utils.BoolVar `json:",omitempty" jsonschema:"description=Enable incremental builds"`
+	LTO            utils.BoolVar `json:",omitempty" jsonschema:"description=Enable link-time optimization"`
+	RuntimeChecks  utils.BoolVar `json:",omitempty" jsonschema:"description=Enable runtime checks"`
+	StaticAnalysis utils.BoolVar `json:",omitempty" jsonschema:"description=Enable compiler static analysis"`
 
 	CompilerVerbose utils.BoolVar `json:",omitempty" jsonschema:"description=Enable verbose compiler output"`
 	LinkerVerbose   utils.BoolVar `json:",omitempty" jsonschema:"description=Enable verbose linker output"`
@@ -85,6 +86,7 @@ func (rules *CppRules) Serialize(ar base.Archive) {
 	ar.Serializable(&rules.Incremental)
 	ar.Serializable(&rules.LTO)
 	ar.Serializable(&rules.RuntimeChecks)
+	ar.Serializable(&rules.StaticAnalysis)
 
 	ar.Serializable(&rules.CompilerVerbose)
 	ar.Serializable(&rules.LinkerVerbose)
@@ -117,6 +119,7 @@ func (rules *CppRules) Inherit(other *CppRules) {
 	base.Inherit(&rules.Incremental, other.Incremental)
 	base.Inherit(&rules.LTO, other.LTO)
 	base.Inherit(&rules.RuntimeChecks, other.RuntimeChecks)
+	base.Inherit(&rules.StaticAnalysis, other.StaticAnalysis)
 	base.Inherit(&rules.SizePerUnity, other.SizePerUnity)
 
 	base.Inherit(&rules.CompilerVerbose, other.CompilerVerbose)
@@ -150,6 +153,7 @@ func (rules *CppRules) Overwrite(other *CppRules) {
 	base.Overwrite(&rules.Incremental, other.Incremental)
 	base.Overwrite(&rules.LTO, other.LTO)
 	base.Overwrite(&rules.RuntimeChecks, other.RuntimeChecks)
+	base.Overwrite(&rules.StaticAnalysis, other.StaticAnalysis)
 	base.Overwrite(&rules.SizePerUnity, other.SizePerUnity)
 
 	base.Overwrite(&rules.CompilerVerbose, other.CompilerVerbose)

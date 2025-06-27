@@ -6,7 +6,7 @@ import (
 	"github.com/poppolopoppo/ppb/compile"
 	"github.com/poppolopoppo/ppb/internal/base"
 
-	. "github.com/poppolopoppo/ppb/utils"
+	utils "github.com/poppolopoppo/ppb/utils"
 )
 
 var LogLinux = base.NewLogCategory("Linux")
@@ -48,7 +48,7 @@ type LinuxFlags struct {
 	GccVer            GccVersion
 	LlvmVer           LlvmVersion
 	DumpRecordLayouts DumpRecordLayoutsType
-	StackSize         IntVar
+	StackSize         utils.IntVar
 }
 
 var GetLinuxFlags = compile.NewCompilationFlags("LinuxCompilation", "linux-specific compilation flags", LinuxFlags{
@@ -59,7 +59,7 @@ var GetLinuxFlags = compile.NewCompilationFlags("LinuxCompilation", "linux-speci
 	StackSize:         2000000,
 })
 
-func (flags *LinuxFlags) Flags(cfv CommandFlagsVisitor) {
+func (flags *LinuxFlags) Flags(cfv utils.CommandFlagsVisitor) {
 	cfv.Persistent("Compiler", "select windows compiler", &flags.Compiler)
 	cfv.Persistent("DumpRecordLayouts", "use to investigate structure layouts", &flags.DumpRecordLayouts)
 	cfv.Persistent("GccVer", "select GCC toolchain version", &flags.GccVer)
@@ -76,7 +76,7 @@ type LinuxPlatform struct {
 	CompilerType CompilerType
 }
 
-func (linux *LinuxPlatform) Build(bc BuildContext) (err error) {
+func (linux *LinuxPlatform) Build(bc utils.BuildContext) (err error) {
 	if linuxFlags, err := GetLinuxFlags(bc); err == nil {
 		linux.CompilerType = linuxFlags.Compiler
 	} else {
@@ -88,15 +88,15 @@ func (linux *LinuxPlatform) Serialize(ar base.Archive) {
 	ar.Serializable(&linux.PlatformRules)
 	ar.Serializable(&linux.CompilerType)
 }
-func (linux *LinuxPlatform) GetCompiler() BuildFactoryTyped[compile.Compiler] {
+func (linux *LinuxPlatform) GetCompiler() utils.BuildFactoryTyped[compile.Compiler] {
 	switch linux.CompilerType {
 	case COMPILER_CLANG:
-		return WrapBuildFactory(func(bi BuildInitializer) (compile.Compiler, error) {
+		return utils.WrapBuildFactory(func(bi utils.BuildInitializer) (compile.Compiler, error) {
 			llvm, err := GetLlvmCompiler(linux.Arch).Create(bi)
 			return llvm.(compile.Compiler), err
 		})
 	case COMPILER_GCC:
-		return WrapBuildFactory(func(bi BuildInitializer) (compile.Compiler, error) {
+		return utils.WrapBuildFactory(func(bi utils.BuildInitializer) (compile.Compiler, error) {
 			llvm, err := GetGccCompiler(linux.Arch).Create(bi)
 			return llvm.(compile.Compiler), err
 		})

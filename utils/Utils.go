@@ -32,6 +32,12 @@ var IfLinux = base.IfLinux
 var IfWindows = base.IfWindows
 var SanitizeIdentifier = base.SanitizeIdentifier
 
+const (
+	INHERITABLE_INHERIT = base.INHERITABLE_INHERIT
+	INHERITABLE_FALSE   = base.INHERITABLE_FALSE
+	INHERITABLE_TRUE    = base.INHERITABLE_TRUE
+)
+
 func Inherit[T base.InheritableBase](result *T, values ...T) {
 	base.Inherit(result, values...)
 }

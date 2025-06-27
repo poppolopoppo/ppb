@@ -114,6 +114,7 @@ var GetCompileFlags = NewCompilationFlags("GenericCompilation", "cross-platform 
 	PCH:             PCH_INHERIT,
 	RuntimeChecks:   base.INHERITABLE_INHERIT,
 	RuntimeLib:      RUNTIMELIB_INHERIT,
+	StaticAnalysis:  base.INHERITABLE_INHERIT,
 	Sanitizer:       SANITIZER_NONE,
 	SizePerUnity:    150 * 1024.0, // 150 KiB
 	Unity:           UNITY_INHERIT,
@@ -148,6 +149,7 @@ func (flags *CompileFlags) Flags(cfv CommandFlagsVisitor) {
 	cfv.Persistent("RuntimeChecks", "enable/disable runtime security checks", &flags.RuntimeChecks)
 	cfv.Persistent("RuntimeLib", "override runtime library selection", &flags.RuntimeLib)
 	cfv.Persistent("Sanitizer", "override sanitizer mode", &flags.Sanitizer)
+	cfv.Persistent("StaticAnalysis", "enable/disable compiler static analysis", &flags.StaticAnalysis)
 	cfv.Persistent("SizePerUnity", "size limit for splitting unity files", &flags.SizePerUnity)
 	cfv.Persistent("Unity", "override unity build mode", &flags.Unity)
 	cfv.Persistent("Warning", "override default warning level", &flags.Warnings.Default)

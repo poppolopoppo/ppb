@@ -607,7 +607,7 @@ func (msvc *MsvcCompiler) Decorate(bg BuildGraphReadPort, compileEnv *CompileEnv
 	u.AddCompilationFlag(fmt.Sprintf("/F%d", stackSize))
 	u.LinkerOptions.Append(fmt.Sprintf("/STACK:%d", stackSize))
 
-	if msvc.WindowsFlags.Analyze.Get() {
+	if u.StaticAnalysis.Get() {
 		base.LogVeryVerbose(LogMsvc, "%v: using msvc static analysis", u)
 
 		msvcProduct, err := msvc.GetMsvcProduct(bg)

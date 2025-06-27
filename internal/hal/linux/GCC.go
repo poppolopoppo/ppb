@@ -284,6 +284,12 @@ func (gcc *GccCompiler) Decorate(bg utils.BuildGraphReadPort, compileEnv *compil
 	gcc_CXX_setWarningLevel(u, "cast-qual", u.Warnings.UnsafeTypeCast)
 	gcc_CXX_setWarningLevel(u, "conversion", u.Warnings.UnsafeTypeCast)
 	gcc_CXX_setWarningLevel(u, "narrowing", u.Warnings.UnsafeTypeCast)
+	// Static code analyzer
+	if u.StaticAnalysis.IsEnabled() {
+		u.AddCompilationFlag_NoPreprocessor(
+			"-fanalyzer",
+		)
+	}
 
 	// Optimization
 	switch u.Optimize {

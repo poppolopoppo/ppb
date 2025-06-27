@@ -53,7 +53,6 @@ func InitWindowsCompile() {
 
 type WindowsFlags struct {
 	Compiler         CompilerType
-	Analyze          BoolVar
 	Insider          BoolVar
 	JustMyCode       BoolVar
 	LlvmToolchain    BoolVar
@@ -67,7 +66,6 @@ type WindowsFlags struct {
 }
 
 var GetWindowsFlags = NewCompilationFlags("WindowsCompilation", "windows-specific compilation flags", WindowsFlags{
-	Analyze:          base.INHERITABLE_FALSE,
 	Compiler:         COMPILER_MSVC,
 	Insider:          base.INHERITABLE_FALSE,
 	JustMyCode:       base.INHERITABLE_FALSE,
@@ -81,7 +79,6 @@ var GetWindowsFlags = NewCompilationFlags("WindowsCompilation", "windows-specifi
 })
 
 func (flags *WindowsFlags) Flags(cfv CommandFlagsVisitor) {
-	cfv.Persistent("Analyze", "enable/disable MSCV analysis", &flags.Analyze)
 	cfv.Persistent("Compiler", "select windows compiler", &flags.Compiler)
 	cfv.Persistent("Insider", "enable/disable support for pre-release toolchain", &flags.Insider)
 	cfv.Persistent("JustMyCode", "enable/disable MSCV just-my-code", &flags.JustMyCode)

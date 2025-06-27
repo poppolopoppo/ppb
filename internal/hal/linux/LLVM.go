@@ -293,6 +293,13 @@ func (llvm *LlvmCompiler) Decorate(bg utils.BuildGraphReadPort, compileEnv *comp
 	llvm_CXX_setWarningLevel(u, "conversion", u.Warnings.UnsafeTypeCast)
 	llvm_CXX_setWarningLevel(u, "narrowing", u.Warnings.UnsafeTypeCast)
 
+	// Static code analyzer
+	if u.StaticAnalysis.IsEnabled() {
+		u.AddCompilationFlag_NoPreprocessor(
+			"-fanalyzer",
+		)
+	}
+
 	switch u.Optimize {
 	case compile.OPTIMIZE_NONE:
 		u.AddCompilationFlag("-O0")
