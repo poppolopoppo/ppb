@@ -42,7 +42,7 @@ func (x *PeerAvaibility) ReadyForWork() bool {
 	return x.AvailableThreads.Load() > 0
 }
 func (x *PeerAvaibility) UpdateResources(ctx context.Context, worker *WorkerFlags, hw *PeerHardware, numJobsInFlight int32) (changed bool, err error) {
-	if x.lastUpdate == (time.Time{}) {
+	if x.lastUpdate.Equal(time.Time{}) {
 		changed = true
 	}
 	x.lastUpdate = time.Now()

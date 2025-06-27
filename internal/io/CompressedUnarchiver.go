@@ -193,7 +193,7 @@ func (x *CompressedUnarchiver) Build(bc utils.BuildContext) error {
 			if !bc.GetBuildOptions().Force {
 				if info, err := destination.Info(); err == nil {
 					bSkipExtraction := false
-					if info.ModTime().UTC() == header.archiveMtime.UTC() && info.Size() == src.Size() {
+					if info.ModTime().UTC().Equal(header.archiveMtime.UTC()) && info.Size() == src.Size() {
 						if checkCrc32, err := header.archiveCrc32.Get(); err == nil {
 							if localCrc32, err := utils.UFS.Crc32(destination); err == nil {
 								bSkipExtraction = (localCrc32 == checkCrc32)

@@ -172,7 +172,7 @@ func (x *PeerDiscovery) Discover(retryCount int, timeout time.Duration) (int, er
 				continue
 			}
 
-			if peer.LastSeen != st.ModTime() {
+			if !peer.LastSeen.Equal(st.ModTime()) {
 				peer.LastSeen = st.ModTime()
 			} else {
 				if registerPeer(peer) {

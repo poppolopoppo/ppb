@@ -709,7 +709,7 @@ func MakeBuildFingerprint(buildable Buildable) (result base.Fingerprint) {
 func MakeTimedBuildStamp(modTime time.Time, fingerprint base.Fingerprint) BuildStamp {
 	return BuildStamp{
 		// round up timestamp to millisecond, see ArchiveBinaryReader/Writer.Time()
-		ModTime: time.UnixMilli(modTime.UnixMilli()),
+		ModTime: time.UnixMilli(modTime.UTC().UnixMilli()),
 		Content: fingerprint,
 	}
 }

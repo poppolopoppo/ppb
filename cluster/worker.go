@@ -112,7 +112,7 @@ func (x *Worker) Start() (context.CancelFunc, error) {
 
 	ctx, cancel := context.WithCancel(x.Cluster.Context)
 
-	x.await = base.MakeAsyncFuture[int](func() (int, error) {
+	x.await = base.MakeAsyncFuture(func() (int, error) {
 		// broadcast discovery in a separate dependent go channel
 		defer base.MakeAsyncFuture(func() (int, error) {
 			broadcastTick := time.NewTicker(x.GetBroadcastDuraction())

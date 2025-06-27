@@ -186,7 +186,7 @@ func DownloadFile(dst utils.Filename, src base.Url) (int64, error) {
 			return 0, err
 		}
 
-		if dstInfo, err := dst.Info(); err == nil && cacheInfo.ModTime() == dstInfo.ModTime() && cacheInfo.Size() == dstInfo.Size() {
+		if dstInfo, err := dst.Info(); err == nil && cacheInfo.ModTime().UTC().Equal(dstInfo.ModTime().UTC()) && cacheInfo.Size() == dstInfo.Size() {
 			// destination size and mtime are already matching, skip copy file
 			base.LogVerbose(LogDownload, "skipping copy of %q, since mod time and size perfectly match", cacheFile)
 			return dstInfo.Size(), nil

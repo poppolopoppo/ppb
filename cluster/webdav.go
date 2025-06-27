@@ -124,7 +124,7 @@ func (x *WebdavServer) Start(ctx context.Context, host net.IP, port string) erro
 	x.addr = *tcp
 	x.addr.IP = host
 
-	x.async = base.MakeAsyncFuture[int](func() (int, error) {
+	x.async = base.MakeAsyncFuture(func() (int, error) {
 		defer x.server.Close()
 		defer listener.Close()
 

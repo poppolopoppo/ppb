@@ -64,7 +64,7 @@ func (x *Client) Start() (context.CancelFunc, error) {
 	}
 
 	localCancel := x.cancel
-	x.async = base.MakeFuture[int](func() (int, error) {
+	x.async = base.MakeFuture(func() (int, error) {
 		ticker := time.NewTicker(x.Cluster.GetTimeoutDuration() / 3)
 		defer func() {
 			localCancel()

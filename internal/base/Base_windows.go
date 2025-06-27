@@ -49,7 +49,7 @@ func SetMTime(file *os.File, mtime time.Time) (err error) {
 		Assert(func() bool {
 			var info os.FileInfo
 			if info, err = file.Stat(); err == nil {
-				if info.ModTime() != mtime {
+				if !info.ModTime().UTC().Equal(mtime.UTC()) {
 					LogPanic(LogBase, "SetMTime: timestamp mismatch for %q\n\tfound:\t\t%v\n\texpected:\t\t%v", file.Name(), info.ModTime(), mtime)
 				}
 			}
