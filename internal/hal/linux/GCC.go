@@ -258,8 +258,12 @@ func (gcc *GccCompiler) Decorate(bg utils.BuildGraphReadPort, compileEnv *compil
 		u.AddCompilationFlag("-static")
 	}
 
+	// Enable libc debugging if necessary
 	if u.RuntimeLib.IsDebug() {
-		u.Defines.Append("_GLIBCXX_DEBUG")
+		u.Defines.Append(
+			"_GLIBCXX_DEBUG",
+			"_GLIBCXX_DEBUG_PEDANTIC",
+		)
 	}
 
 	// Warnings
@@ -277,13 +281,17 @@ func (gcc *GccCompiler) Decorate(bg utils.BuildGraphReadPort, compileEnv *compil
 	}
 
 	gcc_CXX_setWarningLevel(u, "deprecated-declarations", u.Warnings.Deprecation)
+	gcc_CXX_setWarningLevel(u, "null-reference", u.Warnings.Pedantic)
 	gcc_CXX_setWarningLevel(u, "pedantic", u.Warnings.Pedantic)
 	gcc_CXX_setWarningLevel(u, "shadow", u.Warnings.ShadowVariable)
 	gcc_CXX_setWarningLevel(u, "undef", u.Warnings.UndefinedMacro)
 	gcc_CXX_setWarningLevel(u, "cast-align", u.Warnings.UnsafeTypeCast)
 	gcc_CXX_setWarningLevel(u, "cast-qual", u.Warnings.UnsafeTypeCast)
 	gcc_CXX_setWarningLevel(u, "conversion", u.Warnings.UnsafeTypeCast)
+	gcc_CXX_setWarningLevel(u, "double-promotion", u.Warnings.UnsafeTypeCast)
 	gcc_CXX_setWarningLevel(u, "narrowing", u.Warnings.UnsafeTypeCast)
+	gcc_CXX_setWarningLevel(u, "sign-conversion", u.Warnings.UnsafeTypeCast)
+
 	// Static code analyzer
 	if u.StaticAnalysis.IsEnabled() {
 		u.AddCompilationFlag_NoPreprocessor(
@@ -519,18 +527,19 @@ func (x *GccCompiler) Build(bc utils.BuildContext) error {
 		"CPP_COMPILER=Gcc",
 	)
 
-	facet.AddCompilationFlag_NoAnalysis(
-		"-o", "%2", "%1", // input file injection"
-	)
 	facet.CompilerOptions.Append(
 		"-c", // compile only
 	)
 	facet.PrecompiledHeaderOptions.Append(
-		"-x", "c++-header", // generate precompiled header
+		"-x", "c++-header", "-c", // generate precompiled header
+	)
+
+	facet.AddCompilationFlag_NoAnalysis(
+		"%1", "-o", "%2", // input file injection"
 	)
 
 	facet.AddCompilationFlag(
-		"-Wformat", "-Wformat-security", // detect Potential Formatting Attack
+		"-Wformat=2", "-Wformat-security", // detect Potential Formatting Attack
 		"-fsized-deallocation", // https://isocpp.org/files/papers/n3778.html
 		"-mlzcnt", "-mpopcnt", "-mbmi",
 	)
