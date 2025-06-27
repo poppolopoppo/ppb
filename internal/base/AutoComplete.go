@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"sort"
 	"strings"
 	"unicode"
 )
@@ -242,9 +243,14 @@ type AutoCompleteResult struct {
 	Score       float32 `json:"score"`
 }
 
-func (x AutoCompleteResult) Compare(o *AutoCompleteResult) int {
+func (x AutoCompleteResult) Compare(o AutoCompleteResult) int {
 	if x.Score != o.Score {
 		if x.Score > o.Score {
+			return -1
+		}
+		return 1
+	} else if len(x.Text) != len(o.Text) {
+		if len(x.Text) < len(o.Text) {
 			return -1
 		}
 		return 1
@@ -322,7 +328,7 @@ func (x *BasicAutoComplete) Add(in, description string) float32 {
 	}
 
 	x.entries = AppendBoundedSort(x.entries, x.maxResults, newEntry, func(a, b AutoCompleteResult) bool {
-		return a.Compare(&b) < 0
+		return a.Compare(b) < 0
 	})
 
 	return newEntry.Score
@@ -438,6 +444,9 @@ func gatherAutoCompletion(typ reflect.Type, userParam any) (results []AutoComple
 		})
 		return nil
 	}, userParam).Any(reflect.New(typ).Interface())
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Compare(results[j]) < 0
+	})
 	return
 }
 
@@ -500,7 +509,15 @@ func (x GatherAutoComplete) ClearResults() {
  ***************************************/
 
 func DidYouMean[T AutoCompletable](in string, userParam any) (string, error) {
-	autocomplete := NewAutoComplete(in, 3, userParam)
+	const maxPrefixLength = 3
+	const maxResults = 3
+	autocomplete := BasicAutoComplete{
+		similarity: NewJaroWinklerLevenshteinSimilarity(in, maxPrefixLength),
+		userParam:  userParam,
+		entries:    make([]AutoCompleteResult, 0, maxResults),
+		input:      in,
+		maxResults: maxResults,
+	}
 
 	var defaultValue T
 	defaultValue.AutoComplete(&autocomplete)

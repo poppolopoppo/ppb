@@ -697,6 +697,10 @@ func (x *commandParsableArgument) Help(w *base.StructuredFile) {
 				for i, it := range allowedValues {
 					if i > 0 {
 						sb.WriteRune('|')
+						if !base.IsLogLevelActive(base.LOG_VERYVERBOSE) && sb.Len()+len(it.Text) > 100 {
+							sb.WriteString("...")
+							break
+						}
 					}
 					sb.WriteString(it.Text)
 				}
