@@ -233,7 +233,7 @@ func (x *Worker) acceptClientConn(ctx context.Context, listener *quic.Listener, 
 	return nil
 }
 
-func (x *Worker) createAcceptTunnel(ctx context.Context, conn quic.Connection) (*Tunnel, error) {
+func (x *Worker) createAcceptTunnel(ctx context.Context, conn *quic.Conn) (*Tunnel, error) {
 	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, x.Cluster.GetTimeoutDuration())
 	defer timeoutCancel()
 

@@ -41,8 +41,8 @@ type Tunnel struct {
 	Cluster     *Cluster
 	Compression base.CompressionOptions
 
-	conn   quic.Connection
-	stream quic.Stream
+	conn   *quic.Conn
+	stream *quic.Stream
 
 	ping    time.Duration
 	timeout time.Duration
@@ -68,7 +68,7 @@ func NewDialTunnel(cluster *Cluster, ctx context.Context, addr string, timeout t
 
 	return newTunnel(cluster, dialer, stream, timeout, compression...), nil
 }
-func NewListenTunnel(cluster *Cluster, ctx context.Context, conn quic.Connection, timeout time.Duration, compression ...base.CompressionOptionFunc) (*Tunnel, error) {
+func NewListenTunnel(cluster *Cluster, ctx context.Context, conn *quic.Conn, timeout time.Duration, compression ...base.CompressionOptionFunc) (*Tunnel, error) {
 	base.LogVeryVerbose(LogCluster, "accept remote peer %q", conn.RemoteAddr())
 
 	stream, err := conn.AcceptStream(ctx)
@@ -79,7 +79,7 @@ func NewListenTunnel(cluster *Cluster, ctx context.Context, conn quic.Connection
 	return newTunnel(cluster, conn, stream, timeout, compression...), nil
 }
 
-func newTunnel(cluster *Cluster, conn quic.Connection, stream quic.Stream, timeout time.Duration, compression ...base.CompressionOptionFunc) *Tunnel {
+func newTunnel(cluster *Cluster, conn *quic.Conn, stream *quic.Stream, timeout time.Duration, compression ...base.CompressionOptionFunc) *Tunnel {
 	utc := time.Now().UTC()
 	return &Tunnel{
 		Cluster:     cluster,
