@@ -72,13 +72,20 @@ type buildExecuteContext struct {
 
 	barrier sync.Mutex
 }
-
 type buildAbortError struct {
 	inner error
 }
 
 func (x buildAbortError) Error() string {
 	return "build aborted"
+}
+
+type buildStopOnError struct {
+	inner error
+}
+
+func (x buildStopOnError) Error() string {
+	return fmt.Sprintf("stop-on-error: %v", x.inner)
 }
 
 type buildExecuteError struct {
@@ -317,30 +324,15 @@ func (x *buildExecuteContext) Execute(state *buildState) (BuildResult, bool, err
 		// reset static timestamps to make sure this node is built again
 		x.node.Static.makeDirty()
 
-		// if x.Context.Err() == nil {
-		// 	err = buildExecuteError{alias: x.Alias(), inner: err}
-
-		// 	// abort every other build if stop-on-error is enabled
-		// 	if GetCommandFlags().StopOnError.Get() {
-		// 		x.Cancel(err)
-		// 	}
-		// } else {
-		// 	err = context.Cause(x.Context)
-		// } %NOCOMMIT%
-
 		switch err.(type) {
-		case buildAbortError, buildDependencyError:
+		case buildAbortError, buildStopOnError, buildDependencyError:
 		default: // failed dependency errors are only printed once
+			err = buildExecuteError{alias: x.Alias(), inner: err}
+
 			// abort every other build if stop-on-error is enabled
 			if GetCommandFlags().StopOnError.Get() {
-				x.Cancel(buildDependencyError{
-					alias: x.Alias(),
-					link:  DEPENDENCY_ROOT,
-					inner: err,
-				})
+				x.Cancel(buildStopOnError{err})
 			}
-
-			err = buildExecuteError{alias: x.Alias(), inner: err}
 		}
 
 		return emptyResult, true, err
@@ -1033,7 +1025,7 @@ func (g *buildGraphWritePort) launchBuild(node *buildNode, options *BuildOptions
 
 		if err != nil {
 			switch err.(type) {
-			case buildAbortError, buildDependencyError:
+			case buildAbortError, buildStopOnError, buildDependencyError:
 			default: // failed dependency errors are only printed once
 				base.LogError(LogBuildGraph, "%v", err)
 			}

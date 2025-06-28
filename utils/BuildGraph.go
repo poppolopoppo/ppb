@@ -695,7 +695,7 @@ func (g *buildGraphWritePort) Create(buildable Buildable, static BuildAliases, o
 
 func (x *buildGraphWritePort) CheckForAbort() error {
 	if err := x.Context.Err(); err != nil {
-		return buildAbortError{context.Cause(x.Context)}
+		return context.Cause(x.Context)
 	}
 	return nil
 }
