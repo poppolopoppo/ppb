@@ -17,6 +17,7 @@ type ActionFlags struct {
 	CacheMode             CacheModeType
 	CachePath             utils.Directory
 	DistMode              DistModeType
+	MaxConcurrency        utils.IntVar
 	AdaptiveCache         utils.BoolVar
 	ResponseFile          utils.BoolVar
 	ShowCmds              utils.BoolVar
@@ -31,6 +32,7 @@ func (x *ActionFlags) Flags(cfv utils.CommandFlagsVisitor) {
 	cfv.Persistent("CacheCompression", "set compression format for cached bulk entries", &x.CacheCompression)
 	cfv.Persistent("CacheCompressionLevel", "set compression level for cached bulk entries", &x.CacheCompressionLevel)
 	cfv.Persistent("DistMode", "distribute actions to a cluster of remote workers", &x.DistMode)
+	cfv.Persistent("MaxConcurrency", "control response files usage", &x.MaxConcurrency)
 	cfv.Persistent("ResponseFile", "control response files usage", &x.ResponseFile)
 	cfv.Variable("ShowCmds", "print executed compilation commands", &x.ShowCmds)
 	cfv.Variable("ShowFiles", "print file accesses for external commands", &x.ShowFiles)
@@ -48,6 +50,8 @@ var GetActionFlags = utils.NewCommandParsableFlags(&ActionFlags{
 	CacheCompressionLevel: base.COMPRESSION_LEVEL_FAST,
 
 	DistMode: DIST_NONE,
+
+	MaxConcurrency: base.InheritableInt(base.INHERIT_VALUE),
 
 	ResponseFile: base.INHERITABLE_TRUE,
 	ShowCmds:     base.INHERITABLE_FALSE,

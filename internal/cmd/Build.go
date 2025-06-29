@@ -9,10 +9,12 @@ import (
 )
 
 type BuildCommand struct {
-	Targets []compile.TargetAlias
-	Clean   utils.BoolVar
-	Glob    utils.BoolVar
-	Rebuild utils.BoolVar
+	Targets    []compile.TargetAlias
+	CleanBuild utils.BoolVar
+	Glob       utils.BoolVar
+	Rebuild    utils.BoolVar
+
+	previousThreadPoolArity utils.IntVar
 }
 
 var CommandBuild = utils.NewCommandable(
@@ -20,13 +22,14 @@ var CommandBuild = utils.NewCommandable(
 	"build",
 	"launch action compilation process",
 	&BuildCommand{
-		Clean:   base.INHERITABLE_FALSE,
-		Glob:    base.INHERITABLE_FALSE,
-		Rebuild: base.INHERITABLE_FALSE,
+		CleanBuild:              base.INHERITABLE_FALSE,
+		Glob:                    base.INHERITABLE_FALSE,
+		Rebuild:                 base.INHERITABLE_FALSE,
+		previousThreadPoolArity: base.InheritableInt(base.INHERIT_VALUE),
 	})
 
 func (x *BuildCommand) Flags(cfv utils.CommandFlagsVisitor) {
-	cfv.Variable("Clean", "erase all by files outputted by selected actions", &x.Clean)
+	cfv.Variable("Clean", "erase all by files outputted by selected actions", &x.CleanBuild)
 	cfv.Variable("Glob", "treat provided targets as glob expressions", &x.Glob)
 	cfv.Variable("Rebuild", "rebuild selected actions, same as building after a clean", &x.Rebuild)
 	action.GetActionFlags().Flags(cfv)
@@ -42,9 +45,27 @@ func (x *BuildCommand) Init(ci utils.CommandContext) error {
 }
 func (x *BuildCommand) Prepare(cc utils.CommandContext) error {
 	actionFlags := action.GetActionFlags()
+
+	// resize thread pool if max concurrency was set
+	if !actionFlags.MaxConcurrency.IsInheritable() && actionFlags.MaxConcurrency.Get() > 0 {
+		pool := base.GetGlobalThreadPool()
+		x.previousThreadPoolArity = utils.IntVar(pool.GetArity())
+		base.LogVeryVerbose(utils.LogCommand, "limit concurrency to %d simultaneous actions", actionFlags.MaxConcurrency.Get())
+		pool.Resize(int(actionFlags.MaxConcurrency.Get()))
+	}
+
 	// async prepare action distribution early if distrubution is enabled
 	if actionFlags.DistMode.Enabled() {
 		go action.GetActionDist()
+	}
+
+	return nil
+}
+func (x *BuildCommand) Clean(cc utils.CommandContext) error {
+	// restore original thread pool size if max concurrency was set
+	if !x.previousThreadPoolArity.IsInheritable() {
+		base.LogVeryVerbose(utils.LogCommand, "restore concurrency to %d simultaneous actions", x.previousThreadPoolArity.Get())
+		base.GetGlobalThreadPool().Resize(int(x.previousThreadPoolArity.Get()))
 	}
 
 	return nil
@@ -105,13 +126,13 @@ func (x *BuildCommand) Run(cc utils.CommandContext) error {
 		return err
 	}
 
-	if x.Clean.Get() || x.Rebuild.Get() {
+	if x.CleanBuild.Get() || x.Rebuild.Get() {
 		if err := x.cleanBuild(bg, targetActions); err != nil {
 			return err
 		}
 	}
 
-	if !x.Clean.Get() || x.Rebuild.Get() {
+	if !x.CleanBuild.Get() || x.Rebuild.Get() {
 		if err := x.doBuild(bg, targetActions); err != nil {
 			return err
 		}

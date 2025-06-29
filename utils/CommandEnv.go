@@ -149,11 +149,11 @@ func (flags *CommandFlags) Apply() error {
 	}
 
 	if flags.Purge.Get() {
-		base.LogTrace(LogCommand, "build will be forced due to '-F' command-line option")
+		base.LogVeryVerbose(LogCommand, "build will be forced due to '-F' command-line option")
 		flags.Force.Enable()
 	}
 	if flags.Force.Get() {
-		base.LogTrace(LogCommand, "fbuild will be forced due to '-f' command-line option")
+		base.LogVeryVerbose(LogCommand, "build will be forced due to '-f' command-line option")
 	}
 
 	if flags.Summary.Get() || (flags.Ide.Get() && !flags.Quiet.Get()) {
@@ -203,6 +203,7 @@ func (flags *CommandFlags) Apply() error {
 	}
 
 	if !flags.Jobs.IsInheritable() && flags.Jobs.Get() > 0 {
+		base.LogVeryVerbose(LogCommand, "limit concurrency to %d simultaneous jobs", flags.Jobs.Get())
 		base.GetGlobalThreadPool().Resize(flags.Jobs.Get())
 	}
 
