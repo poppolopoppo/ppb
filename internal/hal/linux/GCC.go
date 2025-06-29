@@ -154,6 +154,7 @@ func (gcc *GccCompiler) PrecompiledHeader(u *compile.Unit) {
 		fallthrough
 	case compile.PCH_MONOLITHIC, compile.PCH_SHARED:
 		u.CompilerOptions.Append("-include", utils.MakeLocalFilename(u.PrecompiledHeader))
+		u.IncludePaths.Prepend(u.PrecompiledObject.Dirname)
 	case compile.PCH_DISABLED:
 	default:
 		base.UnexpectedValue(u.PCH)
@@ -211,7 +212,7 @@ func (gcc *GccCompiler) LibraryPath(f *compile.Facet, dirs ...utils.Directory) {
 
 func (gcc *GccCompiler) GetPayloadOutput(u *compile.Unit, payload compile.PayloadType, file utils.Filename) utils.Filename {
 	if payload == compile.PAYLOAD_PRECOMPILEDOBJECT {
-		return file // clang does not output a compiled object when emitting PCH, only a pre-parsed AST
+		return file // gcc does not output a compiled object when emitting PCH, only a pre-parsed AST
 	}
 	return file.ReplaceExt(gcc.Extname(payload))
 }
