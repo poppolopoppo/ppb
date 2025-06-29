@@ -67,6 +67,36 @@ func InheritableCommandLine(name, input string, variable flag.Value) (bool, erro
 	return false, nil
 }
 
+func InheritMax[T interface {
+	Comparable[T]
+	InheritableBase
+}](x, y T) T {
+	if y.IsInheritable() {
+		return x
+	} else if x.IsInheritable() {
+		return y
+	} else if x.Compare(y) >= 0 {
+		return x
+	} else {
+		return y
+	}
+}
+
+func InheritMin[T interface {
+	Comparable[T]
+	InheritableBase
+}](x, y T) T {
+	if y.IsInheritable() {
+		return x
+	} else if x.IsInheritable() {
+		return y
+	} else if x.Compare(y) <= 0 {
+		return x
+	} else {
+		return y
+	}
+}
+
 /***************************************
  * InheritableString
  ***************************************/
@@ -164,7 +194,25 @@ func (x *InheritableByte) Set(in string) error {
 	}
 	return nil
 }
-
+func (x InheritableByte) Compare(y InheritableByte) int {
+	if x.Get() == y.Get() {
+		return 0
+	} else if x.Get() < y.Get() {
+		return -1
+	} else {
+		return 0
+	}
+}
+func (x *InheritableByte) Inherit(y InheritableByte) {
+	if x.IsInheritable() {
+		*x = y
+	}
+}
+func (x *InheritableByte) Overwrite(y InheritableByte) {
+	if !y.IsInheritable() {
+		*x = y
+	}
+}
 func (x InheritableByte) MarshalText() ([]byte, error) {
 	return UnsafeBytesFromString(x.String()), nil
 }
@@ -201,7 +249,25 @@ func (x *InheritableInt) Serialize(ar Archive) {
 func (x InheritableInt) IsInheritable() bool {
 	return int32(x) == int32(INHERIT_VALUE)
 }
-
+func (x InheritableInt) Compare(y InheritableInt) int {
+	if x.Get() == y.Get() {
+		return 0
+	} else if x.Get() < y.Get() {
+		return -1
+	} else {
+		return 0
+	}
+}
+func (x *InheritableInt) Inherit(y InheritableInt) {
+	if x.IsInheritable() {
+		*x = y
+	}
+}
+func (x *InheritableInt) Overwrite(y InheritableInt) {
+	if !y.IsInheritable() {
+		*x = y
+	}
+}
 func (x InheritableInt) String() string {
 	if x.IsInheritable() {
 		return INHERIT_STRING
@@ -258,7 +324,25 @@ func (x *InheritableBigInt) Serialize(ar Archive) {
 func (x InheritableBigInt) IsInheritable() bool {
 	return x.Get() == int64(INHERIT_VALUE)
 }
-
+func (x InheritableBigInt) Compare(y InheritableBigInt) int {
+	if x.Get() == y.Get() {
+		return 0
+	} else if x.Get() < y.Get() {
+		return -1
+	} else {
+		return 0
+	}
+}
+func (x *InheritableBigInt) Inherit(y InheritableBigInt) {
+	if x.IsInheritable() {
+		*x = y
+	}
+}
+func (x *InheritableBigInt) Overwrite(y InheritableBigInt) {
+	if !y.IsInheritable() {
+		*x = y
+	}
+}
 func (x InheritableBigInt) String() string {
 	if x.IsInheritable() {
 		return INHERIT_STRING
