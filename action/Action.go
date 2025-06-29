@@ -409,12 +409,8 @@ func executeOrDistributeAction(bc utils.BuildContext, action *ActionRules, flags
 		}
 
 		// limit number of concurrent external processes with MakeGlobalWorkerFuture()
-		future := base.MakeGlobalWorkerFuture(func(tc base.ThreadContext) (int, error) {
+		_, err := bc.WorkerThread(func(tc base.ThreadContext) (any, error) {
 			bc.Annotate(utils.AnnocateBuildCommentf("Thread:%d/%d", tc.GetThreadId()+1, tc.GetThreadPool().GetArity()))
-
-			if err := bc.CheckForAbort(); err != nil {
-				return -1, err
-			}
 
 			internal_io.OptionProcessOnSpinnerMessage(func(executable utils.Filename, arguments base.StringSet, options *internal_io.ProcessOptions) base.ProgressScope {
 				spinner := base.LogSpinnerEx(
@@ -430,10 +426,10 @@ func executeOrDistributeAction(bc utils.BuildContext, action *ActionRules, flags
 				base.LogForwardln("\"", action.Executable.String(), "\" \"", strings.Join(action.Arguments, "\" \""), "\"")
 			}
 
-			return 0, internal_io.RunProcess(action.Executable, action.Arguments, internal_io.OptionProcessStruct(&processOptions))
-		}, priority, base.ThreadPoolDebugId{Category: "ExecuteAction", Arg: action.Alias()})
+			return nil, internal_io.RunProcess(action.Executable, action.Arguments, internal_io.OptionProcessStruct(&processOptions))
+		}, priority, action.Alias())
 
-		if err := future.Join().Failure(); err != nil {
+		if err != nil {
 			return readFiles, err
 		}
 	}

@@ -108,6 +108,8 @@ type BuildGraphWritePort interface {
 	Build(alias BuildAliasable, options ...BuildOptionFunc) (BuildNode, base.Future[BuildResult])
 	BuildMany(aliases BuildAliases, options ...BuildOptionFunc) ([]BuildResult, error)
 
+	WorkerThread(worker func(base.ThreadContext) (any, error), priority base.TaskPriority, debugName fmt.Stringer) (any, error)
+
 	GetAggregatedBuildStats() BuildStats
 	GetBuildStats(node BuildNode) (BuildStats, bool)
 	GetCriticalPathNodes() ([]BuildState, time.Duration)
@@ -849,6 +851,20 @@ func (g *buildGraphWritePort) GetMostExpansiveNodes(n int, inclusive bool) []Bui
 	}))
 
 	return results
+}
+
+func (x *buildGraphWritePort) WorkerThread(worker func(base.ThreadContext) (any, error), priority base.TaskPriority, debugName fmt.Stringer) (any, error) {
+	x.stats.pauseTimer()
+	fut := base.MakeGlobalWorkerFuture(func(tc base.ThreadContext) (any, error) {
+		x.stats.resumeTimer()
+
+		if err := x.CheckForAbort(); err != nil {
+			return -1, err
+		}
+
+		return worker(tc)
+	}, priority, base.ThreadPoolDebugId{Category: "Worker", Arg: debugName})
+	return fut.Join().Get()
 }
 
 /***************************************
