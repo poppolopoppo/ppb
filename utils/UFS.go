@@ -569,7 +569,7 @@ func (list *DirSet) AppendUniq(it ...Directory) {
 	}
 }
 func (list *DirSet) Prepend(it ...Directory) {
-	*list = base.PrependEquatable_CheckUniq(it, *list...)
+	*list = base.PrependEquatable_CheckUniq(*list, it...)
 }
 func (list *DirSet) Remove(it ...Directory) {
 	*list = base.Remove(*list, it...)
@@ -665,7 +665,7 @@ func (list *FileSet) AppendUniq(it ...Filename) {
 	}
 }
 func (list *FileSet) Prepend(it ...Filename) {
-	*list = base.PrependEquatable_CheckUniq(it, *list...)
+	*list = base.PrependEquatable_CheckUniq(*list, it...)
 }
 func (list *FileSet) Delete(i int) *FileSet {
 	*list = base.Delete_DontPreserveOrder(*list, i)
