@@ -320,6 +320,7 @@ func onWorkerThreadStart(pool ThreadPool, workerIndex int) ThreadContext {
 	return NewThreadContext(pool, int32(workerIndex))
 }
 func onWorkerThreadStop(pool ThreadPool, workerIndex int) {
+	_, _ = pool, workerIndex
 	runtime.UnlockOSThread() // let acquired thread die with the pool
 }
 

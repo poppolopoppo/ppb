@@ -926,6 +926,55 @@ func (ufs *UFSFrontEnd) OpenBuffered(ctx context.Context, src Filename, read fun
 		}
 	})
 }
+
+type FileProgress interface {
+	io.Reader
+	io.ReaderAt
+	io.Seeker
+	io.Closer
+}
+type osFileWithProgress struct {
+	fd *os.File
+	pg base.ProgressScope
+}
+
+func (x osFileWithProgress) Read(p []byte) (n int, err error) {
+	n, err = x.fd.Read(p)
+	x.pg.Add(int64(n))
+	return
+}
+func (x osFileWithProgress) Seek(offset int64, whence int) (n int64, err error) {
+	n, err = x.fd.Seek(offset, whence)
+	x.pg.Set(n)
+	return
+}
+func (x osFileWithProgress) ReadAt(p []byte, off int64) (n int, err error) {
+	n, err = x.fd.ReadAt(p, off)
+	x.pg.Set(off + int64(n))
+	return
+}
+func (x osFileWithProgress) Close() error {
+	return x.fd.Close()
+}
+func (ufs *UFSFrontEnd) OpenLogProgress(src Filename, read func(FileProgress, int64, base.ProgressScope) error) error {
+	return ufs.OpenFile(src, func(fd *os.File) error {
+		st, err := fd.Stat()
+		if err != nil {
+			return err
+		}
+		size := st.Size()
+		if base.EnableInteractiveShell() {
+			pg := base.LogProgress(0, size, MakeShortUserFriendlyPath(src).String())
+			defer pg.Close()
+			rd := osFileWithProgress{fd: fd, pg: pg}
+			return read(&rd, size, pg)
+		} else {
+			pg := base.NewDummyLogProgress()
+			return read(fd, size, pg)
+		}
+	})
+}
+
 func (ufs *UFSFrontEnd) ReadAll(src Filename) ([]byte, error) {
 	var raw []byte
 	err := UFS.OpenFile(src, func(f *os.File) error {
