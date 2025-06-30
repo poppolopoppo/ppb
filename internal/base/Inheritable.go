@@ -3,7 +3,6 @@ package base
 import (
 	"flag"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -411,15 +410,15 @@ func (x SizeInBytes) String() string {
 	case x < KiB:
 		return fmt.Sprintf("%d b", x.Get())
 	case x < MiB:
-		return fmt.Sprintf("%.2f Kib", Kibibytes(x.Get()))
+		return fmt.Sprintf("%.3f Kib", Kibibytes(x.Get()))
 	case x < GiB:
-		return fmt.Sprintf("%.2f Mib", Mebibytes(x.Get()))
+		return fmt.Sprintf("%.3f Mib", Mebibytes(x.Get()))
 	case x < TiB:
-		return fmt.Sprintf("%.2f Gib", Gibibytes(x.Get()))
+		return fmt.Sprintf("%.3f Gib", Gibibytes(x.Get()))
 	case x < PiB:
-		return fmt.Sprintf("%.2f Tib", Tebibytes(x.Get()))
+		return fmt.Sprintf("%.3f Tib", Tebibytes(x.Get()))
 	default:
-		return fmt.Sprintf("%.2f Pib", Pebibytes(x.Get()))
+		return fmt.Sprintf("%.3f Pib", Pebibytes(x.Get()))
 	}
 }
 
@@ -443,13 +442,13 @@ var sizeInBytesUnits = map[string]int64{
 	"MB":  1000 * 1000,
 	"GB":  1000 * 1000 * 1000,
 	"TB":  1000 * 1000 * 1000 * 1000,
+	"PB":  1000 * 1000 * 1000 * 1000 * 1000,
 	"KIB": 1024,
 	"MIB": 1024 * 1024,
 	"GIB": 1024 * 1024 * 1024,
 	"TIB": 1024 * 1024 * 1024 * 1024,
+	"PIB": 1024 * 1024 * 1024 * 1024 * 1024,
 }
-
-var re_sizeInBytes = regexp.MustCompile(`^\s*(\d+)\s*([A-Z]+)?\s*$`)
 
 func (x *SizeInBytes) Set(in string) error {
 	upper := strings.ToUpper(in)
@@ -458,16 +457,10 @@ func (x *SizeInBytes) Set(in string) error {
 		x.Assign(int64(INHERIT_VALUE))
 		return nil
 	default:
-		matches := re_sizeInBytes.FindStringSubmatch(upper)
-		if len(matches) != 3 {
-			return fmt.Errorf("invalid input format for size: %v", upper)
-		}
-
-		sizeStr, unit := matches[1], matches[2]
-		size, err := strconv.ParseInt(sizeStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("invalid numeric part for size: %v", err)
-		}
+		upper = strings.TrimSpace(upper)
+		unit := strings.TrimLeft(upper, "0123456789.")
+		value := upper[0 : len(upper)-len(unit)]
+		unit = strings.TrimSpace(unit)
 
 		// assume bytes if no unit provided
 		var unitMultiplier int64 = 1
@@ -475,11 +468,24 @@ func (x *SizeInBytes) Set(in string) error {
 			var ok bool
 			unitMultiplier, ok = sizeInBytesUnits[unit]
 			if !ok {
-				return fmt.Errorf("invalid unit for size: %v", size)
+				return fmt.Errorf("invalid unit for size: %v", in)
 			}
 		}
 
-		x.Assign(size * unitMultiplier)
+		if strings.ContainsRune(in, '.') {
+			if sizeFloat, err := strconv.ParseFloat(value, 64); err == nil {
+				x.Assign(int64(sizeFloat * float64(unitMultiplier)))
+			} else {
+				return err
+			}
+		} else {
+			if sizeInt, err := strconv.ParseInt(value, 10, 64); err == nil {
+				x.Assign(sizeInt * unitMultiplier)
+			} else {
+				return err
+			}
+		}
+
 		return nil
 	}
 }
@@ -530,17 +536,17 @@ func (x Timespan) String() string {
 	case x < Millisecond:
 		return fmt.Sprintf("%d µs", x.Get())
 	case x < Second:
-		return fmt.Sprintf("%.2f ms", Milliseconds(x.Get()))
+		return fmt.Sprintf("%.3f ms", Milliseconds(x.Get()))
 	case x < Minute:
-		return fmt.Sprintf("%.2f seconds", Seconds(x.Get()))
+		return fmt.Sprintf("%.3f seconds", Seconds(x.Get()))
 	case x < Hour:
-		return fmt.Sprintf("%.2f minutes", Minutes(x.Get()))
+		return fmt.Sprintf("%.3f minutes", Minutes(x.Get()))
 	case x < Day:
-		return fmt.Sprintf("%.2f hours", Hours(x.Get()))
+		return fmt.Sprintf("%.3f hours", Hours(x.Get()))
 	case x < Week:
-		return fmt.Sprintf("%.2f days", Days(x.Get()))
+		return fmt.Sprintf("%.3f days", Days(x.Get()))
 	default:
-		return fmt.Sprintf("%.2f weeks", Weeks(x.Get()))
+		return fmt.Sprintf("%.3f weeks", Weeks(x.Get()))
 	}
 }
 
@@ -587,28 +593,34 @@ func (x *Timespan) Set(in string) error {
 		x.Assign(int64(INHERIT_VALUE))
 		return nil
 	default:
-		matches := re_sizeInBytes.FindStringSubmatch(upper)
-		if len(matches) != 3 {
-			return fmt.Errorf("invalid input format for timespan: %v", upper)
-		}
+		upper = strings.TrimSpace(upper)
+		unit := strings.TrimLeft(upper, "0123456789.")
+		value := upper[0 : len(upper)-len(unit)]
+		unit = strings.TrimSpace(unit)
 
-		sizeStr, unit := matches[1], matches[2]
-		size, err := strconv.ParseInt(sizeStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("invalid numeric part for timespan: %v", err)
-		}
-
-		// assume seconds if no unit provided
-		var unitMultiplier int64 = int64(Second)
+		// assume bytes if no unit provided
+		var unitMultiplier int64 = 1
 		if len(unit) > 0 {
 			var ok bool
 			unitMultiplier, ok = timespanUnits[unit]
 			if !ok {
-				return fmt.Errorf("invalid unit for timespan: %v", size)
+				return fmt.Errorf("invalid unit for size: %v", in)
 			}
 		}
 
-		x.Assign(size * unitMultiplier)
+		if strings.ContainsRune(in, '.') {
+			if timeFloat, err := strconv.ParseFloat(value, 64); err == nil {
+				x.Assign(int64(timeFloat * float64(unitMultiplier)))
+			} else {
+				return err
+			}
+		} else {
+			if timeInt, err := strconv.ParseInt(value, 10, 64); err == nil {
+				x.Assign(timeInt * unitMultiplier)
+			} else {
+				return err
+			}
+		}
 		return nil
 	}
 }
