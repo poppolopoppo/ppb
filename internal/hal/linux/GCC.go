@@ -420,7 +420,7 @@ func (x *GccProductInstall) Serialize(ar base.Archive) {
 	ar.Serializable(&x.Ar)
 }
 
-var re_gccMatchVersion = regexp.MustCompile(`(?m)^gcc\s+(?:\(.*\)\s+)([\d\.]+)\s*$`)
+var re_gccMatchVersion = regexp.MustCompile(`(?m)^gcc(?:-\d{2})?\s+(?:\(.*\)\s+)([\d\.]+)\s*$`)
 
 func (x *GccProductInstall) findToolchain(suffix string) (err error) {
 	base.LogTrace(LogLinux, "gcc: looking for toolchain compiler 'gcc%s'...", suffix)
