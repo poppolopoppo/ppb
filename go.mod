@@ -12,7 +12,7 @@ require (
 	github.com/minio/sha256-simd v1.0.1
 	github.com/pierrec/lz4/v4 v4.1.22
 	github.com/pkg/profile v1.7.0
-	github.com/quic-go/quic-go v0.53.0
+	github.com/quic-go/quic-go v0.54.1
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b
 	golang.org/x/net v0.41.0
