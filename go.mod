@@ -1,6 +1,6 @@
 module github.com/poppolopoppo/ppb
 
-go 1.23.3
+go 1.24.0
 
 require (
 	github.com/DataDog/zstd v1.5.7
@@ -15,8 +15,8 @@ require (
 	github.com/quic-go/quic-go v0.53.0
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b
-	golang.org/x/net v0.41.0
-	golang.org/x/sys v0.33.0
+	golang.org/x/net v0.47.0
+	golang.org/x/sys v0.38.0
 )
 
 require (
@@ -50,10 +50,10 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.uber.org/mock v0.5.2 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
-	golang.org/x/crypto v0.39.0 // indirect
-	golang.org/x/mod v0.25.0 // indirect
-	golang.org/x/sync v0.15.0 // indirect
-	golang.org/x/text v0.26.0 // indirect
-	golang.org/x/tools v0.34.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
+	golang.org/x/mod v0.29.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
+	golang.org/x/tools v0.38.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
