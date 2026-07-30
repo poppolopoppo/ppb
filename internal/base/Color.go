@@ -159,7 +159,7 @@ func nextFloat01(r *rand.Rand) float64 {
 }
 
 func NewColorFromHash(h uint64) Color3f {
-	rnd := rand.New(rand.NewSource(int64(h)))
+	rnd := rand.New(rand.NewSource(int64(h))) // #nosec G404
 	return NewPastelizerColor(nextFloat01(rnd))
 }
 func NewColorFromStringHash(s string) Color3f {
@@ -203,7 +203,7 @@ type ColorGenerator struct {
 }
 
 func MakeColorGenerator() ColorGenerator {
-	return ColorGenerator{seed: rand.Float64()}
+	return ColorGenerator{seed: rand.Float64()} // #nosec G404
 }
 func (x *ColorGenerator) Next() Color3f {
 	f := x.seed

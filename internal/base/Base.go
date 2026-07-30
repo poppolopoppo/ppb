@@ -42,7 +42,7 @@ type emptyInterface struct {
 }
 
 func getEmptyInterface(v interface{}) *emptyInterface {
-	return (*emptyInterface)(unsafe.Pointer(&v))
+	return (*emptyInterface)(unsafe.Pointer(&v)) // #nosec G103
 }
 
 func GetTypeptr(v interface{}) (uintptr, bool) {

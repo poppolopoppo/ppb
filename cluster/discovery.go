@@ -53,7 +53,7 @@ func (x *PeerDiscovery) RandomPeer(timeout time.Duration) (*PeerDiscovered, bool
 
 	now := time.Now()
 	for retry := 0; retry < 10; retry++ {
-		peer := x.Availables[rand.Intn(len(x.Availables))]
+		peer := x.Availables[rand.Intn(len(x.Availables))] // #nosec G404
 		if peer.Revision != x.revision {
 			base.LogDebug(LogCluster, "ignore worker %v from different revision: current=%v, worker=%v", peer.FQDN, x.revision, peer.Revision)
 			continue
@@ -132,7 +132,7 @@ func (x *PeerDiscovery) Discover(retryCount int, timeout time.Duration) (int, er
 	}
 
 	// shuffle input files: we will only save MaxPeers records at most
-	rand.Shuffle(len(files), func(i, j int) {
+	rand.Shuffle(len(files), func(i, j int) { // #nosec G404
 		files[i], files[j] = files[j], files[i]
 	})
 

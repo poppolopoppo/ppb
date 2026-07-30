@@ -88,7 +88,7 @@ func (x *BuildAlias) UnmarshalText(data []byte) error {
 }
 func (x BuildAlias) AutoComplete(in base.AutoComplete) {
 	if bg, ok := in.GetUserParam().(BuildGraphReadPort); ok {
-		bg.Range(func(ba BuildAlias, bn BuildNode) error {
+		bg.Range(func(ba BuildAlias, bn BuildNode) error { // #nosec G104
 			in.Add(ba.String(), fmt.Sprintf("%T", bn.GetBuildable()))
 			return nil
 		})
@@ -127,6 +127,6 @@ func (x *BuildAliasBuilder) WriteString(sep rune, strs ...string) {
 		if x.sb.Len() > 0 {
 			x.sb.WriteRune(sep)
 		}
-		BuildSanitizedPath(&x.sb, it, '/')
+		BuildSanitizedPath(&x.sb, it, '/') // #nosec G104
 	}
 }

@@ -438,7 +438,7 @@ func (x *GccProductInstall) findToolchain(suffix string) (err error) {
 		return err
 	}
 
-	if outp, err := exec.Command(x.Gcc.String(), "--version").Output(); err == nil {
+	if outp, err := exec.Command(x.Gcc.String(), "--version").Output(); err == nil { // #nosec G204
 		version := base.UnsafeStringFromBytes(outp)
 		if m := re_gccMatchVersion.FindStringSubmatch(version); len(m) == 2 {
 			parsed := m[1]

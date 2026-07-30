@@ -85,7 +85,7 @@ var (
 // getFrequency returns frequency in ticks per second.
 func getFrequency() int64 {
 	var freq int64
-	r1, _, _ := syscall.SyscallN(procFreq.Addr(), uintptr(unsafe.Pointer(&freq)))
+	r1, _, _ := syscall.SyscallN(procFreq.Addr(), uintptr(unsafe.Pointer(&freq))) // #nosec G103
 	if r1 == 0 {
 		Panicf("syscall failed")
 	}
@@ -95,7 +95,7 @@ func getFrequency() int64 {
 // getCount returns counter ticks.
 func getCount() int64 {
 	var qpc int64
-	syscall.SyscallN(procCounter.Addr(), uintptr(unsafe.Pointer(&qpc)))
+	syscall.SyscallN(procCounter.Addr(), uintptr(unsafe.Pointer(&qpc))) // #nosec G103
 	return qpc
 }
 

@@ -29,7 +29,7 @@ func setConsoleMode() bool {
 	stdout := syscall.Handle(os.Stdout.Fd())
 
 	var originalMode uint32
-	syscall.GetConsoleMode(stdout, &originalMode)
+	syscall.GetConsoleMode(stdout, &originalMode) // #nosec G104
 	originalMode |= 0x0004
 
 	getConsoleMode := syscall.MustLoadDLL("kernel32").MustFindProc("SetConsoleMode")

@@ -349,7 +349,7 @@ func format_ansi_256color(index int, fg bool) string {
 
 var UnicodeEmojisShuffled = func() (result []rune) {
 	result = CopySlice(UnicodeEmojis...)
-	rand.Shuffle(len(result), func(i, j int) {
+	rand.Shuffle(len(result), func(i, j int) { // #nosec G404
 		result[i], result[j] = result[j], result[i]
 	})
 	return

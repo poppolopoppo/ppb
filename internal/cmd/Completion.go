@@ -190,7 +190,7 @@ var ListGeneratedFiles = newCompletionCommand(
 		defer bg.Close()
 		return openCompletion(args, func(w io.Writer) error {
 			var files utils.FileSet
-			bg.Range(func(ba utils.BuildAlias, bn utils.BuildNode) error {
+			bg.Range(func(ba utils.BuildAlias, bn utils.BuildNode) error { // #nosec G104
 				if it, ok := bn.GetBuildable().(utils.BuildableGeneratedFile); ok {
 					files.AppendUniq(it.GetGeneratedFile())
 				}

@@ -167,7 +167,7 @@ func (x *customJsonSchemaType) createEnumSetSchema(t reflect.Type) (schema *json
 
 		if sliceFn, ok := t.MethodByName("Slice"); ok {
 			var enumValue int32
-			defaultValue.FromOrd(reflect.NewAt(sliceFn.Type.Out(0).Elem(), unsafe.Pointer(&enumValue)).Interface().(EnumFlag).Mask())
+			defaultValue.FromOrd(reflect.NewAt(sliceFn.Type.Out(0).Elem(), unsafe.Pointer(&enumValue)).Interface().(EnumFlag).Mask()) // #nosec G103
 		} else {
 			LogPanic(LogBase, "EnumSet type %s does not implement Slice method", t.Name())
 		}

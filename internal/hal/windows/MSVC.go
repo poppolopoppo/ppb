@@ -975,7 +975,7 @@ func (x *MsvcProductInstall) Build(bc BuildContext) error {
 		args = append(args, "-prerelease")
 	}
 
-	cmd := exec.Command(MSVC_VSWHERE_EXE.String(), args...)
+	cmd := exec.Command(MSVC_VSWHERE_EXE.String(), args...) // #nosec G204
 
 	var entries []VsWhereEntry
 	if outp, err := cmd.Output(); err != nil {

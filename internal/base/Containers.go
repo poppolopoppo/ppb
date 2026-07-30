@@ -493,7 +493,7 @@ func NewShardedMap[K interface {
 	for i := range shards {
 		shards[i] = NewSharedMapT[K, V]()
 	}
-	return &ShardedMapT[K, V]{basis: rand.Uint64() + 14695981039346656037, shards: shards}
+	return &ShardedMapT[K, V]{basis: rand.Uint64() + 14695981039346656037, shards: shards} // #nosec G404
 }
 
 func (x *ShardedMapT[K, V]) getShard(key K) *SharedMapT[K, V] {

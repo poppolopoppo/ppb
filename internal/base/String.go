@@ -16,11 +16,11 @@ import (
  ***************************************/
 
 func UnsafeBytesFromString(in string) []byte {
-	return unsafe.Slice(unsafe.StringData(in), len(in))
+	return unsafe.Slice(unsafe.StringData(in), len(in)) // #nosec G103
 }
 func UnsafeStringFromBytes(raw []byte) string {
-	// from func (strings.Builder) String() string
-	return unsafe.String(unsafe.SliceData(raw), len(raw))
+	// from func (strings.Builder) String()
+	return unsafe.String(unsafe.SliceData(raw), len(raw)) // #nosec G103
 }
 func UnsafeStringFromBuffer(buf *bytes.Buffer) string {
 	// from func (strings.Builder) String() string

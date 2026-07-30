@@ -334,7 +334,7 @@ func (env *CommandEnvT) OnPanic(err error) base.PanicResult {
 		return base.PANIC_HANDLED
 	}
 	if env.lastPanic.CompareAndSwap(nil, &err) {
-		env.commandEvents.OnPanic.Invoke(err)
+		env.commandEvents.OnPanic.Invoke(err) // #nosec G104
 		return base.PANIC_ABORT
 	}
 	return base.PANIC_REENTRANCY // a fatal error was already reported
@@ -370,7 +370,7 @@ func (env *CommandEnvT) Run(defaults ...base.AnyDelegate) error {
 
 	defer func() {
 		base.JoinAllThreadPools()
-		env.onExit.FireAndForget(env)
+		env.onExit.FireAndForget(env) // #nosec G104
 	}()
 
 	// check if any command was successfully parsed

@@ -338,11 +338,11 @@ var ProgressBar = utils.NewCommand(
 		base.LogProgress(0, 50, "full").Set(50)
 
 		for {
-			n := int(10 + rand.Uint32()%50)
+			n := int(10 + rand.Uint32()%50) // #nosec G404
 			pbar := base.LogProgress(0, int64(n), "progress")
 
 			for i := 0; i < n; i++ {
-				n2 := int(10 + rand.Uint32()%100)
+				n2 := int(10 + rand.Uint32()%100) // #nosec G404
 				pbar2 := base.LogProgress(0, int64(n2), "progress2")
 
 				spinner2 := base.LogSpinner("spinner")

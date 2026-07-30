@@ -89,7 +89,7 @@ func (x *MsvcSourceDependenciesAction) GetActionSourceDependencies(bc utils.Buil
 
 	// parse source dependencies outputted by cl.exe
 	var sourceDeps MsvcSourceDependencies
-	if err = utils.UFS.OpenBuffered(x.SourceDependenciesFile, sourceDeps.Load); err != nil {
+	if err = utils.UFS.OpenBuffered(bc, x.SourceDependenciesFile, sourceDeps.Load); err != nil {
 		return
 	}
 

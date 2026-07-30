@@ -80,7 +80,7 @@ func splitArgsIFN(args []string, each func([]string) error) error {
 	return nil
 }
 
-func NewCommandLine(persistent PersistentData, args []string) (result []CommandLine) {
+func NewCommandLine(persistent PersistentData, args []string) (result []CommandLine) { // #nosec G104
 	splitArgsIFN(args, func(split []string) error {
 		base.LogTrace(LogCommand, "process arguments -> %v", base.MakeStringer(func() string {
 			return strings.Join(base.Map(func(a string) string {
@@ -594,7 +594,7 @@ func (x commandParsableArgument) AutoComplete(in base.AutoComplete) {
 func (x *commandParsableArgument) Parse(cl CommandLine) (err error) {
 	for _, v := range x.Variables {
 		if v.Flags.Has(COMMANDARG_PERSISTENT) {
-			cl.LoadData(x.Long, v.Name, v.Value)
+			cl.LoadData(x.Long, v.Name, v.Value) // #nosec G104
 		}
 	}
 
@@ -661,7 +661,7 @@ func (x *commandParsableArgument) Help(w *base.StructuredFile) {
 
 			w.Align(60)
 			if v.Flags.Has(COMMANDARG_PERSISTENT) {
-				CommandEnv.persistent.LoadData(x.Long, v.Name, v.Value)
+				CommandEnv.persistent.LoadData(x.Long, v.Name, v.Value) // #nosec G104
 			} else {
 				w.Print("%v", base.ANSI_FAINT)
 			}
@@ -680,7 +680,7 @@ func (x *commandParsableArgument) Help(w *base.StructuredFile) {
 			var allowedValues []base.AutoCompleteResult
 			if readPort := CommandEnv.BuildGraph().OpenReadPort(base.ThreadPoolDebugId{Category: "Help"}); readPort != nil {
 				allowedValues = base.GatherAutoCompletionFrom(v.Value, readPort)
-				readPort.Close()
+				readPort.Close() // #nosec G104
 			}
 
 			if len(allowedValues) > 0 {
@@ -785,7 +785,7 @@ func (x *CommandParsableBuilder[T, P]) Build(bc BuildContext) error {
 	bc.Annotate(AnnocateBuildMute) // don't display build flags output by default
 	VisitParsableFlags(P(&x.Flags), func(name, usage string, value PersistentVar, persistent bool) {
 		if persistent {
-			CommandEnv.persistent.LoadData(x.Name, name, value)
+			CommandEnv.persistent.LoadData(x.Name, name, value) // #nosec G104
 		}
 	})
 	return nil
@@ -1101,7 +1101,7 @@ func NewCommandable[T any, P interface {
 }](category, name, description string, cmd *T) func() CommandItem {
 	var options []CommandOptionFunc
 
-	options = append(options, func(ci *commandItem) { P(cmd).Init(ci) })
+	options = append(options, func(ci *commandItem) { P(cmd).Init(ci) }) // #nosec G104
 	options = append(options, OptionCommandRun(P(cmd).Run))
 
 	var anon interface{} = cmd
@@ -1327,7 +1327,7 @@ func (x *AutoCompleteCommand) Run(cc CommandContext) error {
 		autocomplete = base.NewAutoComplete(command, x.MaxResults.Get(), bg)
 		autocomplete.Append(x.Command /* only for autocomplete */)
 
-		bg.Close()
+		bg.Close() // #nosec G104
 
 	} else {
 		// auto-complete command arguments or flags
@@ -1349,7 +1349,7 @@ func (x *AutoCompleteCommand) Run(cc CommandContext) error {
 		autocomplete.Append(&GlobalParsableFlags)
 		autocomplete.Append(cmd)
 
-		bg.Close()
+		bg.Close() // #nosec G104
 	}
 
 	base.LogDebug(LogCommand, "auto-complete arguments [%v](%v), complete argument = %v", x.Command, strings.Join(inputs, ", "), x.CompleteArg)
@@ -1358,7 +1358,7 @@ func (x *AutoCompleteCommand) Run(cc CommandContext) error {
 	if x.Json.Get() {
 		// output autocomplete results as json
 		results := autocomplete.GetResults()
-		base.JsonSerialize(results, base.GetLogger(), base.OptionJsonPrettyPrint(false))
+		base.JsonSerialize(results, base.GetLogger(), base.OptionJsonPrettyPrint(false)) // #nosec G104
 
 	} else {
 		// output autocomplete results as raw-text

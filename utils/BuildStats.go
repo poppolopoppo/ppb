@@ -156,18 +156,18 @@ func (g *buildEvents) RemoveOnBuildGraphFinished(h base.DelegateHandle) bool {
 func (g *buildGraphWritePort) onBuildGraphStart_ThreadSafe() {
 	base.LogDebug(LogBuildEvent, "build graph start <%v>", g.name)
 
-	g.onBuildGraphStartEvent.Invoke(g)
+	g.onBuildGraphStartEvent.Invoke(g) // #nosec G104
 }
 func (g *buildGraphWritePort) onBuildGraphFinished_ThreadSafe() {
 	base.LogDebug(LogBuildEvent, "build graph finished <%v>", g.name)
 
-	g.onBuildGraphFinishedEvent.Invoke(g)
+	g.onBuildGraphFinishedEvent.Invoke(g) // #nosec G104
 }
 
 func (g *buildGraphWritePort) onBuildNodeStart_ThreadSafe(node *buildState) {
 	base.LogDebug(LogBuildEvent, "<%v> %v -> %T: build start", g.name, node.BuildAlias, node.GetBuildable())
 
-	g.onBuildNodeStartEvent.Invoke(BuildNodeEvent{
+	g.onBuildNodeStartEvent.Invoke(BuildNodeEvent{ // #nosec G104
 		Port: g,
 		Node: node,
 	})
@@ -175,7 +175,7 @@ func (g *buildGraphWritePort) onBuildNodeStart_ThreadSafe(node *buildState) {
 func (g *buildGraphWritePort) onBuildNodeFinished_ThreadSafe(node *buildState) {
 	base.LogDebug(LogBuildEvent, "<%v> %v -> %T: build finished", g.name, node.BuildAlias, node.GetBuildable())
 
-	g.onBuildNodeFinishedEvent.Invoke(BuildNodeEvent{
+	g.onBuildNodeFinishedEvent.Invoke(BuildNodeEvent{ // #nosec G104
 		Port: g,
 		Node: node,
 	})

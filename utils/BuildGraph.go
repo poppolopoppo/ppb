@@ -808,7 +808,7 @@ func (g *buildGraphWritePort) GetCriticalPathNodes() ([]BuildState, time.Duratio
 	}
 
 	var longest criticalPath
-	g.state.Range(func(alias BuildAlias, state *buildState) error {
+	g.state.Range(func(alias BuildAlias, state *buildState) error { // #nosec G104
 		longest = foreachDep(alias, longest)
 		return nil
 	})

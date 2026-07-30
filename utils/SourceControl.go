@@ -335,7 +335,7 @@ func (git *GitSourceControl) Command(name string, args ...string) ([]byte, error
 		return strings.Join(args, " ")
 	})).Close()
 
-	proc := exec.Command(git.Executable, args...)
+	proc := exec.Command(git.Executable, args...) // #nosec G204
 	proc.Env = os.Environ()
 	proc.Dir = git.Repository.String()
 

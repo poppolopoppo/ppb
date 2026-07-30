@@ -1,10 +1,8 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
-
 name: Go
 
 permissions:
   contents: read
+  security-events: write
 
 on:
   push:
@@ -13,24 +11,24 @@ on:
     branches: [ "main" ]
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
-        go-version: '1.22'
+        go-version-file: go.mod
 
-    - name: Install Packages
-      uses: ConorMacBride/install-package@v1.1.0
-      with:
-        apt: libglfw3-dev
+    - name: Install System Packages
+      run: sudo apt-get update && sudo apt-get install -y libglfw3-dev
 
     - name: Build
       run: go build -v ./...
+
+    - name: Run go vet
+      run: go vet ./...
 
     - name: Test
       run: go test -v ./...

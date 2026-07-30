@@ -52,7 +52,7 @@ func BuildSanitizedPath(sb *strings.Builder, pathname string, sep rune) error {
 func SanitizePath(pathname string, sep rune) string {
 	sb := strings.Builder{}
 	sb.Grow(len(pathname))
-	BuildSanitizedPath(&sb, pathname, sep)
+	BuildSanitizedPath(&sb, pathname, sep) // #nosec G104
 	return sb.String()
 }
 func JoinPath(in string, args ...string) string {
@@ -816,7 +816,7 @@ func (ufs *UFSFrontEnd) MkdirEx(dst Directory) error {
 	} else {
 		base.LogDebug(LogUFS, "mkdir %v", dst)
 		defer dst.Invalidate()
-		if err := os.MkdirAll(localPath, os.ModePerm); err != nil {
+		if err := os.MkdirAll(localPath, 0755); err != nil {
 			return fmt.Errorf("ufs: mkdir %q got error %v", dst, err)
 		}
 	}

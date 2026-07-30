@@ -347,7 +347,7 @@ func ParallelRange_Async[IN any](each func(IN) error, in ...IN) error {
 		go func(input IN) {
 			defer wg.Done()
 			if err := each(input); err != nil {
-				atomic.CompareAndSwapPointer(&firstErr, nil, unsafe.Pointer(&err))
+				atomic.CompareAndSwapPointer(&firstErr, nil, unsafe.Pointer(&err)) // #nosec G103
 			}
 		}(it)
 	}
@@ -388,7 +388,7 @@ func ParallelMap_Async[IN any, OUT any](each func(IN) (OUT, error), in ...IN) ([
 			if value, err := each(input); err == nil {
 				results[id] = value
 			} else {
-				atomic.CompareAndSwapPointer(&firstErr, nil, unsafe.Pointer(&err))
+				atomic.CompareAndSwapPointer(&firstErr, nil, unsafe.Pointer(&err)) // #nosec G103
 			}
 			wg.Done()
 		}(i, it)

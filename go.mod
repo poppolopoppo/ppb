@@ -8,7 +8,7 @@ require (
 	github.com/danjacques/gofslock v0.0.0-20240212154529-d899e02bfe22
 	github.com/goccy/go-json v0.10.5
 	github.com/invopop/jsonschema v0.13.0
-	github.com/mholt/archives v0.1.3
+	github.com/mholt/archives v0.1.5
 	github.com/minio/sha256-simd v1.0.1
 	github.com/pierrec/lz4/v4 v4.1.22
 	github.com/pkg/profile v1.7.0
@@ -39,12 +39,12 @@ require (
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mikelolasagasti/xz v1.0.1 // indirect
 	github.com/minio/minlz v1.0.1 // indirect
-	github.com/nwaples/rardecode/v2 v2.2.0 // indirect
-	github.com/sorairolake/lzip-go v0.3.7 // indirect
-	github.com/spf13/afero v1.12.0 // indirect
+	github.com/nwaples/rardecode/v2 v2.3.0 // indirect
+	github.com/sorairolake/lzip-go v0.3.8 // indirect
+	github.com/spf13/afero v1.15.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect
-	github.com/ulikunitz/xz v0.5.14 // indirect
+	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect

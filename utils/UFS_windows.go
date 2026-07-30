@@ -142,7 +142,7 @@ type win32finddata1 struct {
 
 func findFirstFile1(name *uint16, data *win32finddata1) (handle syscall.Handle, err error) {
 	procFindFirstFileW := getFindFirstFileWSyscall()
-	r0, _, e1 := syscall.SyscallN(procFindFirstFileW.Addr(), uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(data)))
+	r0, _, e1 := syscall.SyscallN(procFindFirstFileW.Addr(), uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(data))) // #nosec G103
 	handle = syscall.Handle(r0)
 	if handle == syscall.InvalidHandle {
 		err = e1
@@ -162,7 +162,7 @@ func normBase(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	syscall.FindClose(h)
+	syscall.FindClose(h) // #nosec G104
 
 	return syscall.UTF16ToString(data.FileName[:]), nil
 }

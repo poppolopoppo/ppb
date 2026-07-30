@@ -38,7 +38,7 @@ var CommandGraphviz = newExportNodesCommand(
 						internal_io.OptionGraphVizFontColor("yellow"),
 						internal_io.OptionGraphVizScale(2))
 				}
-				gvz.CloseSubGraphs()
+				gvz.CloseSubGraphs() // #nosec G104
 			},
 				internal_io.OptionGraphVizCustom(`rankdir="LR"`),
 				internal_io.OptionGraphVizScale(5),

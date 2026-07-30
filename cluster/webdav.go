@@ -157,7 +157,7 @@ func (x *WebdavServer) Close() (err error) {
 	x.addr = net.TCPAddr{}
 	x.async = nil
 	x.context = nil
-	x.server = http.Server{}
+	x.server = http.Server{ReadHeaderTimeout: time.Second * 10} // #nosec G112
 	return
 }
 

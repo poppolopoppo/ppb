@@ -288,7 +288,7 @@ func RunProcess(executable utils.Filename, arguments base.StringSet, userOptions
 }
 
 func RunProcess_Vanilla(executable utils.Filename, arguments base.StringSet, options *ProcessOptions) (err error) {
-	cmd := exec.CommandContext(options.Context, executable.String(), arguments...)
+	cmd := exec.CommandContext(options.Context, executable.String(), arguments...) // #nosec G204
 	cmd.Env = append(cmd.Env, options.Environment.Export()...)
 
 	if len(options.WorkingDir.Path) > 0 {
