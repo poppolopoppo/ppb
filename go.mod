@@ -6,7 +6,7 @@ require (
 	github.com/DataDog/zstd v1.5.7
 	github.com/Showmax/go-fqdn v1.0.0
 	github.com/danjacques/gofslock v0.0.0-20240212154529-d899e02bfe22
-	github.com/goccy/go-json v0.10.5
+	github.com/goccy/go-json v0.10.6
 	github.com/invopop/jsonschema v0.13.0
 	github.com/mholt/archives v0.1.5
 	github.com/minio/sha256-simd v1.0.1
