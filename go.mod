@@ -1,6 +1,6 @@
 module github.com/poppolopoppo/ppb
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/DataDog/zstd v1.5.7
@@ -15,8 +15,8 @@ require (
 	github.com/quic-go/quic-go v0.59.1
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b
-	golang.org/x/net v0.47.0
-	golang.org/x/sys v0.38.0
+	golang.org/x/net v0.54.0
+	golang.org/x/sys v0.45.0
 )
 
 require (
@@ -48,7 +48,7 @@ require (
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
-	golang.org/x/crypto v0.45.0 // indirect
-	golang.org/x/text v0.31.0 // indirect
+	golang.org/x/crypto v0.52.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
