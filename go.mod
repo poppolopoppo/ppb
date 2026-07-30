@@ -10,7 +10,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0
 	github.com/mholt/archives v0.1.5
 	github.com/minio/sha256-simd v1.0.1
-	github.com/pierrec/lz4/v4 v4.1.22
+	github.com/pierrec/lz4/v4 v4.1.27
 	github.com/pkg/profile v1.7.0
 	github.com/quic-go/quic-go v0.59.1
 	github.com/shirou/gopsutil v3.21.11+incompatible
