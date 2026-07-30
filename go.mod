@@ -12,11 +12,11 @@ require (
 	github.com/minio/sha256-simd v1.0.1
 	github.com/pierrec/lz4/v4 v4.1.22
 	github.com/pkg/profile v1.7.0
-	github.com/quic-go/quic-go v0.59.1
+	github.com/quic-go/quic-go v0.61.0
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b
-	golang.org/x/net v0.55.0
-	golang.org/x/sys v0.45.0
+	golang.org/x/net v0.56.0
+	golang.org/x/sys v0.47.0
 )
 
 require (
@@ -48,7 +48,7 @@ require (
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
-	golang.org/x/crypto v0.52.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
