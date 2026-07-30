@@ -4,8 +4,10 @@
 
 **A distributed, cache-aware, parallel build system for C++ and more, written in Go.**
 
-[![Go](https://github.com/poppolopoppo/ppb/actions/workflows/go.yml/badge.svg)](https://github.com/poppolopoppo/ppb/actions/workflows/go.yml)
-[![CodeQL](https://github.com/poppolopoppo/ppb/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/poppolopoppo/ppb/actions/workflows/github-code-scanning/codeql)
+[![Go Build](https://github.com/poppolopoppo/ppb/actions/workflows/go.yml/badge.svg)](https://github.com/poppolopoppo/ppb/actions/workflows/go.yml)
+[![CodeQL](https://github.com/poppolopoppo/ppb/actions/workflows/codeql.yml/badge.svg)](https://github.com/poppolopoppo/ppb/actions/workflows/codeql.yml)
+[![Codacy](https://github.com/poppolopoppo/ppb/actions/workflows/codacy.yml/badge.svg)](https://github.com/poppolopoppo/ppb/actions/workflows/codacy.yml)
+[![Go Version](https://img.shields.io/badge/Go-1.25-blue?logo=go)](https://go.dev)
 
 </div>
 
@@ -85,25 +87,73 @@ PPB is structured as a modular, extensible build graph engine. Key architectural
 
 ---
 
+## Prerequisites
+
+- **Go 1.25+** — required for building PPB from source
+- **C++ compiler** — MSVC, Clang/ClangCL (Windows), or GCC (Linux/macOS) for C++ toolchain compilation
+- **Linux system deps** — `libglfw3-dev` (for Linux builds with GUI support):
+  ```sh
+  sudo apt-get update && sudo apt-get install -y libglfw3-dev
+  ```
+- **Network access** — for distributed builds, peers must be able to reach each other over QUIC (UDP port 9085)
+
+---
+
+## Build Outputs
+
+When you run `./ppb build`, PPB produces:
+
+- **Compiled binaries** — native executables and libraries in the build output directory
+- **compile_commands.json** — Clang-compatible compilation database (with `-compile-db` flag)
+- **Build cache** — fingerprinted and compressed artifacts in the cache directory (zstd/lz4)
+- **VS Code workspace** — `.vscode/` files for IDE navigation (with `vscode` command)
+
+---
+
+## Docker
+
+PPB includes a `Dockerfile` for building and running the `ppb_worker` in a container using a multi-stage build:
+
+```dockerfile
+# Stage 1: Build the worker binary with Go
+FROM golang:1.25 AS builder
+WORKDIR /app
+COPY . .
+RUN go mod download && GOOS=windows GOARCH=amd64 go build -o ppb_worker.exe ./cmd/ppb_worker
+
+# Stage 2: Minimal runtime image
+FROM mcr.microsoft.com/windows/servercore:ltsc2022
+WORKDIR /app
+COPY --from=builder /app/ppb_worker.exe .
+EXPOSE 9085
+ENTRYPOINT ["C:\\app\\ppb_worker.exe"]
+```
+
+To build and run the worker container:
+
+```sh
+# Build the Docker image
+docker build -t ppb-worker .
+
+# Run the worker (ensure network access for cluster communication)
+docker run --rm -it --network host ppb-worker
+```
+
+---
+
 ## Source Control Integration
 
-- **Git-aware:**
-  Detects modified, added, deleted, and untracked files.
-- **Build graph nodes for source control state:**
-  Enables commands like `list-modified-files`, `list-artifacts`, and more.
-- **Automatic branch and revision tracking:**
-  Used for build reproducibility and cache keying.
+- **Git-aware:** Detects modified, added, deleted, and untracked files.
+- **Build graph nodes for source control state:** Enables commands like `list-modified-files`, `list-artifacts`, and more.
+- **Automatic branch and revision tracking:** Used for build reproducibility and cache keying.
 
 ---
 
 ## Configuration
 
-- **Module and action definitions:**
-  Place JSON files describing modules and their dependencies in your project, see [compile/Model.go](compile/Model.go).
-- **Compiler/toolchain selection:**
-  Configurable via JSON and command-line flags, see [compile/compiler.go](compile/compiler.go).
-- **Cluster configuration:**
-  Workers auto-discover each other via QUIC; resource limits can be set per worker, see [cluster/cluster.go](cluster/cluster.go)..
+- **Module and action definitions:** Place JSON files describing modules and their dependencies in your project, see [compile/Model.go](compile/Model.go).
+- **Compiler/toolchain selection:** Configurable via JSON and command-line flags, see [compile/Compiler.go](compile/Compiler.go).
+- **Cluster configuration:** Workers auto-discover each other via QUIC; resource limits can be set per worker, see [cluster/cluster.go](cluster/cluster.go).
 
 ---
 
@@ -118,8 +168,8 @@ You can customize the following rules per-project or per-archetype to control th
 | `Default`        | Base warning level for the compiler (e.g., OFF, DEFAULT, HIGH) |
 | `Deprecation`    | Controls warnings for deprecated features           |
 | `Pedantic`       | Controls warnings for strict standard conformance   |
-| `ShadowVariable` | Controls warnings for variable shadowing            |
-| `UndefinedMacro` | Controls warnings for use of undefined macros       |
+| `ShadowVariable` | Controls warnings for variable shadowing             |
+| `UndefinedMacro` | Controls warnings for use of undefined macros        |
 | `UnsafeTypeCast` | Controls warnings for unsafe type casts and promotions |
 
 ---
@@ -129,34 +179,34 @@ You can customize the following rules per-project or per-archetype to control th
 | Field            | Description                                         |
 |------------------|-----------------------------------------------------|
 | `SizePerUnity`   | Size (in bytes) of each unity file for adaptive unity builds |
-| `Instructions`   | Instruction sets to enable (e.g., SSE, AVX2, AVX512)|
+| `Instructions`   | Instruction sets to enable (e.g., SSE, AVX2, AVX512) |
 | `CppStd`         | The C++ standard to use (e.g., C++11, C++14, C++17, C++20) |
 | `CppRtti`        | Enable or disable Run-Time Type Information (RTTI)  |
 | `DebugInfo`      | Level of debug information to generate (OFF, DEFAULT, FULL) |
-| `Exceptions`     | Enable or disable C++ exceptions                    |
+| `Exceptions`     | Enable or disable C++ exceptions                     |
 | `FloatingPoint`  | Floating point model (e.g., precise, fast, strict)  |
-| `Link`           | Linking options (e.g., static, dynamic)             |
-| `Optimize`       | Optimization level (e.g., none, size, speed, full)  |
-| `PCH`            | Precompiled header options                          |
+| `Link`           | Linking options (e.g., static, dynamic)              |
+| `Optimize`       | Optimization level (e.g., none, size, speed, full)   |
+| `PCH`            | Precompiled header options                           |
 | `RuntimeLib`     | Runtime library selection (e.g., static, dynamic, debug, release) |
 | `Sanitizer`      | Enable runtime sanitizers (e.g., address, thread, undefined behavior) |
-| `Unity`          | Unity build options (enabled, disabled)             |
+| `Unity`          | Unity build options (enabled, disabled)              |
 
 ---
 
 ### Boolean Feature Toggles
 
-| Field            | Description                                         |
-|------------------|-----------------------------------------------------|
-| `AdaptiveUnity`  | Enable adaptive unity builds                        |
-| `Benchmark`      | Enable benchmarking features                        |
-| `Deterministic`  | Enable deterministic (reproducible) builds          |
-| `DebugFastLink`  | Enable fast linking for debug builds                |
-| `Incremental`    | Enable incremental builds                           |
-| `LTO`            | Enable Link-Time Optimization                       |
-| `RuntimeChecks`  | Enable runtime checks (e.g., stack protection)      |
-| `CompilerVerbose`| Enable verbose output from the compiler             |
-| `LinkerVerbose`  | Enable verbose output from the linker               |
+| Field             | Description                                         |
+|-------------------|-----------------------------------------------------|
+| `AdaptiveUnity`   | Enable adaptive unity builds                        |
+| `Benchmark`       | Enable benchmarking features                        |
+| `Deterministic`   | Enable deterministic (reproducible) builds          |
+| `DebugFastLink`   | Enable fast linking for debug builds                |
+| `Incremental`     | Enable incremental builds                            |
+| `LTO`             | Enable Link-Time Optimization                        |
+| `RuntimeChecks`   | Enable runtime checks (e.g., stack protection)      |
+| `CompilerVerbose` | Enable verbose output from the compiler              |
+| `LinkerVerbose`   | Enable verbose output from the linker                |
 
 ---
 
@@ -194,7 +244,7 @@ You can customize the following rules per-project or per-archetype to control th
 - Boolean toggles (`true`/`false`) enable or disable features.
 - Enum/string options select the desired mode or level for each rule.
 
-> **Tip:** Refer to your build system’s documentation or schema for the exact allowed values for each field (e.g., which C++ standards, optimization levels, or sanitizer types are supported).
+> **Tip:** Refer to your build system's documentation or schema for the exact allowed values for each field (e.g., which C++ standards, optimization levels, or sanitizer types are supported).
 
 ---
 
@@ -204,13 +254,13 @@ You can customize the following rules per-project or per-archetype to control th
 
 ```sh
 git clone https://github.com/poppolopoppo/ppb.git
-cd ppb/Build
+cd ppb
 go build
 ./ppb configure
 ./ppb build
 ```
 
-> **Tip:** For distributed builds, start additional workers with `./ppb worker`on other machines in your network.
+> **Tip:** For distributed builds, start additional workers with `./ppb worker` on other machines in your network.
 
 ### 🧑‍💻 Example Usage
 
@@ -237,9 +287,9 @@ go build
 ./ppb help list-artifacts
 ```
 
-## 📋 Available Commands
+### 📋 Available Commands
 
-Below is a list of the main commands. For each, you can run `./Build help <command>` for detailed usage.
+Below is a list of the main commands. For each, you can run `./ppb help <command>` for detailed usage.
 
 | Command                | Description                                                      |
 |------------------------|------------------------------------------------------------------|
@@ -247,6 +297,9 @@ Below is a list of the main commands. For each, you can run `./Build help <comma
 | `autocomplete`         | Run auto-completion for commands and arguments                   |
 | `version`              | Print build version                                              |
 | `seed`                 | Print build seed                                                 |
+| `worker`               | Start a distributed build worker node                            |
+| `configure`            | Parse module JSON files and bootstrap the build graph            |
+| `build`                | Build all targets                                                |
 | `vscode`               | Generate workspace for Visual Studio Code                        |
 | `vcxproj`              | Generate projects and solution for Visual Studio                 |
 | `debug`                | Debug the build graph                                            |
@@ -268,14 +321,17 @@ Below is a list of the main commands. For each, you can run `./Build help <comma
 | `check-fingerprint`    | Recompute nodes fingerprint and compare with stored stamp        |
 | `import-action`        | Import actions from external JSON file(s)                        |
 | `export-action`        | Export selected compilation actions to JSON                      |
+| `dist-clean`           | Clean distributed build artifacts across the cluster             |
+| `run`                  | Build and run a specific target                                  |
 
 > **Tip:** Many commands accept additional arguments or flags. Use `./ppb help <command>` for details.
 
 ---
 
 **Note:**
-- You can chain multiple commands using `-and`, e.g. `./Build configure -and vscode -and build -Summary`
-- All commands and flags are case-
+- You can chain multiple commands using `-and`, e.g. `./ppb configure -and vscode -and build -Summary`
+- All commands and flags are case-sensitive.
+- Run `make help` for a complete list of build targets and development commands.
 
 ---
 
@@ -283,30 +339,82 @@ Below is a list of the main commands. For each, you can run `./Build help <comma
 
 The following **global flags** can be used with any command:
 
-| Flag            | Description                                                                                  |
-|-----------------|----------------------------------------------------------------------------------------------|
-| `-f`            | Force build even if up-to-date                                                               |
-| `-F`            | Force build and ignore cache                                                                 |
-| `-j`            | Override number of worker threads (default: numCpu-1)                                        |
-| `-q`            | Disable all messages                                                                         |
-| `-v`            | Turn on verbose mode                                                                         |
-| `-t`            | Print more information about progress                                                        |
-| `-V`            | Turn on very verbose mode                                                                    |
-| `-d`            | Turn on debug assertions and more log (only if built with debug enabled)                     |
-| `-T`            | Turn on timestamp logging                                                                    |
-| `-X`            | Turn on diagnostics mode                                                                     |
-| `-Color`        | Control ANSI color output in log messages                                                    |
-| `-Ide`          | Set output to IDE mode (disable interactive shell)                                           |
-| `-LogAll`       | Output all messages for given log categories                                                 |
-| `-LogMute`      | Mute all messages for given log categories                                                   |
-| `-LogImmediate` | Disable buffering of log messages                                                            |
-| `-LogFile`      | Output log to specified file (default: stdout)                                               |
-| `-OutputDir`    | Override default output directory                                                            |
-| `-RootDir`      | Override root directory                                                                      |
-| `-StopOnError`  | Interrupt build process immediately when an error occurred                                   |
-| `-Summary`      | Print build graph execution summary when build finished                                      |
-| `-WX`           | Consider warnings as errors                                                                  |
-| `-EX`           | Consider errors as panics                                                                    |
+| Flag             | Description                                                                                  |
+|------------------|----------------------------------------------------------------------------------------------|
+| `-f`             | Force build even if up-to-date                                                               |
+| `-F`             | Force build and ignore cache                                                                 |
+| `-j`             | Override number of worker threads (default: numCpu-1)                                        |
+| `-q`             | Disable all messages                                                                         |
+| `-v`             | Turn on verbose mode                                                                         |
+| `-t`             | Print more information about progress                                                        |
+| `-V`             | Turn on very verbose mode                                                                    |
+| `-d`             | Turn on debug assertions and more log (only if built with debug enabled)                     |
+| `-T`             | Turn on timestamp logging                                                                    |
+| `-X`             | Turn on diagnostics mode                                                                     |
+| `-Color`         | Control ANSI color output in log messages                                                    |
+| `-Ide`           | Set output to IDE mode (disable interactive shell)                                           |
+| `-LogAll`        | Output all messages for given log categories                                                 |
+| `-LogMute`       | Mute all messages for given log categories                                                   |
+| `-LogImmediate`  | Disable buffering of log messages                                                            |
+| `-LogFile`       | Output log to specified file (default: stdout)                                               |
+| `-OutputDir`     | Override default output directory                                                            |
+| `-RootDir`       | Override root directory                                                                      |
+| `-StopOnError`   | Interrupt build process immediately when an error occurred                                   |
+| `-Summary`       | Print build graph execution summary when build finished                                      |
+| `-WX`            | Consider warnings as errors                                                                  |
+| `-EX`            | Consider errors as panics                                                                    |
+
+---
+
+## Distributed Builds
+
+PPB supports peer-to-peer distributed builds. To use distributed builds:
+
+1. **Start a worker** on each machine that should participate in the cluster:
+   ```sh
+   # On each worker machine
+   ./ppb worker -port=9085
+   ```
+2. **Start the coordinator** (or use any node as coordinator):
+   ```sh
+   ./ppb build -v -Summary
+   ```
+3. Workers auto-discover each other via QUIC. The cluster automatically balances workloads based on available CPU and memory.
+
+---
+
+## Troubleshooting
+
+### `go build` fails on Windows with DataDog/zstd errors
+
+The `DataDog/zstd` dependency requires CGO and a C compiler on Windows. If you're building on Windows without a C compiler:
+
+- Install [MinGW-w64](https://www.mingw-w64.org/) and add it to your `PATH`
+- Or build on Linux/macOS where CGO works by default
+- For CI (Linux runners), this is not an issue
+
+### Worker can't connect to other peers
+
+- Ensure UDP port 9085 is open in your firewall
+- Verify workers are on the same network or VPN
+- Check that QUIC is not blocked by your network infrastructure
+
+### Cache is not working as expected
+
+- Fingerprint mismatches between builds will cause cache misses
+- Ensure `Deterministic` is enabled in your JSON configuration for reproducible cache keys
+- Clear the cache with `./ppb dist-clean` if needed
+
+---
+
+## Security
+
+PPB uses CodeQL and Codacy for automated security scanning on every push and pull request. Key security practices:
+
+- **Dependency updates** are managed through [Dependabot](https://github.com/poppolopoppo/ppb/settings/dependabot) with weekly checks
+- **Code scanning** via CodeQL (`security-extended` and `security-and-quality` query packs)
+- **Secret scanning** is enabled for the repository
+- **Vulnerability reporting:** Please report security issues privately via GitHub's security advisory feature or by contacting the maintainers
 
 ---
 
@@ -331,5 +439,45 @@ The following **global flags** can be used with any command:
 
 ## Contributing
 
-Contributions are welcome!
-Please open issues or pull requests on [GitHub](https://github.com/poppolopoppo/ppb).
+We welcome contributions! Please follow these guidelines:
+
+### Prerequisites
+- Go 1.25+ installed
+- C++ compiler for your platform (MSVC, Clang, or GCC)
+
+### Setup
+```sh
+git clone https://github.com/poppolopoppo/ppb.git
+cd ppb
+go mod download
+go build
+```
+
+### Running Tests
+```sh
+go test -v ./...
+```
+
+### Code Style
+- Run `gofmt -w .` before committing to ensure consistent formatting
+- Run `go vet ./...` to check for issues
+- Use `// #nosec` comments to suppress gosec findings that are false positives
+
+### Submitting Changes
+1. Fork the repository and create a feature branch
+2. Make your changes with appropriate tests
+3. Ensure all checks pass (`go build`, `go vet`, `go test`)
+4. Open a pull request with a clear description of the change
+
+### Reporting Issues
+Please open issues on [GitHub Issues](https://github.com/poppolopoppo/ppb/issues) with:
+- A clear description of the problem
+- Steps to reproduce
+- Your environment (OS, Go version, PPB version)
+- Any relevant logs or error messages
+
+---
+
+## License
+
+See the project license for details.
