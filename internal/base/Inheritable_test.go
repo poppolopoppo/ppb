@@ -287,7 +287,7 @@ func TestSizeInBytes_MarshalUnmarshalText(t *testing.T) {
 
 func TestTimespan_MarshalUnmarshalText(t *testing.T) {
 	var ts Timespan
-	ts.Set("1234")
+	ts.Set("120")
 	data, err := ts.MarshalText()
 	if err != nil {
 		t.Fatalf("MarshalText error: %v", err)

@@ -113,7 +113,7 @@ func (x *ProcessOptions) Init(options ...ProcessOptionFunc) {
 	if base.EnableInteractiveShell() {
 		x.OnSpinner = func(executable utils.Filename, arguments base.StringSet, options *ProcessOptions) base.ProgressScope {
 			message := strings.Join(append([]string{executable.String()}, arguments...), " ")
-			return base.LogSpinner(message)
+			return base.LogSpinner("%s", message)
 		}
 	}
 

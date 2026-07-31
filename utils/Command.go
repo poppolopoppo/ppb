@@ -707,7 +707,7 @@ func (x *commandParsableArgument) Help(w *base.StructuredFile) {
 				sb.WriteRune(')')
 				sb.WriteString(base.ANSI_RESET.String())
 
-				w.Println(sb.String())
+				w.Println("%s", sb.String())
 			} else {
 				w.Println("%v%v%s%v", base.ANSI_FRAME, colorFG, v.Value, base.ANSI_RESET)
 			}
@@ -986,7 +986,7 @@ func (x *commandItem) Help(w *base.StructuredFile) {
 			w.Println("")
 
 			if len(x.Notes) > 0 {
-				w.Println(x.Notes)
+				w.Println("%s", x.Notes)
 				w.Println("")
 			}
 

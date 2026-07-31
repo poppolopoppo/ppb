@@ -964,7 +964,7 @@ func (ufs *UFSFrontEnd) OpenLogProgress(src Filename, read func(FileProgress, in
 		}
 		size := st.Size()
 		if base.EnableInteractiveShell() {
-			pg := base.LogProgress(0, size, MakeShortUserFriendlyPath(src).String())
+			pg := base.LogProgress(0, size, "%s", MakeShortUserFriendlyPath(src).String())
 			defer pg.Close()
 			rd := osFileWithProgress{fd: fd, pg: pg}
 			return read(&rd, size, pg)

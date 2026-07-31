@@ -100,7 +100,7 @@ func (g VulkanGeneratedHeader) Generate(bc utils.BuildContext, generated *compil
 	makeExtensionEnumDecl := func(name string, exts []VkExtension) {
 		cpp.Comment(name)
 		cpp.EnumC99(name, "uint32_t", func() {
-			cpp.Println(name + "_unknown = 0,")
+			cpp.Println("%s", name+"_unknown = 0,")
 			for _, x := range exts {
 				cpp.IfDef(x.Name, func() {
 					if len(x.Requires) > 0 {
@@ -110,7 +110,7 @@ func (g VulkanGeneratedHeader) Generate(bc utils.BuildContext, generated *compil
 					}
 				})
 			}
-			cpp.Println(name + "_count,")
+			cpp.Println("%s", name+"_count,")
 		})
 
 		cpp.Statement("using %s_set = PPE::TFixedSizeBitMask<static_cast<uint32_t>(%s_count)>", name, name)

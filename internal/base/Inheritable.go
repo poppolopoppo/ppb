@@ -410,15 +410,15 @@ func (x SizeInBytes) String() string {
 	case x < KiB:
 		return fmt.Sprintf("%d b", x.Get())
 	case x < MiB:
-		return fmt.Sprintf("%.3f Kib", Kibibytes(x.Get()))
+		return fmt.Sprintf("%.2f Kib", Kibibytes(x.Get()))
 	case x < GiB:
-		return fmt.Sprintf("%.3f Mib", Mebibytes(x.Get()))
+		return fmt.Sprintf("%.2f Mib", Mebibytes(x.Get()))
 	case x < TiB:
-		return fmt.Sprintf("%.3f Gib", Gibibytes(x.Get()))
+		return fmt.Sprintf("%.2f Gib", Gibibytes(x.Get()))
 	case x < PiB:
-		return fmt.Sprintf("%.3f Tib", Tebibytes(x.Get()))
+		return fmt.Sprintf("%.2f Tib", Tebibytes(x.Get()))
 	default:
-		return fmt.Sprintf("%.3f Pib", Pebibytes(x.Get()))
+		return fmt.Sprintf("%.2f Pib", Pebibytes(x.Get()))
 	}
 }
 
@@ -536,17 +536,17 @@ func (x Timespan) String() string {
 	case x < Millisecond:
 		return fmt.Sprintf("%d µs", x.Get())
 	case x < Second:
-		return fmt.Sprintf("%.3f ms", Milliseconds(x.Get()))
+		return fmt.Sprintf("%.2f ms", Milliseconds(x.Get()))
 	case x < Minute:
-		return fmt.Sprintf("%.3f seconds", Seconds(x.Get()))
+		return fmt.Sprintf("%.2f seconds", Seconds(x.Get()))
 	case x < Hour:
-		return fmt.Sprintf("%.3f minutes", Minutes(x.Get()))
+		return fmt.Sprintf("%.2f minutes", Minutes(x.Get()))
 	case x < Day:
-		return fmt.Sprintf("%.3f hours", Hours(x.Get()))
+		return fmt.Sprintf("%.2f hours", Hours(x.Get()))
 	case x < Week:
-		return fmt.Sprintf("%.3f days", Days(x.Get()))
+		return fmt.Sprintf("%.2f days", Days(x.Get()))
 	default:
-		return fmt.Sprintf("%.3f weeks", Weeks(x.Get()))
+		return fmt.Sprintf("%.2f weeks", Weeks(x.Get()))
 	}
 }
 
@@ -598,8 +598,8 @@ func (x *Timespan) Set(in string) error {
 		value := upper[0 : len(upper)-len(unit)]
 		unit = strings.TrimSpace(unit)
 
-		// assume bytes if no unit provided
-		var unitMultiplier int64 = 1
+		// assume seconds if no unit provided
+		var unitMultiplier int64 = int64(Second)
 		if len(unit) > 0 {
 			var ok bool
 			unitMultiplier, ok = timespanUnits[unit]

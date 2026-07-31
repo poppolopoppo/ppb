@@ -713,7 +713,7 @@ func (x *SlnSolutionGenerator) GenerateSLN(sln *base.StructuredFile, projects ..
 
 		// write projects to folders relationships
 		for _, projectToFolder := range projectsToFolders {
-			sln.Println(projectToFolder)
+			sln.Println("%s", projectToFolder)
 		}
 
 		// write every intermediate path

@@ -1,6 +1,7 @@
 package io
 
 import (
+	"fmt"
 	"io"
 	"strings"
 
@@ -20,7 +21,7 @@ func NewCppFile(dst io.Writer, minify bool) *CppFile {
 
 func (cpp *CppFile) Comment(format string, args ...interface{}) {
 	if !cpp.Minify() {
-		cpp.Println("// "+format, args...)
+		cpp.Println("%s", fmt.Sprintf("// "+format, args...))
 	}
 }
 
@@ -32,7 +33,7 @@ func (cpp *CppFile) EndBlockComment() {
 }
 
 func (cpp *CppFile) Pragma(format string, args ...interface{}) {
-	cpp.Println("#pragma "+format, args...)
+	cpp.Println("%s", fmt.Sprintf("#pragma "+format, args...))
 }
 func (cpp *CppFile) Define(name, value string) {
 	cpp.Println("#define %s %s", name, value)
@@ -41,7 +42,7 @@ func (cpp *CppFile) Include(path string) {
 	cpp.Println(`#include "%s"`, path)
 }
 func (cpp *CppFile) IfMacro(test string, inner func()) {
-	cpp.Print_NoIndent("#if " + test)
+	cpp.Print_NoIndent("%s", "#if "+test)
 	cpp.LineBreak()
 	inner()
 	cpp.Println_NoIndent("#endif")
@@ -52,7 +53,7 @@ func (cpp *CppFile) LazyIfMacro(test string, inner func(), flush bool) {
 			if len(cpp.ifdef) > 0 {
 				cpp.Println("#endif")
 			}
-			cpp.Println("#if " + test)
+			cpp.Println("%s", "#if "+test)
 			cpp.ifdef = test
 		}
 	} else if len(cpp.ifdef) > 0 {
@@ -97,7 +98,7 @@ func (cpp *CppFile) Declare(name, result string, value func()) {
 	cpp.Println("};")
 }
 func (cpp *CppFile) Statement(format string, args ...interface{}) {
-	cpp.Println(format+";", args...)
+	cpp.Println("%s", fmt.Sprintf(format+";", args...))
 }
 
 func (cpp *CppFile) Closure(inner func(), suff ...string) {
@@ -111,18 +112,18 @@ func (cpp *CppFile) Closure(inner func(), suff ...string) {
 		if !cpp.Minify() {
 			cpp.LineBreak()
 		}
-		cpp.Println(strings.Join(append([]string{"}"}, suff...), ""))
+		cpp.Println("%s", strings.Join(append([]string{"}"}, suff...), ""))
 	} else {
 		cpp.Println(";")
 	}
 }
 
 func (cpp *CppFile) If(condition string, inner func()) {
-	cpp.Print("if (" + condition + ")")
+	cpp.Print("if (%s)", condition)
 	cpp.Closure(inner)
 }
 func (cpp *CppFile) ElseIf(condition string, inner func()) {
-	cpp.Print("else if (" + condition + ")")
+	cpp.Print("else if (%s)", condition)
 	cpp.Closure(inner)
 }
 func (cpp *CppFile) Else(inner func()) {
@@ -131,9 +132,9 @@ func (cpp *CppFile) Else(inner func()) {
 }
 
 func (cpp *CppFile) Namespace(name string, inner func()) {
-	cpp.Println("namespace " + name + " {")
+	cpp.Println("namespace %s {", name)
 	inner()
-	cpp.Println("} //!namespace " + name)
+	cpp.Println("} //!namespace %s", name)
 }
 func (cpp *CppFile) EnumC99(name string, underlying string, inner func()) {
 	cpp.Print("enum %s : %s", name, underlying)
@@ -143,11 +144,11 @@ func (cpp *CppFile) EnumClass(name string, underlying string, inner func()) {
 	cpp.EnumC99("class "+name, underlying, inner)
 }
 func (cpp *CppFile) Class(name string, inner func()) {
-	cpp.Print("class " + name)
+	cpp.Print("class %s", name)
 	cpp.Closure(inner, ";")
 }
 func (cpp *CppFile) Struct(name string, inner func()) {
-	cpp.Print("struct " + name)
+	cpp.Print("struct %s", name)
 	cpp.Closure(inner, ";")
 }
 
@@ -159,7 +160,7 @@ func (cpp *CppFile) Func(name, result string, args []string, suffix string, inne
 	cpp.Closure(inner)
 }
 func (cpp *CppFile) Switch(value string, inner func()) {
-	cpp.Println("switch(" + value + ") {")
+	cpp.Println("switch(%s) {", value)
 	inner()
 	cpp.Println("}")
 }

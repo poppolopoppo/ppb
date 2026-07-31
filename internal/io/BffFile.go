@@ -103,22 +103,22 @@ func (bff *BffFile) Include(path utils.Filename) *BffFile {
 }
 func (bff *BffFile) Comment(text string, a ...interface{}) *BffFile {
 	if !bff.Minify() {
-		bff.Println("// "+text, a...)
+		bff.Println("%s", fmt.Sprintf("// "+text, a...))
 	}
 	return bff
 }
 func (bff *BffFile) Import(varname ...string) *BffFile {
 	for _, x := range varname {
-		bff.Println("#import " + x)
+		bff.Println("%s", "#import "+x)
 	}
 	return bff
 }
 func (bff *BffFile) SetVar(name string, value interface{}, operator BffOp, scope BffScope) *BffFile {
 	if !bffIsDefaultValue(value) {
 		if bff.Minify() {
-			bff.Print(scope.String() + name + operator.String())
+			bff.Print("%s", scope.String()+name+operator.String())
 		} else {
-			bff.Print(scope.String() + name + " " + operator.String() + " ")
+			bff.Print("%s", scope.String()+name+" "+operator.String()+" ")
 		}
 		bff.Value(value)
 		bff.LineBreak()
@@ -138,7 +138,7 @@ func (bff *BffFile) Value(x interface{}) *BffFile {
 	case utils.IntVar:
 		bff.Value(value.Get())
 	case BffVar:
-		bff.Print("." + value.String())
+		bff.Print(".%s", value.String())
 	case string:
 		bff.Print(`"%s"`, strings.ReplaceAll(value, "\"", "^\""))
 	case bool:
@@ -188,7 +188,7 @@ func (bff *BffFile) Value(x interface{}) *BffFile {
 	return bff
 }
 func (bff *BffFile) Func(name string, closure func(), args ...string) *BffFile {
-	bff.Print(name)
+	bff.Print("%s", name)
 	if len(args) > 0 {
 		bff.Print("(")
 		if !bff.Minify() {

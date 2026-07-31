@@ -95,7 +95,7 @@ func newBuildEvents() (result buildEvents) {
 
 		result.onBuildGraphStartEvent.Add(func(bgwp BuildGraphWritePort) error {
 			if !bgwp.PortFlags().Any(BUILDGRAPH_QUIET) {
-				pbar = base.LogSpinner(bgwp.PortName().String())
+				pbar = base.LogSpinner("%s", bgwp.PortName().String())
 			} else {
 				pbar = nil
 			}
