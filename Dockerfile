@@ -19,6 +19,6 @@ EXPOSE 9085
 USER ContainerAdministrator
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD powershell -Command "Test-Path C:\\app\\ppb_worker.exe"
+  CMD ["powershell", "-Command", "Test-Path", "C:\\app\\ppb_worker.exe"]
 
 ENTRYPOINT ["C:\\app\\ppb_worker.exe"]
