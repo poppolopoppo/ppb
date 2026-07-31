@@ -232,6 +232,7 @@ func TestUFS_GetCallerFile(t *testing.T) {
 
 func TestUFS_MountRootDirectory_MountOutputDir(t *testing.T) {
 	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
 	root := UFS.Dir(tmpDir)
 	if err := UFS.MountRootDirectory(root); err != nil {
 		t.Errorf("UFS.MountRootDirectory failed: %v", err)
