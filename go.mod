@@ -1,6 +1,6 @@
 module github.com/poppolopoppo/ppb
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/DataDog/zstd v1.5.7
@@ -16,7 +16,7 @@ require (
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	golang.org/x/exp v0.0.0-20260727155853-b88d891fe743
 	golang.org/x/net v0.57.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.49.0
 )
 
 require (
